@@ -137,6 +137,7 @@ MAX_HISTORY = 500
 MAX_LINES = 100
 HELP_CHANNEL = 9
 
+ConsoleChat = nil
 consolePanel = nil
 consoleContentPanel = nil
 consoleTabBar = nil
@@ -188,6 +189,7 @@ function init()
     consoleTextEdit = consolePanel:getChildById('consoleTextEdit')
     consoleContentPanel = consolePanel:getChildById('consoleContentPanel')
     consoleTabBar = consolePanel:getChildById('consoleTabBar')
+    ConsoleChat = consolePanel:getId()
     consoleTabBar:setContentWidget(consoleContentPanel)
     channels = {}
 
@@ -319,9 +321,9 @@ end
 function toggleChat()
     consoleToggleChat.isChecked = not consoleToggleChat.isChecked
     if consoleToggleChat.isChecked then
-        consoleToggleChat:setText(tr('Chat Off'))
+        consoleToggleChat:setText(tr('Ligar'))
     else
-        consoleToggleChat:setText(tr('Chat On'))
+        consoleToggleChat:setText(tr('Desligar'))
     end
 end
 
@@ -378,10 +380,14 @@ function switchChat(enabled)
         unbindMovingKeys()
         consoleToggleChat:setTooltip(tr('Disable chat mode, allow to walk using WASD'))
         Keybind.setChatMode(CHAT_MODE.ON)
+        --modules.game_interface.getBottomPanel()
+
+        
     else
         bindMovingKeys()
         consoleToggleChat:setTooltip(tr('Enable chat mode'))
         Keybind.setChatMode(CHAT_MODE.OFF)
+        --modules.game_interface.getBottomPanel()
     end
 end
 
@@ -485,9 +491,9 @@ function load()
         messageHistory = settings.messageHistory or {}
         consoleToggleChat.isChecked = settings.wasdMode or false
         if consoleToggleChat.isChecked then
-            consoleToggleChat:setText(tr('Chat Off'))
+            consoleToggleChat:setText(tr('Ligar'))
         else
-            consoleToggleChat:setText(tr('Chat On'))
+            consoleToggleChat:setText(tr('Desligar'))
         end
         updateChatMode()
     end
@@ -2104,4 +2110,16 @@ function onTextChange(text)
     else
         player:setTyping(false)
     end
+end
+
+function getConsoleChat()
+    return ConsoleChat
+end
+
+function HideChat()
+    modules.game_interface.HideChat()
+end
+
+function ShowChat()
+    consolePanel:setVisible(true)
 end

@@ -45,6 +45,19 @@ MiniWindow
   @onOpen: onOpen()
   @onClose: onClose()
   &save: true
+  draggable: false
+
+  UIButton
+    id: lockButton
+    visible: false
+
+  UIButton
+    id: minimizeButton
+    visible: false
+
+  UIButton
+    id: closeButton
+    visible: false
 
   Panel
     id: filterPanel

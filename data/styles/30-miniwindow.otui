@@ -6,6 +6,7 @@ MiniWindow < UIMiniWindow
   text-offset: 24 5
   text-align: topLeft
   image-source: /images/ui/miniwindow
+  image-color: #ffffff66
   image-border: 4
   image-border-top: 23
   image-border-bottom: 4

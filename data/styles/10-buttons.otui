@@ -9,6 +9,8 @@ Button < UIButton
   image-border: 3
   padding: 5 10 5 10
   opacity: 1.0
+  border-radius: 20
+  clip: true
 
   $pressed:
     image-clip: 0 46 22 23

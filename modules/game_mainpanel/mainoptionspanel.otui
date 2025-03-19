@@ -41,7 +41,7 @@ PhantomMiniWindow
   UIWidget
     id: onPanel
     anchors.fill: parent
-    margin-top: 8
+    margin-top: 6
     phantom: true
 
     UIWidget
@@ -97,7 +97,7 @@ PhantomMiniWindow
       anchors.top: options.top
       anchors.bottom: options.bottom
       anchors.left: store.right
-      margin-left: 5
+      margin-left: 8
       phantom: true
       width: 1
 

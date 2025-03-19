@@ -794,24 +794,15 @@ function onTrackerClick(widget, mousePosition, mouseButton)
 end
 
 function onAddLootClick(widget, mousePosition, mouseButton)
-    local itemId = widget:getItemId()
-    local quickLoot = modules.game_quickloot.QuickLoot
-    local lootFilterValue = quickLoot.data.filter
+    local taskId = tonumber(widget:getId())
     local menu = g_ui.createWidget("PopupMenu")
 
     menu:setGameMenu(true)
-
-    if not quickLoot.lootExists(itemId, lootFilterValue) then
-        menu:addOption("Add to Loot List",
-        function()
-            quickLoot.addLootList(itemId, lootFilterValue)
-        end)
-    else
-        menu:addOption("Remove from Loot List", 
-        function() 
-            quickLoot.removeLootList(itemId, lootFilterValue)
-        end)
-    end
+    --if true then -- is in loot list ?
+        menu:addOption("Add to Loot List", function() print("future") end)
+    --else
+        --menu:addOption("Remove from Loot List", function() print("future") end)
+    --end
 
     menu:display(menuPosition)
 

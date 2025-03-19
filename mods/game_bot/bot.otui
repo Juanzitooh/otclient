@@ -28,7 +28,19 @@ MiniWindow
   @onClose: modules.game_bot.onMiniWindowClose()
   &save: true
   &autoOpen: 10
+  draggable: false
 
+  UIButton
+    id: lockButton
+    visible: false
+
+  UIButton
+    id: minimizeButton
+    visible: false
+
+  UIButton
+    id: closeButton
+    visible: false
   MiniWindowContents
     ComboBox
       id: config

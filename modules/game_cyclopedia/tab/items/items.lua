@@ -258,21 +258,16 @@ function Cyclopedia.internalCreateItem(data)
         end
         widget:setBackgroundColor("#585858")
        
-        if modules.game_quickloot.QuickLoot.data.filter == 2 then
-            UI.InfoBase.quickLootCheck:setText("Loot when Quick Looting")
-        else
-            UI.InfoBase.quickLootCheck:setText('Skip when Quick Looting')
-        end
-        UI.InfoBase.quickLootCheck.onCheckChange = function(self, checked)
+        UI.InfoBase.SkipQuickLootCheck.onCheckChange = function(self, checked)
+            UI.InfoBase.SkipQuickLootCheck:setChecked(modules.game_quickloot.QuickLoot.lootExists(data:getId(), 1))
             if checked then
-                modules.game_quickloot.QuickLoot.addLootList(data:getId(), modules.game_quickloot.QuickLoot.data.filter)
+                modules.game_quickloot.QuickLoot.addLootList(data:getId(), 1)
             else
-                modules.game_quickloot.QuickLoot.removeLootList(data:getId(), modules.game_quickloot.QuickLoot.data.filter)
+                modules.game_quickloot.QuickLoot.removeLootList(data:getId(), 1)
             end
         end
-        UI.InfoBase.quickLootCheck:setChecked(modules.game_quickloot.QuickLoot.lootExists(data:getId(), modules.game_quickloot.QuickLoot.data.filter))
 
-        local buy, sell = Cyclopedia.formatSaleData(internalData:getNpcSaleData())
+         local buy, sell = Cyclopedia.formatSaleData(internalData:getNpcSaleData())
         local sellColor = "#484848"
 
         for index, value in ipairs(sell) do

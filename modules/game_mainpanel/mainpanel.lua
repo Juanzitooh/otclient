@@ -154,8 +154,8 @@ local function createButton(id, description, image, callback, special, front, in
 end
 
 optionsController = Controller:new()
-optionsController:setUI('mainoptionspanel', modules.game_interface.getMainRightPanel())
-
+optionsController:setUI('mainoptionspanel', modules.client_topmenu.getMenu())
+-- modules.game_interface.getMainRightPanel , modules.client_topmenu.getMenu()
 function optionsController:onInit()
     createButton_large('Store shop', tr('Store shop'), '/images/options/store_large', toggleStore,
     false, 8)

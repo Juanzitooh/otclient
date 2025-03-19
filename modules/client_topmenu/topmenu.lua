@@ -14,7 +14,7 @@ local fpsLabel
 local pingLabel
 local topLeftYoutubeLink
 local topLeftDiscordLink
-local url_discord = ""
+local url_discord = "https://discord.gg/undjEdaRtu"
 local url_youtube = ""
 local lastSyncValue = -1
 local fpsEvent = nil
@@ -75,6 +75,7 @@ function init()
 
     topMenu = g_ui.displayUI('topmenu')
 
+    menuPanel = topMenu:getChildById('rightButtonsPanel')
     topLeftButtonsPanel = topMenu:getChildById('topLeftButtonsPanel')
     topLeftTogglesPanel = topMenu:getChildById('topLeftTogglesPanel')
     rightButtonsPanel = topMenu:getChildById('rightButtonsPanel')
@@ -301,6 +302,7 @@ function setDiscordStreams(value)
     topLeftDiscordStreamersLabel:setText(value)
 end
 
+--
 function setYoutubeStreams(value)
     topLeftYoutubeStreamersLabel:setText(value)
 end
@@ -318,6 +320,7 @@ function setLinkYoutube(value)
     end
 
 end
+--
 
 function setLinkDiscord(value)
 
@@ -328,6 +331,10 @@ function setLinkDiscord(value)
         end
     end
 
+end
+
+function OpenDiscord()
+    g_platform.openUrl(url_discord)
 end
 
 function addLeftButton(id, description, icon, callback, front)
@@ -421,6 +428,10 @@ function getTopMenu()
     return topMenu
 end
 
+function getMenu()
+    return menuPanel
+end
+
 function toggle()
     local menu = getTopMenu()
     if not menu then
@@ -430,9 +441,13 @@ function toggle()
     if menu:isVisible() then
         menu:hide()
         modules.game_interface.getRootPanel():addAnchor(AnchorTop, 'parent', AnchorTop)
+        buttom_menu = modules.game_interface.getShowTopMenuButton()
+        buttom_menu:setVisible(true)
     else
         menu:show()
         modules.game_interface.getRootPanel():addAnchor(AnchorTop, 'topMenu', AnchorTop)
+        buttom_menu = modules.game_interface.getShowTopMenuButton()
+        buttom_menu:setVisible(false)
     end
 end
 

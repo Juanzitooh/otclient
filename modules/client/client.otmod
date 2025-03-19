@@ -13,6 +13,7 @@ Module
     - client_styles
     - client_locales
     - client_topmenu
+    - client_menu
     - client_bottommenu
     - client_background
     - client_options

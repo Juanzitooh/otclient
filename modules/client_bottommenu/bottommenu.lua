@@ -100,9 +100,9 @@ function hide()
 end
 
 function show()
-    bottomMenu:show()
-    bottomMenu:raise()
-    bottomMenu:focus()
+    --bottomMenu:show()
+    --bottomMenu:raise()
+    --bottomMenu:focus()
 end
 
 -- @ Store showoff

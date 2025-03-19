@@ -4,6 +4,7 @@ PhantomMiniWindow
   phantom: false
   &panelHeight: 116
   height: 116
+  visible: false
 
   UIWidget
     id: minimapBorder
@@ -12,6 +13,7 @@ PhantomMiniWindow
     margin-top: 5
     margin-left: 8
     size: 108 111
+    visible: false
     image-source: /images/ui/1pixel_down_frame
 
     Minimap
@@ -33,6 +35,7 @@ PhantomMiniWindow
       anchors.bottom: parent.bottom
       image-clip: 98 0 14 67
       size: 14 67
+      visible: false
 
     UIWidget
       image-source: /images/ui/vertical_line_dark
@@ -43,6 +46,7 @@ PhantomMiniWindow
       anchors.top: parent.top
       anchors.bottom: parent.bottom
       width: 1
+      visible: false
 
     UIWidget
       id: layersMark
@@ -50,6 +54,7 @@ PhantomMiniWindow
       anchors.top: automapLayers.top
       image-source: /images/automap/automap_indicator_slider_left
       margin-top: 28
+      visible: false
 
     Button
       image-source: /images/automap/automap_phantom
@@ -88,6 +93,7 @@ PhantomMiniWindow
     anchors.bottom: fullMap.top
     margin-bottom: 2
     size: 20 20
+    visible: false
     @onClick: zoomIn()
 
     $pressed !disabled:
@@ -101,6 +107,7 @@ PhantomMiniWindow
     anchors.bottom: zoomIn.top
     margin-bottom: 2
     size: 20 20
+    visible: false
     @onClick: zoomOut()
 
     $pressed !disabled:
@@ -111,6 +118,7 @@ PhantomMiniWindow
     anchors.top: minimapBorder.top
     anchors.right: layersPanel.right
     size: 43 43
+    visible: false
 
     UIWidget
       id: ambients

@@ -12,10 +12,13 @@ local function healthManaEvent()
     healthManaController.ui.mana.text:setText(player:getMana())
     healthManaController.ui.mana.current:setWidth(math.max(12, math.ceil(
         (healthManaController.ui.mana.total:getWidth() * player:getMana()) / player:getMaxMana())))
+    -- Remover as barras de vida e mana do layout
+    healthManaController.ui.health:destroy()
+    healthManaController.ui.mana:destroy()
 end
 
 healthManaController = Controller:new()
-healthManaController:setUI('healthinfo', modules.game_interface.getMainRightPanel())
+healthManaController:setUI('healthinfo')
 
 function healthManaController:onInit()
 end

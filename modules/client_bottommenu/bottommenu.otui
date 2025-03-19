@@ -30,6 +30,7 @@ Panel
   anchors.bottom: parent.bottom
   anchors.horizontalCenter: parent.horizontalCenter
   image-source: /images/ui/panel_top
+  visible: false
   
   UIWidget
     phantom: true
@@ -39,7 +40,7 @@ Panel
     text-auto-resize: true
     color: #e98d02
     margin-bottom: 110
-    text: OTClient Redemption
+    text: MODO MVP
     font: verdana-11px-rounded
     font-scale: 4
     shader: Map - Party

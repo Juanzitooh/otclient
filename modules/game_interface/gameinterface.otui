@@ -1,5 +1,6 @@
 GameSidePanel < UIMiniWindowContainer
-  image-source: /images/ui/2pixel_up_frame_borderimage
+  image-source: /images/ui/background_dark
+  image-color: #ffffff66
   image-border: 4
   width: 176
   layout:
@@ -14,11 +15,14 @@ SelectColumnButton < CheckBox
 
 GameBottomPanel < Panel
   image-source: /images/ui/background_dark
+  image-color: #ffffff66
   image-repeated: true
   padding-top: 6
+  
 
   UIWidget
     image-source: /images/ui/divider_horizontal
+    image-color: #ffffff00
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.top: parent.top
@@ -28,7 +32,8 @@ GameBottomPanel < Panel
 
 GameMapPanel < UIGameMap
   padding: 4
-  image-source: /images/ui/panel_map
+  image-source: /images/ui/background_dark
+  image-color: #ffffff66
   image-border: 4
 
   $on:
@@ -51,10 +56,20 @@ UIWidget
     Button
       id: showTopMenuButton
       anchors.top: parent.top
-      anchors.left: parent.left
-      !text: tr('Show Top Menu')
-      height: 32
-      visible: false
+      anchors.horizontalCenter: parent.horizontalCenter
+      !text: tr('Menu')
+      !tooltip: tr('abrir/fechar menu (CTRL + Shift + T)')
+      height: 20
+      visible: true
+      
+    Button
+      id: showChatButton
+      anchors.bottom: parent.bottom
+      anchors.horizontalCenter: parent.horizontalCenter
+      !text: tr('Ligar Chat')
+      !tooltip: tr('Habilitar o Chat (CTRL + C)')
+      height: 20
+      visible: true
 
   GameBottomPanel
     id: gameBottomPanel
@@ -62,6 +77,7 @@ UIWidget
     anchors.right: gameRightExtraPanel.left
     anchors.top: gameBottomStatsBarPanel.bottom
     anchors.bottom: parent.bottom
+    visible: true
 
   GameSidePanel
     id: gameLeftPanel
@@ -148,6 +164,7 @@ UIWidget
     relative-margin: bottom
     margin-bottom: 172
     image-source: /images/ui/divider_horizontal
+    image-color: #ffffff00
     height: 5
     @canUpdateMargin: function(self, newMargin) if modules.client_options.getOption('dontStretchShrink') then return self:getMarginBottom() end return math.max(math.min(newMargin, self:getParent():getHeight() - 300), 160) end
     @onGeometryChange: function(self) self:setMarginBottom(math.min(math.max(self:getParent():getHeight() - 300, 160), self:getMarginBottom())) end
@@ -180,6 +197,7 @@ UIWidget
     image-source: /images/ui/topstats_button_panel
     image-clip: 27 0 9 27
     size: 9 27
+    visible: false
     @onClick: onIncreaseLeftPanels()
 
     $pressed !disabled:
@@ -195,6 +213,7 @@ UIWidget
     image-source: /images/ui/topstats_button_panel
     image-clip: 0 0 9 27
     size: 9 27
+    visible: false
     @onClick: onDecreaseLeftPanels()
 
     $pressed !disabled:
@@ -210,6 +229,7 @@ UIWidget
     image-source: /images/ui/topstats_button_panel
     image-clip: 27 27 9 27
     size: 9 27
+    visible: false
     @onClick: onIncreaseRightPanels()
 
     $pressed !disabled:
@@ -225,6 +245,7 @@ UIWidget
     image-source: /images/ui/topstats_button_panel
     image-clip: 0 27 9 27
     size: 9 27
+    visible: false
     @onClick: onDecreaseRightPanels()
 
     $pressed !disabled:

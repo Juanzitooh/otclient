@@ -12,6 +12,7 @@ gameTopPanel = nil
 gameBottomStatsBarPanel = nil
 gameBottomPanel = nil
 showTopMenuButton = nil
+showChatButton = nil
 logoutButton = nil
 logOutMainButton = nil
 mouseGrabberWidget = nil
@@ -20,7 +21,7 @@ logoutWindow = nil
 exitWindow = nil
 bottomSplitter = nil
 limitedZoom = false
-currentViewMode = 0
+currentViewMode = 1 -- modifiquei aqui para alcançar o full game screen
 leftIncreaseSidePanels = nil
 leftDecreaseSidePanels = nil
 rightIncreaseSidePanels = nil
@@ -121,7 +122,19 @@ function init()
 
     showTopMenuButton = gameMapPanel:getChildById('showTopMenuButton')
     showTopMenuButton.onClick = function()
+        showTopMenuButton:setVisible(false)
         modules.client_topmenu.toggle()
+    end
+
+    showChatButton = gameMapPanel:getChildById('showChatButton')
+    showChatButton.onClick = function()
+        showChatButton:setVisible(false)
+        gameBottomPanel:setImageColor('#ffffff66')
+        modules.game_console.ShowChat()
+        modules.game_console.updateChatMode()
+        modules.game_console.toggleChat()
+        modules.game_console.switchChat(true)
+
     end
 
     bindKeys()
@@ -235,6 +248,12 @@ end
 
 function onGameEnd()
     hide()
+    showChatButton:setVisible(false)
+    gameBottomPanel:setImageColor('#ffffff66')
+    modules.game_console.ShowChat()
+    modules.game_console.updateChatMode()
+    modules.game_console.toggleChat()
+    modules.game_console.switchChat(true)
 end
 
 function show()
@@ -249,7 +268,7 @@ function show()
     updateStretchShrink()
     logoutButton:setTooltip(tr('Logout'))
 
-    setupViewMode(0)
+    setupViewMode(2) -- modifiquei aqui para alcançar o full game screen
     if g_platform.isMobile() then
         setupViewMode(1)
         setupViewMode(2)
@@ -1257,10 +1276,10 @@ function setupViewMode(mode)
     elseif mode == 2 then
         local limit = limitedZoom and not g_game.isGM()
         gameMapPanel:setLimitVisibleRange(limit)
-        gameMapPanel:setZoom(11)
+        gameMapPanel:setZoom(15) -- alterei aqui para conseguir o full screen
         gameMapPanel:setVisibleDimension({
-            width = 15,
-            height = 11
+            width = 39,
+            height = 20
         })
         gameMapPanel:fill('parent')
         gameRootPanel:fill('parent')
@@ -1271,12 +1290,12 @@ function setupViewMode(mode)
         gameLeftPanel:setOn(true)
         gameLeftPanel:setVisible(true)
         gameRightPanel:setOn(true)
-        gameRightExtraPanel:setOn(false)
-        gameRightExtraPanel:setVisible(false)
-        gameLeftExtraPanel:setOn(false)
-        gameLeftExtraPanel:setVisible(false)
+        gameRightExtraPanel:setOn(true)
+        gameRightExtraPanel:setVisible(true)
+        gameLeftExtraPanel:setOn(true)
+        gameLeftExtraPanel:setVisible(true)
         gameMapPanel:setOn(true)
-        gameBottomPanel:setImageColor('#ffffff88')
+        gameBottomPanel:setImageColor('#ffffff66')
         modules.client_topmenu.getTopMenu():setImageColor('#ffffff66')
         if g_platform.isMobile() then
             gameRightPanel:setMarginBottom(150)
@@ -1378,4 +1397,15 @@ function checkAndOpenLeftPanel()
         modules.client_options.setOption('showLeftPanel', true)
         return
     end
+end
+
+
+
+function ShowChat()
+
+end
+
+function HideChat()
+    gameBottomPanel:setImageColor('alpha')
+    showChatButton:setVisible(true)
 end
