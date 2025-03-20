@@ -39,6 +39,13 @@ function init()
       }
     })
 
+    skillsTopButton = modules.client_topmenu.addTopRightToggleButton(
+        'skillsTopButton',
+        tr('Habilidades'), -- Nome do botão
+        '/images/topbuttons/terminal',  -- Ícone do botão
+        toggle  -- Função chamada ao clicar
+    )
+
     skillSettings = g_settings.getNode('skills-hide')
     if not skillSettings then
         skillSettings = {}

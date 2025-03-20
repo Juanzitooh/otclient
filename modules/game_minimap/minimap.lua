@@ -100,6 +100,21 @@ function mapController:onInit()
     self.ui.minimapBorder.minimap:getChildById('zoomInButton'):hide()
     self.ui.minimapBorder.minimap:getChildById('zoomOutButton'):hide()
     self.ui.minimapBorder.minimap:getChildById('resetButton'):hide()
+-- Adiciona o botão ao top menu
+    minimapFullscreenButton = modules.client_topmenu.addTopRightToggleButton(
+        'minimapFullscreenButton',
+        tr('Mapa') .. ' (Ctrl + M)', -- Nome do botão e atalho
+        '/images/topbuttons/terminal',  -- Ícone do botão (ajuste o caminho correto)
+        toggleMinimapFullscreen  -- Função que será chamada ao clicar
+    )
+
+    -- Adiciona atalho de teclado (Ctrl + M) para alternar minimapa em tela cheia
+    Keybind.new("Misc.", "Toggle Minimap Fullscreen", "Ctrl+M", "")
+    Keybind.bind("Misc.", "Toggle Minimap Fullscreen", {{
+        type = KEY_DOWN,
+        callback = toggleMinimapFullscreen
+    }})
+
 end
 
 function mapController:onGameStart()
@@ -184,6 +199,10 @@ function fullscreen()
     oldPos = minimapWidget:getCameraPosition()
     minimapWidget:setZoom(zoom)
     minimapWidget:setCameraPosition(pos)
+end
+
+function toggleMinimapFullscreen()
+    fullscreen()  -- Chama a função que alterna o modo tela cheia do minimapa
 end
 
 function upLayer()
