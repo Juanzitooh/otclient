@@ -1278,8 +1278,8 @@ function setupViewMode(mode)
         gameMapPanel:setLimitVisibleRange(limit)
         gameMapPanel:setZoom(15) -- alterei aqui para conseguir o full screen
         gameMapPanel:setVisibleDimension({
-            width = 39,
-            height = 20
+            width = 35,
+            height = 19
         })
         gameMapPanel:fill('parent')
         gameRootPanel:fill('parent')

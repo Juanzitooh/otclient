@@ -78,7 +78,6 @@ ConsoleTabBarButton < UIButton
 Panel
   id: consolePanel
   anchors.fill: parent
-  visible: visible
 
   UIWidget
     image-source: /images/ui/2pixel_up_frame_borderimage

@@ -10,7 +10,7 @@ Module
     - game_joystick
     - game_shortcuts
     - game_minimap
-    - game_healthinfo
+    -- game_healthinfo  -- Comentado para não carregar este módulo
     - game_inventory
     - game_mainpanel
     - game_prey
