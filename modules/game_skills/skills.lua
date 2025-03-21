@@ -39,6 +39,7 @@ function init()
       }
     })
 
+    -- adicionar botão ao top menu
     skillsTopButton = modules.client_topmenu.addTopRightToggleButton(
         'skillsTopButton',
         tr('Habilidades'), -- Nome do botão

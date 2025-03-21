@@ -32,6 +32,14 @@ function init()
     unjustifiedPointsButton:setOn(true)
     unjustifiedPointsButton:hide()
 
+    -- botão de mortes injustificadas no top menu
+    mortesTopButton = modules.client_topmenu.addTopRightToggleButton(
+        'mortesTopButton',
+        tr('Mortes'),
+        '/images/topbuttons/unjustifiedpoints',
+        toggle
+    )
+
     unjustifiedPointsWindow = g_ui.loadUI('unjustifiedpoints')
     unjustifiedPointsWindow:disableResize()
     unjustifiedPointsWindow:setup()

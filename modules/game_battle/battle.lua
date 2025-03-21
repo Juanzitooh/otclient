@@ -77,6 +77,14 @@ function init() -- Initiating the module (load)
       }
     })
 
+    -- adicionando botão battle no top menu
+    battleTopButton = modules.client_topmenu.addTopRightToggleButton(
+        'battleTopButton',
+        tr('Batalha'),
+        '/images/topbuttons/battle',
+        toggle
+    )
+
     -- Disabling scrollbar auto hiding
     local scrollbar = battleWindow:getChildById('miniwindowScrollBar')
     scrollbar:mergeStyle({

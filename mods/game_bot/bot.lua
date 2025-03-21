@@ -39,6 +39,15 @@ function init()
   botButton:setOn(false)
   botButton:hide()
 
+
+  -- botão top menu de bot
+  botTopButton = modules.client_topmenu.addTopRightToggleButton(
+    'botTopButton',
+    tr('Bot'),
+    '/images/topbuttons/bot',
+    toggle
+)
+
   botWindow = g_ui.loadUI('bot', modules.game_interface.getLeftPanel())
   botWindow:setup()
 

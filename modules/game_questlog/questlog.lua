@@ -10,11 +10,12 @@ function init()
         g_game.requestQuestLog()
     end, false, 1000)
 
+    -- adicionar botão ao top menu
     questLogTopButton = modules.client_topmenu.addTopRightToggleButton(
         'questLogTopButton',
-        tr('Missoes'), -- Agora o nome do botão é "Missões"
-        '/images/topbuttons/questlog',  -- Ícone do botão (mesmo do original)
-        g_game.requestQuestLog  -- Função que será chamada ao clicar
+        tr('Missoes'),
+        '/images/topbuttons/questlog', 
+        g_game.requestQuestLog
     )
 
     connect(g_game, {

@@ -36,6 +36,14 @@ function controllerVip:onInit()
         onVipGroupChange = onVipGroupChange
     })
 
+    -- botão no top menu de amigos
+    amigosTopButton = modules.client_topmenu.addTopRightToggleButton(
+        'amigosTopButton',
+        tr('Amigos'),
+        '/images/topbuttons/viplist',
+        toggle
+    )
+
     local settings = g_settings.getNode('VipList')
     if settings then
        globalSettings.showGrouped = settings['Grouped'] or false

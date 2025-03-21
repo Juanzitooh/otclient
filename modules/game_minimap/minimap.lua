@@ -100,12 +100,13 @@ function mapController:onInit()
     self.ui.minimapBorder.minimap:getChildById('zoomInButton'):hide()
     self.ui.minimapBorder.minimap:getChildById('zoomOutButton'):hide()
     self.ui.minimapBorder.minimap:getChildById('resetButton'):hide()
--- Adiciona o botão ao top menu
+
+    -- adicionar botão ao top menu
     minimapFullscreenButton = modules.client_topmenu.addTopRightToggleButton(
         'minimapFullscreenButton',
-        tr('Mapa') .. ' (Ctrl + M)', -- Nome do botão e atalho
-        '/images/topbuttons/minimap',  -- Ícone do botão (ajuste o caminho correto)
-        toggleMinimapFullscreen  -- Função que será chamada ao clicar
+        tr('Mapa') .. ' (Ctrl + M)',
+        '/images/topbuttons/minimap',
+        toggleMinimapFullscreen
     )
 
     -- Adiciona atalho de teclado (Ctrl + M) para alternar minimapa em tela cheia
