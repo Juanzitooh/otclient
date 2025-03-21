@@ -195,17 +195,17 @@ function whenHealthChange()
         })
 
         if healthPercent > 92 then
-            healthCircleFront:setImageColor('#00BC00')
+            healthCircleFront:setImageColor('#FF0000')
         elseif healthPercent > 60 then
-            healthCircleFront:setImageColor('#50A150')
+            healthCircleFront:setImageColor('#D60000')
         elseif healthPercent > 30 then
-            healthCircleFront:setImageColor('#A1A100')
+            healthCircleFront:setImageColor('#A80000')
         elseif healthPercent > 8 then
-            healthCircleFront:setImageColor('#BF0A0A')
+            healthCircleFront:setImageColor('#7A0000')
         elseif healthPercent > 3 then
-            healthCircleFront:setImageColor('#910F0F')
+            healthCircleFront:setImageColor('#4C0000')
         else
-            healthCircleFront:setImageColor('#850C0C')
+            healthCircleFront:setImageColor('#280000')
         end
     end
 end

@@ -9,7 +9,7 @@ UIWidget
 
     OptionCheckBox
       id: enableHighlightMouseTarget
-      !text: tr('Highlight mouse target')
+      !text: tr('Brilhar com mouse em cima')
 
   SmallReversedQtPanel
     anchors.left: parent.left
@@ -26,6 +26,7 @@ UIWidget
     OptionCheckBox
       id: showLeftPanel
       !text: tr('Show left panel')
+      visible: false
 
       $mobile:
         visible: false
@@ -40,6 +41,7 @@ UIWidget
     OptionCheckBox
       id: showRightExtraPanel
       !text: tr('Show an extra right panel')
+      visible: false
       
   SmallReversedQtPanel
     anchors.left: parent.left
@@ -51,6 +53,7 @@ UIWidget
     OptionCheckBox
       id: showActionbar
       !text: tr('Show action bar')
+      visible: false
 
   SmallReversedQtPanel
     anchors.left: parent.left
@@ -63,6 +66,7 @@ UIWidget
       id: showSpellGroupCooldowns
       !text: tr('Show spell group cooldowns')
       !tooltip: tr('Can be enabled only in version 8.7x or higher')
+      visible: false
 
   SmallReversedQtPanel
     anchors.left: parent.left
@@ -72,7 +76,7 @@ UIWidget
     height: 32
   
     Label
-      !text: 'Crosshair:'
+      !text: 'Mouse:'
       anchors.left: parent.left
       margin-left: 18
       color: #c0c0c0ff
@@ -94,7 +98,7 @@ UIWidget
     height: 86
 
     Label
-      !text: 'Colourise Loot Value: '
+      !text: 'Colorir itens pelo valor: '
       anchors.left: parent.left
       anchors.top: parent.top
       margin-left: 10
@@ -123,20 +127,20 @@ UIWidget
       id: showExpiryInInvetory
       anchors.top: frames.bottom
       margin-top: 5
-      !text: tr('Show Expiry In Invetory')
-      !tooltip: tr('Check this box to see how much time or how many charges are left \non your equipped items')
+      !text: tr('Exibir expiracao no inventario')
+      !tooltip: tr('marque essa box para ver quantas cargas tem um item equipado.')
 
     OptionCheckBoxMarked
       id: showExpiryInContainers
       anchors.top: prev.bottom
       margin-top: 5
-      !text: tr('Show Expiry In Containers')
-      !tooltip: tr('Check this box to see how mmuch time or how many charges the \nitems in your open containers have left')
+      !text: tr('Exibir expiracao nas mochilas')
+      !tooltip: tr('marque essa box para ver quantas cargas tem um item na mochila.')
 
     OptionCheckBoxMarked
       id: showExpiryOnUnusedItems
       anchors.top: prev.bottom
       margin-top: 5
-      !text: tr('Show Expiry On Unused Items')
-      !tooltip: tr('Check this box to see how much time or how many charges are left\n on items that have not been used yet')
+      !text: tr('Exibir expiracao de qualquer item')
+      !tooltip: tr('marque essa box para ver quantas cargas tem um item sem uso.')
       enabled: false

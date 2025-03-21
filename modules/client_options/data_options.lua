@@ -1,6 +1,6 @@
 return {
     vsync                             = {
-        value = true,
+        value = false,
         action = function(value, options, controller, panels, extraWidgets)
             g_window.setVerticalSync(value)
         end
@@ -23,7 +23,7 @@ return {
             g_window.setFullscreen(value)
         end
     },
-    classicControl                    = g_platform.isMobile() and true or false,
+    classicControl                    = true,
     smartWalk                         = false,
     autoChaseOverride                 = true,
     moveStack                         = false,
@@ -42,7 +42,7 @@ return {
             CharacterList.updateCharactersAppearances(value)
         end
     },
-    openMaximized                     = false,
+    openMaximized                     = true,
     backgroundFrameRate               = {
         value = 201,
         action = function(value, options, controller, panels, extraWidgets)
@@ -116,7 +116,7 @@ return {
         end
     },
     displayNames                      = {
-        value = true,
+        value = false,
         action = function(value, options, controller, panels, extraWidgets)
             panels.gameMapPanel:setDrawNames(value)
 
@@ -126,7 +126,7 @@ return {
         end
     },
     displayHealth                     = {
-        value = true,
+        value = false,
         action = function(value, options, controller, panels, extraWidgets)
             panels.gameMapPanel:setDrawHealthBars(value)
 
@@ -136,7 +136,7 @@ return {
         end
     },
     displayMana                       = {
-        value = true,
+        value = false,
         action = function(value, options, controller, panels, extraWidgets)
             panels.gameMapPanel:setDrawManaBar(value)
 
@@ -208,7 +208,7 @@ return {
         end
     },
     shadowFloorIntensity              = {
-        value = 30,
+        value = 70,
         action = function(value, options, controller, panels, extraWidgets)
             panels.graphicsEffectsPanel:recursiveGetChildById('shadowFloorIntensity'):setText(string.format(
                 'Shadow floor Intensity: %s%%', value))
@@ -325,7 +325,7 @@ return {
         end
     },
     showLeftExtraPanel                = {
-        value = false,
+        value = true,
         action = function(value, options, controller, panels, extraWidgets)
             modules.game_interface.getLeftExtraPanel():setOn(value)
         end
@@ -337,7 +337,7 @@ return {
         end
     },
     showRightExtraPanel               = {
-        value = false,
+        value = true,
         action = function(value, options, controller, panels, extraWidgets)
             modules.game_interface.getRightExtraPanel():setOn(value)
         end
@@ -349,7 +349,7 @@ return {
         end
     },
     showSpellGroupCooldowns           = {
-        value = true,
+        value = false,
         action = function(value, options, controller, panels, extraWidgets)
             modules.game_cooldown.setSpellGroupCooldownsVisible(value)
         end
@@ -387,7 +387,7 @@ return {
         end
     },
     opacityScrollbar                  = {
-        value = 0,
+        value = 60,
         action = function(value, options, controller, panels, extraWidgets)
             local bar = modules.game_healthcircle.optionPanel:recursiveGetChildById('opacityScrollbar')
             bar:setText(tr('Opacity: %s', bar:recursiveGetChildById('valueBar'):getValue() / 100))

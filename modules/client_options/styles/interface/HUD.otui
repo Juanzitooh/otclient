@@ -11,6 +11,7 @@ UIWidget
     OptionCheckBox
       id: displayNames
       !text: tr('Display creature names')
+      visible: false
 
   SmallReversedQtPanel
     anchors.left: parent.left
@@ -22,6 +23,7 @@ UIWidget
     OptionCheckBox
       id: displayHealth
       !text: tr('Display creature health bars')
+      visible: false
 
   SmallReversedQtPanel
     anchors.left: parent.left
@@ -33,6 +35,7 @@ UIWidget
     OptionCheckBox
       id: displayMana
       !text: tr('Display player mana bar')
+      visible: false
 
   SmallReversedQtPanel
     anchors.left: parent.left

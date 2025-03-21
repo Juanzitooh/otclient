@@ -28,6 +28,7 @@ UIWidget
       id: fullscreen
       !text: 'Full Screen Mode'
       !tooltip: 'Ctrl+Shift+F'
+      visible: false
 
   SmallReversedQtPanel
     anchors.left: parent.left
@@ -40,6 +41,7 @@ UIWidget
       id: vsync
       !text: tr('V-Sync')
       !tooltip: tr('Limits your fps based on monitor refresh rate')
+      visible: false
 
   
     OptionCheckBoxMarked
@@ -47,6 +49,7 @@ UIWidget
       !tooltip: tr('Show frame rate')
       !text: tr('Show frame rate')
       anchors.top: prev.bottom
+      visible: false
 
     OptionScaleScroll
       id: backgroundFrameRate
@@ -111,3 +114,4 @@ UIWidget
     OptionCheckBox
       id: dontStretchShrink
       !text: 'Don\'t stretch/shrink Game Window'
+      visible: false

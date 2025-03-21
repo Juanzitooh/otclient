@@ -12,6 +12,7 @@ UIWidget
     OptionCheckBox
       id: enableLights
       !text: tr('Enable lights')
+      visible: false
 
     OptionScaleScroll
       id: ambientLight
@@ -19,6 +20,7 @@ UIWidget
       &minimumScrollValue: 0
       &maximumScrollValue: 100
       &scrollSize: 21
+      visible: false
       @onSetup: |
         local value = modules.client_options.getOption('ambientLight')
         self:setText(string.format('Ambient light: %s%%', value))

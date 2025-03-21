@@ -11,6 +11,7 @@ UIWidget
       id: showPing
       !text: tr('Show connection ping')
       !tooltip: tr('Display connection speed to the server (milliseconds)')
+      visible: false
 
   SmallReversedQtPanel
     anchors.left: parent.left
@@ -27,6 +28,7 @@ UIWidget
     OptionCheckBox
       id: classicControl
       !text: tr('Classic control')
+      visible: false
 
       $mobile:
         visible: false
@@ -40,7 +42,7 @@ UIWidget
   
     OptionCheckBox
       id: autoChaseOverride
-      !text: tr('Allow auto chase override')
+      !text: tr('Ativar seguir automatico')
 
   SmallReversedQtPanel
     anchors.left: parent.left
@@ -51,7 +53,7 @@ UIWidget
   
     OptionCheckBox
       id: moveStack
-      !text: tr('Move stacks directly')
+      !text: tr('Mover todos os itens estacaveis')
 
   SmallReversedQtPanel
     anchors.left: parent.left
@@ -162,7 +164,7 @@ UIWidget
 
   QtButton
     id: hotkeysButton
-    !text: tr('Hotkeys Manager')
+    !text: tr('Editar Atalhos de Magias')
     @onClick: modules.game_hotkeys.show()
     anchors.top: prev.bottom
     anchors.left: parent.left
