@@ -104,7 +104,7 @@ function mapController:onInit()
     minimapFullscreenButton = modules.client_topmenu.addTopRightToggleButton(
         'minimapFullscreenButton',
         tr('Mapa') .. ' (Ctrl + M)', -- Nome do botão e atalho
-        '/images/topbuttons/terminal',  -- Ícone do botão (ajuste o caminho correto)
+        '/images/topbuttons/minimap',  -- Ícone do botão (ajuste o caminho correto)
         toggleMinimapFullscreen  -- Função que será chamada ao clicar
     )
 
