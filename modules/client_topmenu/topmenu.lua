@@ -93,7 +93,7 @@ function init()
     topLeftYoutubeLink = topMenu:recursiveGetChildById('youtubeIcon')
     topLeftDiscordLink = topMenu:recursiveGetChildById('discordIcon')
 
-    Keybind.new("UI", "Toggle Top Menu", "Ctrl+Shift+T", "")
+    Keybind.new("UI", "Toggle Top Menu", "Escape", "")
     Keybind.bind("UI", "Toggle Top Menu", {
       {
         type = KEY_DOWN,

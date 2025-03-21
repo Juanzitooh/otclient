@@ -156,7 +156,7 @@ function bindKeys()
         gameMapPanel:zoomOut()
     end, gameRootPanel)
 
-    Keybind.new("Movement", "Stop All Actions", "Escape", "", true)
+    Keybind.new("Movement", "Stop All Actions", "End", "", true)
     Keybind.bind("Movement", "Stop All Actions", {
         {
             type = KEY_PRESS,

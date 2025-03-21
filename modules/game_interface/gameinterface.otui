@@ -58,7 +58,7 @@ UIWidget
       anchors.top: parent.top
       anchors.horizontalCenter: parent.horizontalCenter
       !text: tr('Menu')
-      !tooltip: tr('abrir/fechar menu (CTRL + Shift + T)')
+      !tooltip: tr('(Esc)')
       height: 20
       visible: true
       
