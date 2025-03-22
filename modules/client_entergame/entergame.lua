@@ -115,8 +115,8 @@ end
 local function updateLabelText()
     if enterGame:getChildById('clientComboBox') and tonumber(enterGame:getChildById('clientComboBox'):getText()) > 1080 then
         enterGame:setText("Elemental")
-        enterGame:getChildById('emailLabel'):setText("Email:")
-        enterGame:getChildById('rememberEmailBox'):setText("Remember Email:")
+        enterGame:getChildById('emailLabel'):setText("Conta:")
+        enterGame:getChildById('rememberEmailBox'):setText("Lembrar Senha:")
     else
         enterGame:setText("Enter Game")
         enterGame:getChildById('emailLabel'):setText("Acc Name:")

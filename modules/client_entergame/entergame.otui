@@ -43,7 +43,7 @@ EnterGameWindow
       
   Label
     id: passwordLabel
-    !text: tr('Password:')
+    !text: tr('Senha:')
     anchors.left: emailLabel.left
     anchors.top: emailLabel.bottom
     margin-top: 10
