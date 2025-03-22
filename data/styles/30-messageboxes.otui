@@ -2,9 +2,9 @@ MessageBoxWindow < UIMessageBox
   icon-rect: 4 4 16 16
   size: 246 116
   image-source: /images/ui/window_new
-  image-border: 4
+  image-border: 14
   image-border-top: 16
-  image-border-bottom: 4
+  image-border-bottom: 14
   &minimizedHeight: 17
   anchors.centerIn: parent
   draggable: false
@@ -63,9 +63,9 @@ MessageBoxShopWindow < UIMessageBox
   icon-rect: 4 4 16 16
   size: 246 116
   image-source: /images/ui/window_new
-  image-border: 4
+  image-border: 14
   image-border-top: 16
-  image-border-bottom: 4
+  image-border-bottom: 14
   &minimizedHeight: 17
   anchors.centerIn: parent
   draggable: false

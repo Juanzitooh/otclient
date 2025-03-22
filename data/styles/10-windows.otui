@@ -6,7 +6,7 @@ Window < UIWindow
   text-offset: 0 6
   text-align: top
   image-source: /images/ui/window
-  image-border: 6
+  image-border: 14
   image-border-top: 27
   padding-top: 36
   padding-left: 16
@@ -21,7 +21,7 @@ Window < UIWindow
 
 HeadlessWindow < UIWindow
   image-source: /images/ui/window_headless
-  image-border: 5
+  image-border: 30
   padding: 5
 
 MainWindow < Window

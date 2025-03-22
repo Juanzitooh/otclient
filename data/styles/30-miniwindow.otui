@@ -6,10 +6,10 @@ MiniWindow < UIMiniWindow
   text-offset: 24 5
   text-align: topLeft
   image-source: /images/ui/miniwindow
-  image-color: #ffffff66
-  image-border: 4
+
+  image-border: 18
   image-border-top: 23
-  image-border-bottom: 4
+  image-border-bottom: 18
   focusable: false
   &minimizedHeight: 24
   color: #909090
@@ -33,7 +33,7 @@ MiniWindow < UIMiniWindow
     anchors.top: parent.top
     anchors.right: parent.right
     margin-top: 5
-    margin-right: 5
+    margin-right: 10
     size: 14 14
     image-source: /images/ui/miniwindow_buttons
     image-clip: 28 0 14 14
@@ -100,8 +100,8 @@ MiniWindow < UIMiniWindow
     anchors.right: parent.right
     step: 14
     margin-top: 22
-    margin-right: 3
-    margin-bottom: 3
+    margin-right: 10
+    margin-bottom: 14
     pixels-scroll: true
 
     $!on:
@@ -137,9 +137,9 @@ MiniQtScrollableWindow < UIMiniWindow
   width: 192
   height: 200
   image-source: /images/ui/window_new
-  image-border: 4
+  image-border: 14
   image-border-top: 16
-  image-border-bottom: 4
+  image-border-bottom: 14
   focusable: false
   &minimizedHeight: 17
 
@@ -183,9 +183,9 @@ MiniQtWindow < UIMiniWindow
   width: 192
   height: 200
   image-source: /images/ui/window_new
-  image-border: 4
+  image-border: 14
   image-border-top: 16
-  image-border-bottom: 4
+  image-border-bottom: 14
   &minimizedHeight: 17
   draggable: true
 
