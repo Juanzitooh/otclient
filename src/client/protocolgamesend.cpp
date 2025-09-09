@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2025 OTClient <https://github.com/edubart/otclient>
+ * Copyright (c) 2010-2024 OTClient <https://github.com/edubart/otclient>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -1208,7 +1208,7 @@ void ProtocolGame::sendRequestStorePremiumBoost()
     const auto& msg = std::make_shared<OutputMessage>();
     msg->addU8(Proto::ClientRequestStoreOffers);
     msg->addU8(Otc::Store_Type_Actions_t::OPEN_PREMIUM_BOOST);
-    msg->addU8(1);
+    msg->addU8(0);
     send(msg);
 }
 

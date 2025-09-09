@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2025 OTClient <https://github.com/edubart/otclient>
+ * Copyright (c) 2010-2024 OTClient <https://github.com/edubart/otclient>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -250,7 +250,7 @@ struct BestiaryCharmsData
     uint64_t resetAllCharmsCost;
     uint8_t availableCharmSlots;
 
-    uint32_t points;
+    uint64_t points;
     std::vector<CharmData> charms;
     std::vector<uint16_t> finishedMonsters;
 };
@@ -532,6 +532,7 @@ struct CyclopediaCharacterDefenceStats
     std::vector<ElementalResistance> resistances;
 };
 
+// In a header file (e.g., src/client/luavaluecasts_client.h)
 struct CyclopediaCharacterMiscStats
 {
     double momentumTotal;

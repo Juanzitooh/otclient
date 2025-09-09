@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2025 OTClient <https://github.com/edubart/otclient>
+ * Copyright (c) 2010-2024 OTClient <https://github.com/edubart/otclient>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -558,7 +558,7 @@ namespace Otc
         GameColorizedLootValue = 121,
         GameAllowPreWalk = 122,
         GamePlayerFamiliars = 123,
-        // = 124,
+        GameLatencyAdaptiveCamera = 124,
         GameMapCache = 125,
         GameForgeSkillStats = 126,
         GameCharacterSkillStats = 127,
@@ -727,9 +727,12 @@ namespace Otc
         ITEM_DESC_PERFECT = 21,
         ITEM_DESC_UPGRADECLASS = 22,
         ITEM_DESC_CURRENTTIER = 23,
+        ITEM_DESC_test1 = 24, // @note: improve name
+        ITEM_DESC_test2 = 25, // @note: improve name
+        ITEM_DESC_test3 = 26, // @note: improve name
 
         ITEM_DESC_FIRST = ITEM_DESC_ARMOR,
-        ITEM_DESC_LAST = ITEM_DESC_CURRENTTIER,
+        ITEM_DESC_LAST = ITEM_DESC_test2, // @note: improve name
     };
 
     enum MarketAction : uint8_t
