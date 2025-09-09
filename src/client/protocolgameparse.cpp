@@ -3336,14 +3336,33 @@ void ProtocolGame::parseItemInfo(const InputMessagePtr& msg) const
     g_lua.callGlobalField("g_game", "onItemInfo", itemList);
 }
 
+static inline uint32_t readPackedCount1500(const InputMessagePtr& msg) {
+    const uint8_t b1 = msg->getU8();
+    if (b1 < 0x40) {
+        return b1;
+    } else if (b1 < 0x80) {
+        const uint8_t b2 = msg->getU8();
+        return (static_cast<uint32_t>(b1 - 0x40) << 8) | static_cast<uint32_t>(b2);
+    } else {
+        const uint8_t b2 = msg->getU8();
+        const uint8_t b3 = msg->getU8();
+        const uint8_t b4 = msg->getU8();
+        return (static_cast<uint32_t>(b2) << 16) | (static_cast<uint32_t>(b3) << 8) | static_cast<uint32_t>(b4);
+    }
+}
+
 void ProtocolGame::parsePlayerInventory(const InputMessagePtr& msg)
 {
     const uint16_t size = msg->getU16();
-    for (auto i = 0; i < size; ++i) {
+    for (auto i = 1; i <= size; ++i) {
         msg->getU16(); // id
         msg->getU8(); // subtype
         if (g_game.getClientVersion() >= 1500) {
-            msg->getU8(); // count
+            if (i <= 11) {
+                msg->getU8(); // count
+            } else {
+                readPackedCount1500(msg);
+            }
         } else {
             msg->getU16(); // count
         }
@@ -4963,33 +4982,36 @@ void ProtocolGame::parseCyclopediaCharacterInfo(const InputMessagePtr& msg)
         }
         case Otc::CYCLOPEDIA_CHARACTERINFO_OFFENCESTATS:
         {
+            // Critical hit chance
             CyclopediaCharacterOffenceStats data;
-            data.critChance = msg->getDouble();
-            msg->getDouble(); // unused
-            msg->getDouble(); // unused
-            msg->getDouble(); // unused
-            msg->getDouble(); // unused
+            data.critChanceTotal = msg->getDouble();
+            data.critChanceFlat = msg->getDouble(); 
+            data.critChanceEquipament = msg->getDouble();
+            data.critChanceImbuement = msg->getDouble();
+            data.critChanceWheel = msg->getDouble();
+            data.critChanceConcoction = msg->getDouble();
 
             // Critical hit damage
-            data.critDamage = msg->getDouble();
-            data.critDamageBase = msg->getDouble();
+            data.critDamageTotal = msg->getDouble();
+            data.critDamageFlat = msg->getDouble();
+            data.critDamageEquipament = msg->getDouble();
             data.critDamageImbuement = msg->getDouble();
             data.critDamageWheel = msg->getDouble();
-            msg->getDouble(); // unused
+            data.critDamageConcoction = msg->getDouble();
 
             // Life leech amount
-            data.lifeLeech = msg->getDouble();
-            data.lifeLeechBase = msg->getDouble();
+            data.lifeLeechTotal = msg->getDouble();
+            data.lifeLeechEquipament = msg->getDouble();
             data.lifeLeechImbuement = msg->getDouble();
             data.lifeLeechWheel = msg->getDouble();
-            msg->getDouble(); // unused
+            data.lifeLeechEventBonus = msg->getDouble();
 
             // Mana leech amount
-            data.manaLeech = msg->getDouble();
-            data.manaLeechBase = msg->getDouble();
+            data.manaLeechTotal = msg->getDouble();
+            data.manaLeechEquipament = msg->getDouble();
             data.manaLeechImbuement = msg->getDouble();
             data.manaLeechWheel = msg->getDouble();
-            msg->getDouble(); // unused
+            data.manaLeechEventBonus = msg->getDouble();
 
             // Onslaught
             data.onslaught = msg->getDouble();
@@ -5000,7 +5022,7 @@ void ProtocolGame::parseCyclopediaCharacterInfo(const InputMessagePtr& msg)
             data.cleavePercent = msg->getDouble();
 
             // Perfect shot range
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < 7; i++) {
                 data.perfectShotDamage.push_back(msg->getU16());
             }
 
@@ -5023,6 +5045,22 @@ void ProtocolGame::parseCyclopediaCharacterInfo(const InputMessagePtr& msg)
                 msg->getU8(); // range
                 data.weaponAccuracy.push_back(msg->getDouble());
             }
+
+            msg->getDouble(); // unused
+            msg->getU16(); // unused
+            msg->getU8(); // unused
+            msg->getDouble(); // unused
+            msg->getDouble(); // unused
+            msg->getU8(); // unused
+            msg->getDouble(); // unused
+            msg->getDouble(); // unused
+            msg->getU16(); // unused
+            msg->getU16(); // unused
+            msg->getU16(); // unused
+            msg->getU16(); // unused
+            msg->getU8(); // unused
+            msg->getU8(); // unused
+            msg->getU8(); // unused
 
             g_game.processCyclopediaCharacterOffenceStats(data);
             break;
@@ -5105,6 +5143,9 @@ void ProtocolGame::parseCyclopediaCharacterInfo(const InputMessagePtr& msg)
                 data.concoctions.push_back(concoction);
             }
 
+            msg->getU8(); // unused
+            msg->getU8(); // unused
+            msg->getU8(); // unused
             msg->getU8(); // unused
 
             g_game.processCyclopediaCharacterMiscStats(data);
@@ -5590,6 +5631,14 @@ void ProtocolGame::parseMarketDetail(const InputMessagePtr& msg)
 
     for (int_fast32_t i = Otc::ITEM_DESC_FIRST; i <= lastAttribute; i++) {
         if (i == Otc::ITEM_DESC_AUGMENT && !g_game.getFeature(Otc::GameItemAugment)) {
+            continue;
+        }
+
+        if (g_game.getClientVersion() < 1500 && (i == Otc::ITEM_DESC_ELEMENTALBOND || i == Otc::ITEM_DESC_MANTRA)) {
+            continue;
+        }
+
+        if (g_game.getClientVersion() < 1510 && (i == Otc::ITEM_DESC_IMBUEMENTEFFECT)) {
             continue;
         }
 

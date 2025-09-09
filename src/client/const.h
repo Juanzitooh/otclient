@@ -726,13 +726,13 @@ namespace Otc
         ITEM_DESC_REFLECTION = 20,
         ITEM_DESC_PERFECT = 21,
         ITEM_DESC_UPGRADECLASS = 22,
-        ITEM_DESC_CURRENTTIER = 23,
-        ITEM_DESC_test1 = 24, // @note: improve name
-        ITEM_DESC_test2 = 25, // @note: improve name
-        ITEM_DESC_test3 = 26, // @note: improve name
+        ITEM_DESC_ELEMENTALBOND = 24,
+        ITEM_DESC_MANTRA = 25,
+        ITEM_DESC_IMBUEMENTEFFECT = 26,
+        ITEM_DESC_CURRENTTIER = 27,
 
         ITEM_DESC_FIRST = ITEM_DESC_ARMOR,
-        ITEM_DESC_LAST = ITEM_DESC_test2, // @note: improve name
+        ITEM_DESC_LAST = ITEM_DESC_CURRENTTIER,
     };
 
     enum MarketAction : uint8_t
