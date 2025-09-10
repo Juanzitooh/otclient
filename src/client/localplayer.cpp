@@ -242,7 +242,7 @@ void LocalPlayer::onPositionChange(const Position& newPos, const Position& oldPo
     m_serverWalk = false;
 }
 
-void LocalPlayer::setStates(const uint32_t states)
+void LocalPlayer::setStates(const uint64_t states)
 {
     if (m_states == states)
         return;
