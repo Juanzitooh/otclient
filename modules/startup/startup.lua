@@ -159,6 +159,8 @@ function terminate()
     end
     g_settings.set('window-size', windowSize)
     if isX11 then
+        -- NOTE: Keep window-pos disabled on X11.
+        -- Persisting it causes a second-launch sizing/position regression with current metrics flow.
         g_settings.remove('window-pos')
         g_settings.set('window-metrics-space', 'physical-v1')
         g_logger.info('[X11WindowMetrics][terminate] window-pos persistence disabled on X11; window-metrics-space=physical-v1')
