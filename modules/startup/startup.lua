@@ -9,16 +9,6 @@ function init()
     local displaySize = g_window.getDisplaySize()
     local metricsSpace = g_settings.getString('window-metrics-space', '')
     local shouldScaleLegacySavedMetrics = isX11 and density ~= 1 and metricsSpace ~= 'physical-v1'
-    if isX11 then
-        g_logger.info(string.format(
-            '[X11WindowMetrics][init] density=%.4f metricsSpace=%s scaleLegacy=%s display=%dx%d',
-            density,
-            metricsSpace ~= '' and metricsSpace or '<empty>',
-            shouldScaleLegacySavedMetrics and 'true' or 'false',
-            displaySize.width,
-            displaySize.height
-        ))
-    end
 
     if g_platform.isMobile() then
         g_window.setMinimumSize({ width = 640, height = 360 })
@@ -35,34 +25,16 @@ function init()
     local hasSavedWindowSize = g_settings.exists('window-size')
     local size = { width = 1020, height = 644 }
     size = g_settings.getSize('window-size', size)
-    if isX11 then
-        g_logger.info(string.format(
-            '[X11WindowMetrics][init] window-size loaded=%dx%d hasSaved=%s',
-            size.width,
-            size.height,
-            hasSavedWindowSize and 'true' or 'false'
-        ))
-    end
     if shouldScaleLegacySavedMetrics and hasSavedWindowSize then
         size = {
             width = math.floor((size.width * density) + 0.5),
             height = math.floor((size.height * density) + 0.5)
         }
-        g_logger.info(string.format(
-            '[X11WindowMetrics][init] window-size scaled-to-physical=%dx%d',
-            size.width,
-            size.height
-        ))
     end
 
     if isX11 then
         size.width = math.max(1, math.min(size.width, displaySize.width))
         size.height = math.max(1, math.min(size.height, displaySize.height))
-        g_logger.info(string.format(
-            '[X11WindowMetrics][init] window-size clamped=%dx%d',
-            size.width,
-            size.height
-        ))
     end
     g_window.resize(size)
 
@@ -77,43 +49,18 @@ function init()
         pos = g_settings.getPoint('window-pos', defaultPos)
     end
     if isX11 then
-        g_logger.info(string.format(
-            '[X11WindowMetrics][init] window-pos loaded=(%.2f,%.2f) default=(%.2f,%.2f) hasSaved=%s',
-            pos.x,
-            pos.y,
-            defaultPos.x,
-            defaultPos.y,
-            hasSavedWindowPos and 'true' or 'false'
-        ))
         local epsilon = 0.5
         local isDefaultPos = math.abs(pos.x - defaultPos.x) <= epsilon and math.abs(pos.y - defaultPos.y) <= epsilon
-        g_logger.info(string.format(
-            '[X11WindowMetrics][init] window-pos isDefault=%s epsilon=%.2f',
-            isDefaultPos and 'true' or 'false',
-            epsilon
-        ))
         if shouldScaleLegacySavedMetrics and hasSavedWindowPos and not isDefaultPos then
             pos = {
                 x = math.floor((pos.x * density) + 0.5),
                 y = math.floor((pos.y * density) + 0.5)
             }
-            g_logger.info(string.format(
-                '[X11WindowMetrics][init] window-pos scaled-to-physical=(%d,%d)',
-                pos.x,
-                pos.y
-            ))
         end
         local maxX = math.max(displaySize.width - size.width, 0)
         local maxY = math.max(displaySize.height - size.height, 0)
         pos.x = math.max(0, math.min(pos.x, maxX))
         pos.y = math.max(0, math.min(pos.y, maxY))
-        g_logger.info(string.format(
-            '[X11WindowMetrics][init] window-pos clamped=(%d,%d) max=(%d,%d)',
-            pos.x,
-            pos.y,
-            maxX,
-            maxY
-        ))
     else
         pos.x = math.max(pos.x, 0)
         pos.y = math.max(pos.y, 0)
@@ -148,22 +95,12 @@ function terminate()
     -- save window configs
     local windowSize = g_window.getUnmaximizedSize()
     local windowPos = g_window.getUnmaximizedPos()
-    if isX11 then
-        g_logger.info(string.format(
-            '[X11WindowMetrics][terminate] unmaximized size=%dx%d pos=(%d,%d)',
-            windowSize.width,
-            windowSize.height,
-            windowPos.x,
-            windowPos.y
-        ))
-    end
     g_settings.set('window-size', windowSize)
     if isX11 then
         -- NOTE: Keep window-pos disabled on X11.
         -- Persisting it causes a second-launch sizing/position regression with current metrics flow.
         g_settings.remove('window-pos')
         g_settings.set('window-metrics-space', 'physical-v1')
-        g_logger.info('[X11WindowMetrics][terminate] window-pos persistence disabled on X11; window-metrics-space=physical-v1')
     else
         g_settings.set('window-pos', windowPos)
         g_settings.remove('window-metrics-space')

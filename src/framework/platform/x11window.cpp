@@ -1092,7 +1092,7 @@ void X11Window::setSystemCursor(const std::string& cursorName)
         }
 
         if (cursor == X11None) {
-            g_logger.warning("X11 system cursor failed for name='{}' shape={}", cursorName, shape);
+            g_logger.debug("X11 system cursor failed for name='{}' shape={}", cursorName, shape);
             return;
         }
 
@@ -1172,7 +1172,7 @@ int X11Window::internalLoadMouseCursor(const ImagePtr& image, const Point& hotSp
     const auto createFallbackCursor = [&]() -> int {
         const Cursor fallbackCursor = XCreateFontCursor(m_display, XC_left_ptr);
         if (fallbackCursor != X11None) {
-            g_logger.warning(
+            g_logger.debug(
                 "X11 cursor fallback: using XC_left_ptr size={}x{} hotspot=({}, {}) handle={}",
                 width, height, hotSpot.x, hotSpot.y, static_cast<unsigned long>(fallbackCursor));
             m_cursors.push_back(fallbackCursor);
@@ -1188,12 +1188,12 @@ int X11Window::internalLoadMouseCursor(const ImagePtr& image, const Point& hotSp
     if (maskPixels == 0) {
         if (cursor != X11None)
             XFreeCursor(m_display, cursor);
-        g_logger.warning("X11 cursor fallback trigger: empty mask after conversion");
+        g_logger.debug("X11 cursor fallback trigger: empty mask after conversion");
         return createFallbackCursor();
     }
 
     if (cursor == X11None) {
-        g_logger.warning("X11 cursor fallback trigger: XCreatePixmapCursor returned X11None");
+        g_logger.debug("X11 cursor fallback trigger: XCreatePixmapCursor returned X11None");
         return createFallbackCursor();
     }
 
