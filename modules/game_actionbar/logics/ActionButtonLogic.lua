@@ -160,6 +160,28 @@ local function setupHotkeyButton(button)
         end
     end
 end
+
+local function executeSpecialAction(specialActionId)
+    if not specialActionId then
+        return
+    end
+
+    if specialActionId == "toggleWasdChatMode" then
+        modules.game_console.toggleChat()
+    elseif specialActionId == "attackNext" then
+        modules.game_battle.attackNext()
+    elseif specialActionId == "attackPrevious" then
+        modules.game_battle.attackNext(true)
+    elseif specialActionId == "toggleChase" then
+        if g_game.getChaseMode and DontChase and ChaseOpponent then
+            local currentMode = g_game.getChaseMode()
+            local nextMode = currentMode == ChaseOpponent and DontChase or ChaseOpponent
+            g_game.setChaseMode(nextMode)
+        else
+            g_game.setChaseMode(ChaseOpponent)
+        end
+    end
+end
 -- /*=============================================
 -- =            button behavior             =
 -- =============================================*/
@@ -238,6 +260,8 @@ function onExecuteAction(button, isPress)
         end
 
         modules.game_console.getConsole():setText('')
+    elseif action == UseTypes["specialAction"] then
+        executeSpecialAction(button.cache.specialAction)
     elseif action == UseTypes["chatText"] then
         modules.game_console.getConsole():setText(button.cache.param)
         modules.game_console.getConsole():setCursorPos(#button.cache.param)
@@ -327,6 +351,7 @@ function getButtonCache(button)
             isPassive = false,
             spellID = 0,
             spellData = nil,
+            specialAction = nil,
             param = "",
             sendAutomatic = false,
             actionType = 0,
@@ -350,6 +375,7 @@ function getButtonCache(button)
             isPassive = false,
             spellID = 0,
             spellData = nil,
+            specialAction = nil,
             param = "",
             sendAutomatic = false,
             actionType = 0,
@@ -422,6 +448,7 @@ function resetButtonCache(button)
         spellID = 0,
         spellData = nil,
         primaryGroup = nil,
+        specialAction = nil,
         param = "",
         sendAutomatic = false,
         actionType = 0,
@@ -466,6 +493,9 @@ function setupButtonTooltip(button, isEmpty)
             actionDesc = "Cast " .. Spells.getSpellNameByWords(spellData.words) .. "\n"
             actionDesc = actionDesc .. "   Formula:  " .. cache.param .. "\n"
         end
+    elseif cache.actionType == UseTypes["specialAction"] then
+        local specialAction = getActionBarSpecialAction(cache.specialAction)
+        actionDesc = specialAction and specialAction.text or "Unknown action"
     elseif cache.actionType == UseTypes["passiveAbility"] then
         actionDesc = "Gift of Life"
     else
@@ -630,6 +660,9 @@ function configureButtonMouseRelease(button)
                 function()
                     assignPassive(button)
                 end)
+            menu:addOption(button.cache.specialAction and tr('Edit Action') or tr('Assign Action'), function()
+                assignSpecialAction(button, mousePos)
+            end)
             menu:addOption(button.cache.hotkey and tr('Edit Hotkey') or tr('Assign Hotkey'), function()
                 assignHotkey(button)
             end)
@@ -702,6 +735,7 @@ function updateButton(button)
     local useAction = buttonData["actionsetting"]["useObject"]
     local sendText = buttonData["actionsetting"]["chatText"]
     local passiveAbility = buttonData["actionsetting"]["passiveAbility"]
+    local specialAction = buttonData["actionsetting"]["specialAction"]
 
     if useAction then
         button.item:setItemId(useAction, true)
@@ -776,6 +810,14 @@ function updateButton(button)
         button.cache.actionType = UseTypes["passiveAbility"]
         button.cache.isPassive = true
         updateActionPassive(button)
+    end
+
+    if specialAction then
+        local specialActionData = getActionBarSpecialAction(specialAction)
+        button.item.text:setText(short_text(specialActionData and specialActionData.text or specialAction, 15))
+        button.item:setOn(true)
+        button.cache.specialAction = specialAction
+        button.cache.actionType = UseTypes["specialAction"]
     end
 
     button.item:setDraggable(true)
@@ -1010,6 +1052,8 @@ function onDragItemLeave(self, mousePos, button)
     if button.cache.actionType == UseTypes["chatText"] then
         ApiJson.createOrUpdateText(tonumber(destBarID), tonumber(destButtonID), button.cache.param,
             button.cache.sendAutomatic)
+    elseif button.cache.actionType == UseTypes["specialAction"] then
+        ApiJson.createOrUpdateSpecialAction(tonumber(destBarID), tonumber(destButtonID), button.cache.specialAction)
     elseif itemId ~= 0 then
         ApiJson.createOrUpdateAction(tonumber(destBarID), tonumber(destButtonID),
             getActionName(button.cache.actionType), itemId, button.cache.upgradeTier)
@@ -1025,6 +1069,9 @@ function onDragItemLeave(self, mousePos, button)
         if destButtonCache.actionType == UseTypes["chatText"] then
             ApiJson.createOrUpdateText(tonumber(draggedBarID), tonumber(draggedButtonID), destButtonCache.param,
                 destButtonCache.sendAutomatic)
+        elseif destButtonCache.actionType == UseTypes["specialAction"] then
+            ApiJson.createOrUpdateSpecialAction(tonumber(draggedBarID), tonumber(draggedButtonID),
+                destButtonCache.specialAction)
         elseif destButtonCache.itemId ~= 0 then
             ApiJson.createOrUpdateAction(tonumber(draggedBarID), tonumber(draggedButtonID),
                 getActionName(destButtonCache.actionType), destButtonCache.itemId, destButtonCache.upgradeTier)

@@ -542,6 +542,34 @@ function assignPassive(button)
     end
 end
 
+function assignSpecialAction(button, mousePos)
+    local actionbar = button:getParent():getParent()
+    if actionbar.locked then
+        alert('Action bar is locked')
+        return
+    end
+
+    local menu = g_ui.createWidget('PopupMenu')
+    menu:setGameMenu(true)
+
+    for _, specialAction in ipairs(ActionBarSpecialActions) do
+        menu:addOption(specialAction.text, function()
+            local barID, buttonID = string.match(button:getId(), "(.*)%.(.*)")
+            ApiJson.createOrUpdateSpecialAction(tonumber(barID), tonumber(buttonID), specialAction.id)
+            updateButton(button)
+        end)
+    end
+
+    if button.cache and button.cache.specialAction then
+        menu:addSeparator()
+        menu:addOption(tr("Clear Assigned Action"), function()
+            clearButton(button, true)
+        end)
+    end
+
+    menu:display(mousePos)
+end
+
 -- /*=============================================
 -- =            item Event external          =
 -- =============================================*/
