@@ -83,6 +83,7 @@ local UseTypeUse = 5
 local UseTypeChatText = 6
 local UseTypePassiveAbility = 7
 local UseTypeSpecialAction = 8
+local UseTypeUseAtCursorPosition = 9
 
 UseTypes = {
     ["UseOnYourself"] = UseTypeUseOnYourself,
@@ -93,12 +94,14 @@ UseTypes = {
     ["chatText"] = UseTypeChatText,
     ["passiveAbility"] = UseTypePassiveAbility,
     ["specialAction"] = UseTypeSpecialAction,
+    ["UseAtCursorPosition"] = UseTypeUseAtCursorPosition,
 }
 
 UseTypesTip = {
     [UseTypeUseOnYourself] = "Use %s on Yourself",
     [UseTypeUseOnTarget] = "Use %s on Attack Target",
     [UseTypeSelectUseTarget] = "Use %s with Crosshair",
+    [UseTypeUseAtCursorPosition] = "Use %s at Cursor Position",
     [UseTypeEquip] = "%s %s",
     [UseTypeUse] = "Use %s"
 }

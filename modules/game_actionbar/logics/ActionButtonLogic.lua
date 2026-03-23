@@ -182,6 +182,64 @@ local function executeSpecialAction(specialActionId)
         end
     end
 end
+
+local function use_item_at_cursor_position(button)
+    if not button or not button.item then
+        return false
+    end
+
+    local item = button.item:getItem()
+    if not item then
+        return false
+    end
+
+    local mapPanel = modules.game_interface and modules.game_interface.getMapPanel and modules.game_interface.getMapPanel()
+    if not mapPanel then
+        modules.game_interface.startUseWith(item, button.item:getItemSubType() or -1)
+        return false
+    end
+
+    local mousePosition = g_window.getMousePosition()
+    if not mapPanel:containsPoint(mousePosition) then
+        modules.game_interface.startUseWith(item, button.item:getItemSubType() or -1)
+        return false
+    end
+
+    local mapPosition = mapPanel:getPosition(mousePosition)
+    if not mapPosition then
+        modules.game_interface.startUseWith(item, button.item:getItemSubType() or -1)
+        return false
+    end
+
+    local localPlayer = g_game.getLocalPlayer()
+    if localPlayer and mapPosition.z ~= localPlayer:getPosition().z then
+        local dz = mapPosition.z - localPlayer:getPosition().z
+        mapPosition.x = mapPosition.x + dz
+        mapPosition.y = mapPosition.y + dz
+        mapPosition.z = localPlayer:getPosition().z
+    end
+
+    local tile = g_map.getTile(mapPosition)
+    if not tile then
+        modules.game_interface.startUseWith(item, button.item:getItemSubType() or -1)
+        return false
+    end
+
+    local useThing = nil
+    if item:isFluidContainer() or item:isMultiUse() then
+        useThing = tile:getTopMultiUseThing()
+    else
+        useThing = tile:getTopUseThing()
+    end
+
+    if not useThing then
+        modules.game_interface.startUseWith(item, button.item:getItemSubType() or -1)
+        return false
+    end
+
+    g_game.useWith(item, useThing, button.item:getItemSubType() or -1)
+    return true
+end
 -- /*=============================================
 -- =            button behavior             =
 -- =============================================*/
@@ -239,6 +297,10 @@ function onExecuteAction(button, isPress)
     if button.item then
         if action == UseTypes["SelectUseTarget"] then
             modules.game_interface.startUseWith(button.item:getItem(), button.item:getItemSubType() or -1)
+        end
+
+        if action == UseTypes["UseAtCursorPosition"] then
+            use_item_at_cursor_position(button)
         end
 
         if action == UseTypes["UseOnTarget"] then
