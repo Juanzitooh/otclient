@@ -52,14 +52,12 @@ function showHouse()
 
     UI.bidArea:setVisible(false)
     UI.ListBase:setVisible(true)
-    Cyclopedia.selectTown({
-        data = 0
-    })
     UI.TopBase.StatesOption:setOption("All States", true)
     UI.TopBase.CityOption:setOption("Own Houses", true)
     UI.TopBase.SortOption:setOption("Sort by name", true)
 
-    Cyclopedia.House.lastTown = nil
+    Cyclopedia.House.lastTown = ""
+    Cyclopedia.selectTown(nil, "Own Houses", 0)
 end
 
 Cyclopedia.House = {}
@@ -98,6 +96,23 @@ Cyclopedia.SortList = {
     { Title = "Sort by bid" },
     { Title = "Sort by auction end" }
 }
+
+Cyclopedia.House.Data = Cyclopedia.House.Data or {}
+Cyclopedia.House.Info = Cyclopedia.House.Info or {}
+
+local DEBUG_HOUSES = false
+
+local function houseDebug(message, ...)
+    if not DEBUG_HOUSES then
+        return
+    end
+
+    if select("#", ...) > 0 then
+        g_logger.info(string.format("[Cyclopedia.House] " .. message, ...))
+    else
+        g_logger.info("[Cyclopedia.House] " .. message)
+    end
+end
 
 local function resetButtons()
     if UI.LateralBase:getChildById("bidButton") then
@@ -159,7 +174,118 @@ function Cyclopedia.houseChangeState(widget)
     end
 end
 
+local houseAuctionMessages = {
+    [CyclopediaHouseAuctionTypes.Bid] = {
+        [0] = "Your bid was successful. You are currently holding the highest bid.",
+        [1] = "Your bid was accepted, but there is already a higher bid.",
+        [3] = "Bid failed. Characters from Rookgaard cannot bid on houses.",
+        [5] = "Bid failed. Premium account is required.",
+        [6] = "Bid failed. Only guild leaders can bid on guildhalls.",
+        [7] = "Bid failed. Your account can only hold one house bid at a time.",
+        [17] = "Bid failed. Your bank account balance is too low to pay the bid and the first month rent.",
+        [21] = "Bid failed. The guild bank balance is too low.",
+        [24] = "Bid failed due to an internal server error."
+    },
+    [CyclopediaHouseAuctionTypes.MoveOut] = {
+        [0] = "You have successfully initiated your move out.",
+        [2] = "Move out failed. You are not the owner of this house.",
+        [7] = "Move out failed. Premium account is required.",
+        [16] = "Move out failed. Characters from Rookgaard cannot own houses.",
+        [32] = "Move out failed due to an internal server error."
+    },
+    [CyclopediaHouseAuctionTypes.Transfer] = {
+        [0] = "You have successfully initiated the transfer of your house.",
+        [2] = "House transfer failed. You are not the owner of this house.",
+        [4] = "Setting up a house transfer failed. A character with this name does not exist.",
+        [7] = "House transfer failed. Premium account is required.",
+        [16] = "House transfer failed. The target character is in Rookgaard.",
+        [19] = "House transfer failed. The target character already owns this house.",
+        [25] = "House transfer failed. The target account already has an active house bid.",
+        [32] = "House transfer failed due to an internal server error."
+    },
+    [CyclopediaHouseAuctionTypes.CancelMoveOut] = {
+        [0] = "You have successfully cancelled your move out.",
+        [2] = "Cancel move out failed. You are not the owner of this house.",
+        [32] = "Cancel move out failed due to an internal server error."
+    },
+    [CyclopediaHouseAuctionTypes.CancelTransfer] = {
+        [0] = "You have successfully cancelled the transfer. You will keep the house.",
+        [2] = "Cancel transfer failed. You are not the owner of this house.",
+        [32] = "Cancel transfer failed due to an internal server error."
+    },
+    [CyclopediaHouseAuctionTypes.AcceptTransfer] = {
+        [0] = "You have successfully accepted the transfer.",
+        [2] = "Accept transfer failed. You are not the designated new owner.",
+        [3] = "Accept transfer failed. Your account already has an active house bid.",
+        [7] = "Accept transfer failed. This transfer was already accepted.",
+        [8] = "Accept transfer failed. Characters from Rookgaard cannot own houses.",
+        [9] = "Accept transfer failed. Premium account is required.",
+        [15] = "Accept transfer failed. Your bank account balance is too low.",
+        [19] = "Accept transfer failed due to an internal server error."
+    },
+    [CyclopediaHouseAuctionTypes.RejectTransfer] = {
+        [0] = "You rejected the house transfer successfully. The old owner will keep the house.",
+        [2] = "Reject transfer failed. You are not the designated new owner.",
+        [32] = "Reject transfer failed due to an internal server error."
+    }
+}
+
+local function isHouseActionSuccess(actionType, messageIndex)
+    if actionType == CyclopediaHouseAuctionTypes.Bid then
+        return messageIndex == 0 or messageIndex == 1
+    end
+
+    return messageIndex == 0
+end
+
+local function closeHouseActionPanels(actionType)
+    if actionType == CyclopediaHouseAuctionTypes.Bid then
+        UI.bidArea:setVisible(false)
+    elseif actionType == CyclopediaHouseAuctionTypes.MoveOut or actionType == CyclopediaHouseAuctionTypes.CancelMoveOut then
+        UI.moveOutArea:setVisible(false)
+    elseif actionType == CyclopediaHouseAuctionTypes.Transfer then
+        UI.transferArea:setVisible(false)
+    elseif actionType == CyclopediaHouseAuctionTypes.CancelTransfer then
+        UI.cancelHouseTransferArea:setVisible(false)
+    elseif actionType == CyclopediaHouseAuctionTypes.AcceptTransfer then
+        UI.acceptTransferHouse:setVisible(false)
+    elseif actionType == CyclopediaHouseAuctionTypes.RejectTransfer then
+        UI.rejectTransferHouse:setVisible(false)
+    end
+end
+
+function Cyclopedia.onParseCyclopediaHouseAuctionMessage(houseId, auctionType, index, bidSuccessOrError)
+    houseDebug("Auction callback houseId=%d type=%d index=%d extra=%d", houseId or 0, auctionType or 0, index or 0,
+        bidSuccessOrError or 0)
+    Cyclopedia.houseMessage(houseId, auctionType, index, bidSuccessOrError)
+end
+
+function Cyclopedia.onParseCyclopediaHousesInfo(currentHouseId, accountHouseCount, highlightedEntries, housesList, maxTownHouses,
+    maxGuildHouses, unknownHeaderA, unknownHeaderB)
+    Cyclopedia.House.Info = {
+        currentHouseId = currentHouseId or 0,
+        accountHouseCount = accountHouseCount or 0,
+        highlightedEntries = highlightedEntries or {},
+        housesList = housesList or {},
+        maxTownHouses = maxTownHouses or 0,
+        maxGuildHouses = maxGuildHouses or 0,
+        unknownHeaderA = unknownHeaderA or 0,
+        unknownHeaderB = unknownHeaderB or 0
+    }
+end
+
+function Cyclopedia.onParseCyclopediaHouseList(data, other)
+    if not UI then
+        return
+    end
+    Cyclopedia.loadHouseList(data, other)
+end
+
 function Cyclopedia.houseMessage(houseId, type, message)
+    if not UI then
+        return
+    end
+
     local confirmWindow
     local function yesCallback()
         if confirmWindow then
@@ -169,121 +295,26 @@ function Cyclopedia.houseMessage(houseId, type, message)
         end
     end
 
-    if type == 1 then
-        if message == 0 then
-            if not confirmWindow then
-                confirmWindow = displayGeneralBox(tr("Summary"), tr(
-                    "Your bid was successfull. You are currently holding the highest bid."), {
-                    {
-                        text = tr("Ok"),
-                        callback = yesCallback
-                    },
-                    anchor = AnchorHorizontalCenter
-                }, yesCallback)
+    local typeMessages = houseAuctionMessages[type] or {}
+    local resultMessage = typeMessages[message] or string.format("House action result: %d.", message or -1)
+    local success = isHouseActionSuccess(type, message)
+    local title = success and "Summary" or "House Action Failed"
 
-                UI.ListBase:setVisible(true)
-                UI.bidArea:setVisible(false)
-                Cyclopedia.Toggle(true, false)
-            end
-        elseif message == 17 then
-            confirmWindow = displayGeneralBox(tr("Summary"), tr(
-                "Bid failed.\nYour character's bank acocunt balance is too low to pay the bid and the rent for the first month."),
-                {
-                    {
-                        text = tr("Ok"),
-                        callback = yesCallback
-                    },
-                    anchor = AnchorHorizontalCenter
-                }, yesCallback)
-
-            UI.ListBase:setVisible(true)
-            UI.bidArea:setVisible(false)
-            Cyclopedia.Toggle(true, false)
-        end
-    elseif type == 2 then
-        if message == 0 then
-            confirmWindow = displayGeneralBox(tr("Summary"), tr("You have sucessfully iniated your move out."), {
-                {
-                    text = tr("Ok"),
-                    callback = yesCallback
-                },
-                anchor = AnchorHorizontalCenter
-            }, yesCallback)
-
-            UI.moveOutArea:setVisible(false)
-            UI.ListBase:setVisible(true)
-            Cyclopedia.Toggle(true, false)
-        end
-    elseif type == 3 then
-        if message == 0 then
-            confirmWindow = displayGeneralBox(tr("Summary"),
-                tr("You have sucessfully initiated the transfer of your house."), {
-                    {
-                        text = tr("Ok"),
-                        callback = yesCallback
-                    },
-                    anchor = AnchorHorizontalCenter
-                }, yesCallback)
-
-            UI.transferArea:setVisible(false)
-            UI.ListBase:setVisible(true)
-            Cyclopedia.Toggle(true, false)
-        elseif message == 4 then
-            confirmWindow = displayGeneralBox(tr("Summary"), tr(
-                "Setting up a house transfer failed.\nA character with this name does not exist."), {
-                {
-                    text = tr("Ok"),
-                    callback = yesCallback
-                },
-                anchor = AnchorHorizontalCenter
-            }, yesCallback)
-
-            UI.transferArea:setVisible(false)
-            UI.ListBase:setVisible(true)
-            Cyclopedia.Toggle(true, false)
-        end
-    elseif type == 5 then
-        if message == 0 then
-            confirmWindow = displayGeneralBox(tr("Summary"), tr(
-                "You have sucessfully cancelled the transfer. You will keep the house."), {
-                {
-                    text = tr("Ok"),
-                    callback = yesCallback
-                },
-                anchor = AnchorHorizontalCenter
-            }, yesCallback)
-
-            UI.cancelHouseTransferArea:setVisible(false)
-            UI.ListBase:setVisible(true)
-            Cyclopedia.Toggle(true, false)
-        end
-    elseif type == 6 then
-        if message == 0 then
-            confirmWindow = displayGeneralBox(tr("Summary"), tr("You have sucessfully accepted the transfer."), {
-                {
-                    text = tr("Ok"),
-                    callback = yesCallback
-                },
-                anchor = AnchorHorizontalCenter
-            }, yesCallback)
-
-            UI.acceptTransferHouse:setVisible(false)
-            UI.ListBase:setVisible(true)
-            Cyclopedia.Toggle(true, false)
-        end
-    elseif type == 7 and message == 0 then
-        confirmWindow = displayGeneralBox(tr("Summary"), tr(
-            "You jected the house transfer sucessfully. The old owner will keep the house."), {
+    if not confirmWindow then
+        confirmWindow = displayGeneralBox(tr(title), tr(resultMessage), {
             {
                 text = tr("Ok"),
                 callback = yesCallback
             },
             anchor = AnchorHorizontalCenter
         }, yesCallback)
-
-        UI.rejectTransferHouse:setVisible(false)
-        UI.ListBase:setVisible(true)
         Cyclopedia.Toggle(true, false)
+    end
+
+    if success then
+        closeHouseActionPanels(type)
+        UI.ListBase:setVisible(true)
+        Cyclopedia.houseRefresh()
     end
 end
 
@@ -310,15 +341,6 @@ function Cyclopedia.rejectTransfer()
             end
 
             g_game.requestRejectHouseTransfer(house.id)
-
-            Cyclopedia.House.ignore = true
-            --[[
-            if Cyclopedia.House.lastTown then
-                g_game.requestShowHouses(Cyclopedia.House.lastTown)
-            else
-                g_game.requestShowHouses("")
-            end
-            ]]--
 
             UI.TopBase.StatesOption:setOption("All States", true)
             UI.TopBase.SortOption:setOption("Sort by name", true)
@@ -351,7 +373,7 @@ function Cyclopedia.rejectTransfer()
         end
     end
 
-    UI.rejectTransferHouse.name:setText(house.name .. "asdasd")
+    UI.rejectTransferHouse.name:setText(house.name)
     UI.rejectTransferHouse.size:setText(house.sqm .. " sqm")
     UI.rejectTransferHouse.beds:setText(house.beds)
     UI.rejectTransferHouse.rent:setText((house.rent))
@@ -385,9 +407,6 @@ function Cyclopedia.acceptTransfer()
             end
 
             g_game.requestAcceptHouseTransfer(house.id)
-            Cyclopedia.House.ignore = true
-
-            -- g_game.requestShowHouses("")
             UI.TopBase.StatesOption:setOption("All States", true)
             UI.TopBase.SortOption:setOption("Sort by name", true)
         end
@@ -419,7 +438,7 @@ function Cyclopedia.acceptTransfer()
         end
     end
 
-    UI.acceptTransferHouse.name:setText(house.name .. "22222")
+    UI.acceptTransferHouse.name:setText(house.name)
     UI.acceptTransferHouse.size:setText(house.sqm .. " sqm")
     UI.acceptTransferHouse.beds:setText(house.beds)
     UI.acceptTransferHouse.rent:setText((house.rent))
@@ -454,15 +473,6 @@ function Cyclopedia.cancelTransfer()
 
             g_game.requestCancelHouseTransfer(house.id)
 
-            Cyclopedia.House.ignore = true
-            --[[
-            if Cyclopedia.House.lastTown then
-                g_game.requestShowHouses(Cyclopedia.House.lastTown)
-            else
-                g_game.requestShowHouses("")
-            end
-            ]]--
-
             UI.TopBase.StatesOption:setOption("All States", true)
             UI.TopBase.SortOption:setOption("Sort by name", true)
         end
@@ -494,7 +504,7 @@ function Cyclopedia.cancelTransfer()
         end
     end
 
-    UI.cancelHouseTransferArea.name:setText(house.name .. "888")
+    UI.cancelHouseTransferArea.name:setText(house.name)
     UI.cancelHouseTransferArea.size:setText(house.sqm .. " sqm")
     UI.cancelHouseTransferArea.beds:setText(house.beds)
     UI.cancelHouseTransferArea.rent:setText((house.rent))
@@ -519,11 +529,11 @@ function Cyclopedia.transferHouse()
             day = UI.transferArea.day:getCurrentOption().text
         })
 
-        if timestemp < os.time(os.date("!*t")) then
-            UI.transferArea.move:setEnabled(false)
+        if timestemp < os.time() then
+            UI.transferArea.transfer:setEnabled(false)
             UI.transferArea.error:setVisible(true)
         else
-            UI.transferArea.move:setEnabled(true)
+            UI.transferArea.transfer:setEnabled(true)
             UI.transferArea.error:setVisible(false)
         end
     end
@@ -531,9 +541,9 @@ function Cyclopedia.transferHouse()
     local function verifyName(widget, text, oldText)
         if text ~= "" then
             UI.transferArea.errorName:setVisible(false)
-            UI.transferArea.transfer:setEnabled(false)
-        else
             UI.transferArea.transfer:setEnabled(true)
+        else
+            UI.transferArea.transfer:setEnabled(false)
             UI.transferArea.errorName:setVisible(true)
         end
     end
@@ -563,16 +573,7 @@ function Cyclopedia.transferHouse()
                 Cyclopedia.Toggle(true, false, 5)
             end
 
-            g_game.requestTransferHouse(house.id, transfer, tonumber(value))
-
-            Cyclopedia.House.ignore = true
-            --[[
-            if Cyclopedia.House.lastTown then
-                g_game.requestShowHouses(Cyclopedia.House.lastTown)
-            else
-                g_game.requestShowHouses("")
-            end
-            ]]--
+            g_game.requestTransferHouse(house.id, timestemp, transfer, tonumber(value))
 
             UI.TopBase.StatesOption:setOption("All States", true)
             UI.TopBase.SortOption:setOption("Sort by name", true)
@@ -605,7 +606,7 @@ function Cyclopedia.transferHouse()
         end
     end
 
-    UI.transferArea.name:setText(house.name .. "44444")
+    UI.transferArea.name:setText(house.name)
     UI.transferArea.size:setText(house.sqm .. " sqm")
     UI.transferArea.beds:setText(house.beds)
     UI.transferArea.rent:setText((house.rent))
@@ -638,7 +639,7 @@ function Cyclopedia.transferHouse()
     end
 
     UI.transferArea.month:setOption(tonumber(os.date("%m")), true)
-    UI.transferArea.day:setOption(tonumber(os.date("%d") + 1), true)
+    UI.transferArea.day:setOption(math.min(days, tonumber(os.date("%d")) + 1), true)
     UI.transferArea.owner.onTextChange = verifyName
     UI.transferArea.owner:setText("")
     verifyName(UI.transferArea.owner, "", "")
@@ -673,7 +674,7 @@ function Cyclopedia.moveOutHouse()
             day = UI.moveOutArea.day:getCurrentOption().text
         })
 
-        if timestemp < os.time(os.date("!*t")) then
+        if timestemp < os.time() then
             UI.moveOutArea.move:setEnabled(false)
             UI.moveOutArea.error:setVisible(true)
         else
@@ -705,7 +706,7 @@ function Cyclopedia.moveOutHouse()
                 Cyclopedia.Toggle(true, false, 5)
             end
 
-            g_game.requestMoveOutHouse(house.id)
+            g_game.requestMoveOutHouse(house.id, timestemp)
         end
 
         local function noCallback()
@@ -735,7 +736,7 @@ function Cyclopedia.moveOutHouse()
         end
     end
 
-    UI.moveOutArea.name:setText(house.name .. "9999")
+    UI.moveOutArea.name:setText(house.name)
     UI.moveOutArea.size:setText(house.sqm .. " sqm")
     UI.moveOutArea.beds:setText(house.beds)
     UI.moveOutArea.rent:setText((house.rent))
@@ -767,7 +768,7 @@ function Cyclopedia.moveOutHouse()
     end
 
     UI.moveOutArea.month:setOption(tonumber(os.date("%m")), true)
-    UI.moveOutArea.day:setOption(tonumber(os.date("%d") + 1), true)
+    UI.moveOutArea.day:setOption(math.min(days, tonumber(os.date("%d")) + 1), true)
 end
 
 function Cyclopedia.bidHouse(widget)
@@ -784,7 +785,7 @@ function Cyclopedia.bidHouse(widget)
 
     UI.ListBase:setVisible(false)
     UI.bidArea:setVisible(true)
-    UI.bidArea.name:setText(house.name .. "99889")
+    UI.bidArea.name:setText(house.name)
     UI.bidArea.size:setText(house.sqm .. " sqm")
     UI.bidArea.beds:setText(house.beds)
     UI.bidArea.rent:setText((house.rent))
@@ -825,7 +826,7 @@ function Cyclopedia.bidHouse(widget)
         for index, data in ipairs(labels) do
             local label = g_ui.createWidget("Label", UI.bidArea)
             label:setId(data.id)
-            label:setText(data.name .. "44242")
+            label:setText(data.name)
             label:setColor("#909090")
             label:setWidth(90)
             label:setHeight(15)
@@ -1001,19 +1002,23 @@ function Cyclopedia.bidHouse(widget)
 end
 
 function Cyclopedia.houseRefresh()
-    if Cyclopedia.House.lastTown then
-        -- g_game.requestShowHouses(Cyclopedia.House.lastTown)
+    if not UI then
+        return
+    end
 
-        if Cyclopedia.House.lastChangeState then
-            if Cyclopedia.House.refreshEvent then
-                return
-            end
+    if Cyclopedia.House.lastTown ~= nil then
+        g_game.requestShowHouses(Cyclopedia.House.lastTown)
+    end
 
-            Cyclopedia.House.refreshEvent = scheduleEvent(function()
-                Cyclopedia.houseChangeState(Cyclopedia.House.lastChangeState)
-                Cyclopedia.House.refreshEvent = nil
-            end, 100)
+    if Cyclopedia.House.lastChangeState then
+        if Cyclopedia.House.refreshEvent then
+            return
         end
+
+        Cyclopedia.House.refreshEvent = scheduleEvent(function()
+            Cyclopedia.houseChangeState(Cyclopedia.House.lastChangeState)
+            Cyclopedia.House.refreshEvent = nil
+        end, 100)
     end
 end
 
@@ -1107,7 +1112,7 @@ function Cyclopedia.reloadHouseList()
                     icon:setTooltip(data.description)
                 end
 
-                if data.state == 0 then
+                if data.state == CyclopediaHouseStates.Available then
                     if data.hasBid then
                         local function format(timestamp)
                             local difference = timestamp - os.time()
@@ -1121,8 +1126,12 @@ function Cyclopedia.reloadHouseList()
                     else
                         widget.status:setColoredText("{Status:  , #909090}{auctioned, #00F000} (no bid yet)")
                     end
-                elseif data.state == 2 then
+                elseif data.state == CyclopediaHouseStates.Rented then
                     widget.status:setColoredText("{Status:  , #909090}rented by " .. data.owner)
+                elseif data.state == CyclopediaHouseStates.Transfer then
+                    widget.status:setColoredText("{Status:  , #909090}transfer to " .. data.transferName)
+                elseif data.state == CyclopediaHouseStates.MoveOut then
+                    widget.status:setColoredText("{Status:  , #909090}move out scheduled")
                 end
 
                 widget.onClick = Cyclopedia.selectHouse
@@ -1178,56 +1187,102 @@ function Cyclopedia.reloadHouseList()
     end
 end
 
+local function getHouseMetadata(houseId)
+    local fallback = {
+        id = houseId,
+        name = string.format("House #%d", houseId),
+        description = "",
+        rent = "-",
+        beds = "-",
+        sqm = "-",
+        gh = false,
+        shop = false
+    }
+
+    if type(HOUSE) ~= "table" then
+        return fallback
+    end
+
+    local house = HOUSE[houseId]
+    if not house then
+        return fallback
+    end
+
+    return {
+        id = houseId,
+        name = house.name or fallback.name,
+        description = house.description or "",
+        rent = house.rent or "-",
+        beds = house.beds or "-",
+        sqm = house.sqm or "-",
+        gh = (house.GH or 0) > 0,
+        shop = (house.shop or 0) > 0
+    }
+end
+
 function Cyclopedia.loadHouseList(data, other)
-    if Cyclopedia.House.ignore then
-        Cyclopedia.House.ignore = false
+    if not UI then
         return
     end
 
     local houses = {}
+    data = data or {}
+    other = other or {}
+    local localPlayer = g_game.getLocalPlayer()
+    local playerName = localPlayer and localPlayer:getName() and localPlayer:getName():lower() or nil
 
-    if not table.empty(data) then
-        for i = 0, #data do
-            local value = data[i]
-            local house = HOUSE[value.houseId]
-            if house then
-                local isGuildHall = house.GH > 0 and true or false
-                local data_t = {
-                    id = value.houseId,
-                    name = house.name,
-                    description = house.description,
-                    rent = house.rent,
-                    beds = house.beds,
-                    sqm = house.sqm,
-                    gh = isGuildHall,
-                    shop = house.shop > 0 and true or false,
-                    visible = not isGuildHall,
-                    state = value.state,
-                    owner = other[i].owner and other[i].owner or "?",
-                    isYourBid = data[i].bidHolderLimit and data[i].bidHolderLimit > 0 and true or false,
-                    hasBid = data[i].bidEnd and data[i].bidEnd > 0 and true or false,
-                    bidEnd = data[i].bidEnd and data[i].bidEnd or nil,
-                    hightestBid = data[i].hightestBid and data[i].hightestBid or nil,
-                    bidName = other[i].bidName and other[i].bidName or nil,
-                    bidHolderLimit = data[i].bidHolderLimit and data[i].bidHolderLimit or nil,
-                    canBid = data[i].selfCanBid,
-                    rented = data[i].state == 2 and true or false,
-                    paidUntil = data[i].paidUntil and data[i].paidUntil or nil,
-                    isYourOwner = other[i].owner and other[i].owner:lower() == g_game.getLocalPlayer():getName():lower() and
-                        true or false,
-                    inTransfer = data[i].state == 3 and true or false,
-                    transferName = other[i].transferPlayer and other[i].transferPlayer or nil,
-                    transferTime = data[i].time and data[i].time or 0,
-                    transferValue = data[i].transferValue and data[i].transferValue or 0,
-                    isTransferOwner = data[i].hasTransferOwner and data[i].hasTransferOwner > 0 and true or false,
-                    canAcceptTransfer = data[i].canAcceptTransfer and data[i].canAcceptTransfer or 0
-                }
-
-                table.insert(houses, data_t)
-            end
-        end
-    else
+    if table.empty(data) then
+        Cyclopedia.House.Data = {}
         UI.ListBase.AuctionList:destroyChildren()
+        Cyclopedia.reloadHouseList()
+        return
+    end
+
+    for index, value in ipairs(data) do
+        local houseId, state, bidHolderLimit, bidEnd, highestBid, selfCanBid, paidUntil, transferTime, transferValue,
+        hasTransferOwner, canAcceptTransfer, canRejectTransfer, canCancelTransfer, canCancelMoveOut = unpack(value)
+        local details = other[index] or {}
+        local owner, bidName, transferPlayer = unpack(details)
+
+        local metadata = getHouseMetadata(houseId)
+        local isOwner = owner and playerName and owner:lower() == playerName or false
+        local isGuildHall = metadata.gh
+
+        local data_t = {
+            id = houseId,
+            name = metadata.name,
+            description = metadata.description,
+            rent = metadata.rent,
+            beds = metadata.beds,
+            sqm = metadata.sqm,
+            gh = isGuildHall,
+            shop = metadata.shop,
+            visible = not isGuildHall,
+            state = state,
+            owner = owner and owner ~= "" and owner or "?",
+            isYourBid = (bidHolderLimit or 0) > 0,
+            hasBid = (bidEnd or 0) > 0,
+            bidEnd = (bidEnd or 0) > 0 and bidEnd or nil,
+            hightestBid = (highestBid or 0) > 0 and highestBid or nil,
+            bidName = bidName and bidName ~= "" and bidName or nil,
+            bidHolderLimit = (bidHolderLimit or 0) > 0 and bidHolderLimit or nil,
+            canBid = selfCanBid or 0,
+            rented = state == CyclopediaHouseStates.Rented,
+            paidUntil = (paidUntil or 0) > 0 and paidUntil or nil,
+            isYourOwner = isOwner,
+            inTransfer = state == CyclopediaHouseStates.Transfer,
+            movingOut = state == CyclopediaHouseStates.MoveOut,
+            transferName = transferPlayer and transferPlayer ~= "" and transferPlayer or "?",
+            transferTime = transferTime or 0,
+            transferValue = transferValue or 0,
+            isTransferOwner = (hasTransferOwner or 0) > 0,
+            canAcceptTransfer = canAcceptTransfer or 0,
+            canRejectTransfer = canRejectTransfer or 0,
+            canCancelTransfer = canCancelTransfer or 0,
+            canCancelMoveOut = canCancelMoveOut or 0
+        }
+
+        table.insert(houses, data_t)
     end
 
     table.sort(houses, function(a, b)
@@ -1239,14 +1294,10 @@ function Cyclopedia.loadHouseList(data, other)
 end
 
 function Cyclopedia.selectTown(widget, text, type)
-    local name = text
-    if type ~= 0 then
-        -- g_game.requestShowHouses(name)
-        Cyclopedia.House.lastTown = name
-    else
-        -- g_game.requestShowHouses("")
-        Cyclopedia.House.lastTown = ""
-    end
+    local name = type ~= 0 and text or ""
+    Cyclopedia.House.lastTown = name
+    houseDebug("Requesting houses for town '%s'", name)
+    g_game.requestShowHouses(name)
 end
 
 function Cyclopedia.selectHouse(widget)
@@ -1311,7 +1362,7 @@ function Cyclopedia.selectHouse(widget)
             UI.LateralBase.yourLimitBid:setText(comma_value(widget.data.bidHolderLimit))
             UI.LateralBase.yourLimitBidGold:setVisible(true)
         end
-    elseif widget.data.rented or widget.data.inTransfer then
+    elseif widget.data.rented or widget.data.inTransfer or widget.data.movingOut then
         local formattedDate = os.date("%b %d, %H:%M", widget.data.paidUntil)
         local date = string.format("%s %s", formattedDate, "CET")
 
@@ -1331,6 +1382,12 @@ function Cyclopedia.selectHouse(widget)
             UI.LateralBase.transferValue:setVisible(true)
             UI.LateralBase.transferGold:setVisible(true)
             UI.LateralBase.transferValue:setText(comma_value(widget.data.transferValue))
+        elseif widget.data.movingOut then
+            formattedDate = os.date("%b %d, %H:%M", widget.data.transferTime)
+            date = string.format("%s %s", formattedDate, "CET")
+            UI.LateralBase.subAuctionLabel:setVisible(true)
+            UI.LateralBase.subAuctionText:setVisible(true)
+            UI.LateralBase.subAuctionText:setColoredText("{Move Out Date:  , #909090}" .. date)
         end
     else
         UI.LateralBase.AuctionLabel:setText("Auction")
@@ -1409,6 +1466,18 @@ function Cyclopedia.selectHouse(widget)
         else
             transferButton:setEnabled(true)
         end
+    elseif widget.data.movingOut then
+        local button = g_ui.createWidget("Button", UI.LateralBase)
+        button:setId("moveOutButton")
+        button:setText("Move Out Pending")
+        button:setColor("#C0C0C0")
+        button:setWidth(86)
+        button:setHeight(20)
+        button:addAnchor(AnchorBottom, "parent", AnchorBottom)
+        button:addAnchor(AnchorRight, "parent", AnchorRight)
+        button:setMarginRight(7)
+        button:setMarginBottom(7)
+        button:setEnabled(false)
     else
         local button = g_ui.createWidget("Button", UI.LateralBase)
         button:setId("bidButton")
@@ -1428,7 +1497,7 @@ function Cyclopedia.selectHouse(widget)
             button:setTooltip("")
         elseif widget.data.canBid == 11 then
             button:setTooltip(
-                "A character of your account already holds the highest bid for \nanother house. You may olny bid for one house at the same time.")
+                "A character of your account already holds the highest bid for \nanother house. You may only bid for one house at the same time.")
             button:setTooltipAlign(AlignTopLeft)
             button:setEnabled(false)
         else

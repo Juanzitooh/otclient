@@ -103,7 +103,10 @@ function controllerCyclopedia:onGameStart()
             onCyclopediaCharacterOffenceStats = Cyclopedia.onCyclopediaCharacterOffenceStats,
             onCyclopediaCharacterDefenceStats = Cyclopedia.onCyclopediaCharacterDefenceStats,
             onCyclopediaCharacterMiscStats = Cyclopedia.onCyclopediaCharacterMiscStats,
-
+            -- houses
+            onParseCyclopediaHouseAuctionMessage = Cyclopedia.onParseCyclopediaHouseAuctionMessage,
+            onParseCyclopediaHousesInfo = Cyclopedia.onParseCyclopediaHousesInfo,
+            onParseCyclopediaHouseList = Cyclopedia.onParseCyclopediaHouseList,
 
             -- charms
             onUpdateBestiaryCharmsData = Cyclopedia.loadCharms,
