@@ -4453,33 +4453,7 @@ void ProtocolGame::parseMonkData(const InputMessagePtr& msg) {
 
 void ProtocolGame::parseCyclopediaHouseAuctionMessage(const InputMessagePtr& msg)
 {
-    constexpr std::string_view kCyclopediaHousesSourceTag = "Cyclopedia-houses-source";
-    const auto parseStartPos = msg->getReadPos();
-    const auto auctionTypeName = [](const Otc::CyclopediaHouseAuctionType_t auctionType) -> std::string_view {
-        switch (auctionType) {
-            case Otc::CYCLOPEDIA_HOUSE_TYPE_NONE:
-                return "Show";
-            case Otc::CYCLOPEDIA_HOUSE_TYPE_BID:
-                return "Bid";
-            case Otc::CYCLOPEDIA_HOUSE_TYPE_MOVEOUT:
-                return "MoveOut";
-            case Otc::CYCLOPEDIA_HOUSE_TYPE_TRANSFER:
-                return "Transfer";
-            case Otc::CYCLOPEDIA_HOUSE_TYPE_CANCEL_MOVEOUT:
-                return "CancelMoveOut";
-            case Otc::CYCLOPEDIA_HOUSE_TYPE_CANCEL_TRANSFER:
-                return "CancelTransfer";
-            case Otc::CYCLOPEDIA_HOUSE_TYPE_ACCEPT_TRANSFER:
-                return "AcceptTransfer";
-            case Otc::CYCLOPEDIA_HOUSE_TYPE_REFECT_TRANSFER:
-                return "RejectTransfer";
-            default:
-                return "Unknown";
-        }
-    };
-
-    const auto failParse = [&](std::string_view reason) {
-        g_logger.error("[{}][RX][HouseAuctionMessage] {}", kCyclopediaHousesSourceTag, reason);
+    const auto failParse = [&](std::string_view /*reason*/) {
         msg->setReadPos(msg->getMessageSize());
     };
 
@@ -4507,22 +4481,12 @@ void ProtocolGame::parseCyclopediaHouseAuctionMessage(const InputMessagePtr& msg
 
     const uint8_t index = msg->getU8();
 
-    g_logger.info("[{}][RX][HouseAuctionMessage] houseId={} type={}({}) index={} bidExtra={}",
-                  kCyclopediaHousesSourceTag, houseId, auctionTypeName(auctionType), static_cast<uint8_t>(auctionType), index,
-                  bidSuccessOrError);
-    g_logger.info("[{}][RX][HouseAuctionMessage] decodedBytes={}", kCyclopediaHousesSourceTag,
-                  msg->getReadPos() - parseStartPos);
-    g_logger.info("[{}][RX->Lua][HouseAuctionMessage] forwarding callback g_game.onParseCyclopediaHouseAuctionMessage", kCyclopediaHousesSourceTag);
-
     g_lua.callGlobalField("g_game", "onParseCyclopediaHouseAuctionMessage", houseId, auctionType, index, bidSuccessOrError);
 }
 
 void ProtocolGame::parseCyclopediaHousesInfo(const InputMessagePtr& msg)
 {
-    constexpr std::string_view kCyclopediaHousesSourceTag = "Cyclopedia-houses-source";
-    const auto parseStartPos = msg->getReadPos();
-    const auto failParse = [&](std::string_view reason) {
-        g_logger.error("[{}][RX][HousesInfo] {}", kCyclopediaHousesSourceTag, reason);
+    const auto failParse = [&](std::string_view /*reason*/) {
         msg->setReadPos(msg->getMessageSize());
     };
 
@@ -4549,8 +4513,6 @@ void ProtocolGame::parseCyclopediaHousesInfo(const InputMessagePtr& msg)
 
         const uint8_t entryType = msg->getU8();
         const uint32_t highlightedHouseId = msg->getU32();
-        g_logger.info("[{}][RX][HousesInfo] highlightedEntry index={} type={} houseId={}", kCyclopediaHousesSourceTag, i,
-                      entryType, highlightedHouseId);
         highlightedEntries.emplace_back(entryType, highlightedHouseId);
     }
 
@@ -4567,17 +4529,8 @@ void ProtocolGame::parseCyclopediaHousesInfo(const InputMessagePtr& msg)
             failParse("insufficient bytes while reading houses list");
             return;
         }
-        const uint32_t houseListId = msg->getU32();
-        g_logger.info("[{}][RX][HousesInfo] housesListEntry index={} houseId={}", kCyclopediaHousesSourceTag, i, houseListId);
-        housesList.push_back(houseListId);
+        housesList.push_back(msg->getU32());
     }
-
-    g_logger.info(
-        "[{}][RX][HousesInfo] currentHouseId={} accountHouseCount={} highlightedCount={} housesListCount={} maxTownHouses={} maxGuildHouses={} unknownA={} unknownB={}",
-        kCyclopediaHousesSourceTag, currentHouseId, accountHouseCount, highlightedEntriesCount, housesListCount, maxTownHouses,
-        maxGuildHouses, unknownHeaderA, unknownHeaderB);
-    g_logger.info("[{}][RX][HousesInfo] decodedBytes={}", kCyclopediaHousesSourceTag, msg->getReadPos() - parseStartPos);
-    g_logger.info("[{}][RX->Lua][HousesInfo] forwarding callback g_game.onParseCyclopediaHousesInfo", kCyclopediaHousesSourceTag);
 
     g_lua.callGlobalField("g_game", "onParseCyclopediaHousesInfo", currentHouseId, accountHouseCount, highlightedEntries, housesList,
                           maxTownHouses, maxGuildHouses, unknownHeaderA, unknownHeaderB);
@@ -4585,10 +4538,7 @@ void ProtocolGame::parseCyclopediaHousesInfo(const InputMessagePtr& msg)
 
 void ProtocolGame::parseCyclopediaHouseList(const InputMessagePtr& msg)
 {
-    constexpr std::string_view kCyclopediaHousesSourceTag = "Cyclopedia-houses-source";
-    const auto parseStartPos = msg->getReadPos();
-    const auto failParse = [&](std::string_view reason) {
-        g_logger.error("[{}][RX][HouseList] {}", kCyclopediaHousesSourceTag, reason);
+    const auto failParse = [&](std::string_view /*reason*/) {
         msg->setReadPos(msg->getMessageSize());
     };
 
@@ -4598,7 +4548,6 @@ void ProtocolGame::parseCyclopediaHouseList(const InputMessagePtr& msg)
     }
 
     const uint16_t housesCount = msg->getU16(); // housesCount
-    g_logger.info("[{}][RX][HouseList] housesCount={}", kCyclopediaHousesSourceTag, housesCount);
     std::vector<std::tuple<uint32_t, uint8_t, uint64_t, uint32_t, uint64_t, uint8_t, uint32_t, uint32_t, uint64_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t>> houseData;
     std::vector<std::tuple<std::string, std::string, std::string>> houseExtraData;
     houseData.reserve(housesCount);
@@ -4699,26 +4648,14 @@ void ProtocolGame::parseCyclopediaHouseList(const InputMessagePtr& msg)
                 break;
             }
             default:
-                g_logger.warning("[{}][RX][HouseList] unknown house state {} for houseId {}", kCyclopediaHousesSourceTag,
-                                 static_cast<int>(type), houseId);
-                msg->setReadPos(msg->getMessageSize());
+                failParse(fmt::format("unknown house state {} for houseId {}", static_cast<int>(type), houseId));
                 return;
         }
-
-        g_logger.info(
-            "[{}][RX][HouseList] index={} houseId={} state={} bidHolderLimit={} bidEnd={} highestBid={} selfCanBid={} paidUntil={} transferTime={} transferValue={} hasTransferOwner={} canAcceptTransfer={} canRejectTransfer={} canCancelTransfer={} canCancelMoveOut={} owner='{}' bidName='{}' transferPlayer='{}'",
-            kCyclopediaHousesSourceTag, i, houseId, static_cast<uint8_t>(type), bidHolderLimit, bidEnd, highestBid, selfCanBid,
-            paidUntil, transferTime, transferValue, hasTransferOwner, canAcceptTransfer, canRejectTransfer, canCancelTransfer,
-            canCancelMoveOut, ownerName, bidName, transferPlayerName);
 
         houseData.emplace_back(houseId, static_cast<uint8_t>(type), bidHolderLimit, bidEnd, highestBid, selfCanBid, paidUntil, transferTime,
                                transferValue, hasTransferOwner, canAcceptTransfer, canRejectTransfer, canCancelTransfer, canCancelMoveOut);
         houseExtraData.emplace_back(ownerName, bidName, transferPlayerName);
     }
-
-    g_logger.info("[{}][RX][HouseList] decodedBytes={}", kCyclopediaHousesSourceTag, msg->getReadPos() - parseStartPos);
-    g_logger.info("[{}][RX->Lua][HouseList] forwarding callback g_game.onParseCyclopediaHouseList entries={}",
-                  kCyclopediaHousesSourceTag, housesCount);
     g_lua.callGlobalField("g_game", "onParseCyclopediaHouseList", houseData, houseExtraData);
 }
 
