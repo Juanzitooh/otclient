@@ -12,7 +12,9 @@ local function getCharacterViewState()
         itemsFilters = {},
         appearancesFilter = "outfits",
         titlesSearchText = "",
-        titlesUnlockedOnly = true
+        titlesFilterMode = "all",
+        titlesTypeFilter = "all",
+        titlesUnlockFilter = "none"
     }
 
     if Cyclopedia.getTabState then
@@ -523,12 +525,14 @@ function Cyclopedia.loadCharacterTitles(currentTitle, titles)
     if UI.CharacterTitles.filters and UI.CharacterTitles.filters.SearchEdit and UI.CharacterTitles.filters.SearchEdit:getText() ~= (viewState.titlesSearchText or "") then
         UI.CharacterTitles.filters.SearchEdit:setText(viewState.titlesSearchText or "")
     end
-    if UI.CharacterTitles.filters and UI.CharacterTitles.filters.UnlockedOnly then
-        UI.CharacterTitles.filters.UnlockedOnly:setChecked(viewState.titlesUnlockedOnly == true)
-    end
 
     characterTitlesCurrentTitle = tonumber(currentTitle) or 0
     characterTitlesCache = titles or {}
+    local legacyMode = viewState.titlesFilterMode or "all"
+    local typeMode = viewState.titlesTypeFilter or ((legacyMode == "permanent" or legacyMode == "temporary") and legacyMode or "all")
+    local unlockMode = viewState.titlesUnlockFilter or ((legacyMode == "unlocked" or legacyMode == "locked") and legacyMode or "none")
+    Cyclopedia.characterTitlesTypeFilter(nil, typeMode)
+    Cyclopedia.characterTitlesUnlockFilter(nil, unlockMode)
     Cyclopedia.refreshCharacterTitles(currentTitle)
 end
 
@@ -542,42 +546,90 @@ function Cyclopedia.refreshCharacterTitles(currentTitle)
 
     local viewState = getCharacterViewState()
     local searchText = string.lower((viewState.titlesSearchText or ""):trim())
-    local unlockedOnly = viewState.titlesUnlockedOnly == true
+    local legacyMode = viewState.titlesFilterMode or "all"
+    local typeFilter = viewState.titlesTypeFilter or ((legacyMode == "permanent" or legacyMode == "temporary") and legacyMode or "all")
+    local unlockFilter = viewState.titlesUnlockFilter or ((legacyMode == "unlocked" or legacyMode == "locked") and legacyMode or "none")
     local color = "#484848"
-    local selectedIndex = tonumber(currentTitle)
-    if selectedIndex == nil then
-        selectedIndex = characterTitlesCurrentTitle
+    local selectedTitleId = tonumber(currentTitle)
+    if selectedTitleId == nil then
+        selectedTitleId = characterTitlesCurrentTitle
     end
+    local selectedTitleText = "(No character title selected)"
 
-    for index, entry in ipairs(characterTitlesCache or {}) do
-        local titleName = entry[1] or "?"
-        local titleDescription = entry[2] or ""
-        local isPermanent = entry[3] == true
-        local isUnlocked = entry[4] == true
+    for _, entry in ipairs(characterTitlesCache or {}) do
+        local titleId = tonumber(entry[1]) or 0
+        local titleName = entry[2] or "?"
+        local titleDescription = entry[3] or ""
+        local isPermanent = entry[4] == true
+        local isUnlocked = entry[5] == true
         local lowerName = string.lower(titleName)
         local lowerDescription = string.lower(titleDescription)
         local matchesSearch = searchText == "" or lowerName:find(searchText, 1, true) or lowerDescription:find(searchText, 1, true)
-        local matchesUnlocked = (not unlockedOnly) or isUnlocked
+        local matchesTypeFilter = typeFilter == "all" or
+            (typeFilter == "permanent" and isPermanent) or
+            (typeFilter == "temporary" and not isPermanent)
+        local matchesUnlockFilter = unlockFilter == "none" or
+            (unlockFilter == "unlocked" and isUnlocked) or
+            (unlockFilter == "locked" and not isUnlocked)
 
-        if matchesSearch and matchesUnlocked then
-            local row = g_ui.createWidget("UIWidget", list)
-            row:setHeight(46)
-            row:setBackgroundColor(color)
-            row:setTextAutoResize(false)
-            row:setTextWrap(true)
-            row:setPaddingTop(3)
-            row:setPaddingLeft(6)
-            row:setPaddingRight(6)
+        if selectedTitleId > 0 and titleId == selectedTitleId then
+            selectedTitleText = titleName
+        end
 
-            local stateTag = isUnlocked and "Unlocked" or "Locked"
-            local permanentTag = isPermanent and "Permanent" or "Temporary"
-            local selectedTag = (selectedIndex > 0 and selectedIndex == index) and " (Selected)" or ""
+        if matchesSearch and matchesTypeFilter and matchesUnlockFilter then
+            local row = g_ui.createWidget("CharacterTitleListRow", list)
+            local isSelected = selectedTitleId > 0 and selectedTitleId == titleId
 
-            row:setText(string.format("%s [%s | %s]%s\n%s", titleName, stateTag, permanentTag, selectedTag, titleDescription))
-            row:setColor(isUnlocked and "#C0C0C0" or "#808080")
+            if row.Background then
+                row.Background:setBackgroundColor(isSelected and "#545454" or color)
+            end
+
+            if row.Name then
+                row.Name:setText(titleName)
+                row.Name:setColor(isUnlocked and "#C0C0C0" or "#8A8A8A")
+            end
+
+            if row.PermanentValue then
+                row.PermanentValue:setText(isPermanent and "Yes" or "No")
+                row.PermanentValue:setColor(isPermanent and "#59C659" or "#C64545")
+            end
+
+            if row.UnlockedValue then
+                row.UnlockedValue:setText(isUnlocked and "Yes" or "No")
+                row.UnlockedValue:setColor(isUnlocked and "#59C659" or "#C64545")
+            end
+
+            if row.SelectedMarker then
+                row.SelectedMarker:setText(isSelected and "*" or "")
+            end
+
+            row:setTooltip(titleDescription ~= "" and titleDescription or titleName)
+            row.onClick = function()
+                if not isUnlocked then
+                    return
+                end
+
+                if g_game.getClientVersion and g_game.getClientVersion() < 1412 then
+                    return
+                end
+
+                if selectedTitleId == titleId then
+                    return
+                end
+
+                if g_game.requestSelectCharacterTitle then
+                    g_game.requestSelectCharacterTitle(titleId)
+                elseif g_game.requestSetCharacterTitle then
+                    g_game.requestSetCharacterTitle(titleId)
+                end
+            end
 
             color = color == "#484848" and "#414141" or "#484848"
         end
+    end
+
+    if UI.CharacterTitles.CurrentTitleValue then
+        UI.CharacterTitles.CurrentTitleValue:setText(selectedTitleText)
     end
 end
 
@@ -586,11 +638,82 @@ function Cyclopedia.characterTitlesSearch(text)
     Cyclopedia.refreshCharacterTitles()
 end
 
-function Cyclopedia.characterTitlesToggleUnlocked(widget)
-    if not widget then
+function Cyclopedia.characterTitlesTypeFilter(widget, forceMode)
+    if not UI or not UI.CharacterTitles or not UI.CharacterTitles.filters then
         return
     end
-    saveCharacterViewState({ titlesUnlockedOnly = widget:isChecked() })
+
+    local mode = forceMode or "all"
+    if widget and widget.getId then
+        if widget.isChecked and not widget:isChecked() then
+            return
+        end
+        mode = widget:getId() or mode
+    end
+
+    local validModes = {
+        all = true,
+        permanent = true,
+        temporary = true
+    }
+    if not validModes[mode] then
+        mode = "all"
+    end
+
+    local parent = UI.CharacterTitles.filters.filterOptionsType
+    if parent then
+        for i = 1, parent:getChildCount() do
+            local child = parent:getChildByIndex(i)
+            if child and child.setChecked and child.getId then
+                child:setChecked(child:getId() == mode)
+            end
+        end
+    end
+
+    saveCharacterViewState({ titlesTypeFilter = mode, titlesFilterMode = mode })
+    Cyclopedia.refreshCharacterTitles()
+end
+
+function Cyclopedia.characterTitlesUnlockFilter(widget, forceMode)
+    if not UI or not UI.CharacterTitles or not UI.CharacterTitles.filters then
+        return
+    end
+
+    local mode = forceMode or "none"
+    local validModes = {
+        none = true,
+        unlocked = true,
+        locked = true
+    }
+
+    if widget and widget.getId then
+        local widgetId = widget:getId()
+        if widgetId == "unlocked" or widgetId == "locked" then
+            if widget.isChecked and widget:isChecked() then
+                mode = widgetId
+            else
+                mode = "none"
+            end
+        end
+    end
+
+    if not validModes[mode] then
+        mode = "none"
+    end
+
+    local parent = UI.CharacterTitles.filters.filterOptionsUnlock
+    if parent then
+        for i = 1, parent:getChildCount() do
+            local child = parent:getChildByIndex(i)
+            if child and child.setChecked and child.getId then
+                local childId = child:getId()
+                local checked = (mode ~= "none" and childId == mode)
+                child:setChecked(checked)
+            end
+        end
+    end
+
+    saveCharacterViewState({ titlesUnlockFilter = mode })
     Cyclopedia.refreshCharacterTitles()
 end
 
@@ -824,8 +947,6 @@ function Cyclopedia.loadCharacterCombatStats(data, mitigation, additionalSkillsA
                     width = 9,
                     height = 9
                 })
-            else
-                print(string.format("WARNING: Element not found for combat array index %d with key %s.", i, tostring(combatsArray[i][1])))
             end
             local valor = combatsArray[i][2]
             local porcentaje = valor / 100
