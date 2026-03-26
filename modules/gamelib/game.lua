@@ -161,3 +161,18 @@ end
 function g_game.requestRejectHouseTransfer(houseId)
     g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.RejectTransfer, normalizePositiveNumber(houseId), 0, 0, "")
 end
+
+function g_game.requestSelectCharacterTitle(titleId)
+    titleId = normalizePositiveNumber(titleId)
+    if titleId <= 0 then
+        return
+    end
+
+    if g_game.getClientVersion and g_game.getClientVersion() < 1412 then
+        return
+    end
+
+    if g_game.requestSetCharacterTitle then
+        g_game.requestSetCharacterTitle(titleId)
+    end
+end

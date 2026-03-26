@@ -5337,18 +5337,19 @@ void ProtocolGame::parseCyclopediaCharacterInfo(const InputMessagePtr& msg)
         {
             const uint8_t currentTitle = msg->getU8();
             const uint8_t titlesSize = msg->getU8();
+            const bool hasTitleId = g_game.getClientVersion() >= 1412;
 
-            std::vector<std::tuple<std::string, std::string, bool, bool>> titles;
+            std::vector<std::tuple<uint8_t, std::string, std::string, bool, bool>> titles;
             titles.reserve(titlesSize);
 
             for (auto i = 0; i < titlesSize; ++i) {
-                msg->getU8(); // title id (server-side identifier)
+                const uint8_t titleId = hasTitleId ? msg->getU8() : static_cast<uint8_t>(i + 1);
                 const auto& titleName = msg->getString();
                 const auto& titleDescription = msg->getString();
                 const bool titlePermanent = static_cast<bool>(msg->getU8());
                 const bool titleUnlocked = static_cast<bool>(msg->getU8());
 
-                titles.emplace_back(titleName, titleDescription, titlePermanent, titleUnlocked);
+                titles.emplace_back(titleId, titleName, titleDescription, titlePermanent, titleUnlocked);
             }
 
             g_lua.callGlobalField("g_game", "onParseCyclopediaCharacterTitles", currentTitle, titles);
