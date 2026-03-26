@@ -164,7 +164,8 @@ Cyclopedia.House.ViewState = Cyclopedia.House.ViewState or {
     sortText = "Sort by name",
     sortType = 1,
     filterMode = "houses",
-    selectedHouseId = nil
+    selectedHouseId = nil,
+    houseZoomById = {}
 }
 Cyclopedia.House.IsRestoringViewState = Cyclopedia.House.IsRestoringViewState or false
 Cyclopedia.House.SuppressSelectionPersist = Cyclopedia.House.SuppressSelectionPersist or false
@@ -172,10 +173,12 @@ Cyclopedia.House.SuppressSelectionPersist = Cyclopedia.House.SuppressSelectionPe
 local HOUSE_LUA_LOG_TAG = "[cyclopedia-houses-lua]"
 local HOUSE_LUA_LOG_ENABLED = false
 local HOUSE_VIEWSTATE_LOG_TAG = "[cyclopedia-houses-viewstate]"
-local HOUSE_VIEWSTATE_LOG_ENABLED = true
+local HOUSE_VIEWSTATE_LOG_ENABLED = false
 local HOUSE_METADATA_WARNED = false
-local HOUSE_MINIMAP_MIN_ZOOM = -4
-local HOUSE_MINIMAP_MAX_ZOOM = 4
+local HOUSE_MINIMAP_MIN_ZOOM = 1
+local HOUSE_MINIMAP_MAX_ZOOM = 3
+local HOUSE_ZOOM_LOG_TAG = "[cyclopedia-houses-zoom]"
+local HOUSE_ZOOM_LOG_ENABLED = true
 local HOUSE_MARK_ICON = "/game_cyclopedia/images/icon-map-house"
 local HOUSE_MINIMAP_SAMPLE_RADIUS = 4
 local HOUSE_MINIMAP_MIN_KNOWN_TILES = 14
@@ -189,6 +192,77 @@ local houseMapZoomInButton = nil
 local houseMapZoomOutButton = nil
 local houseMinimapCenterPos = nil
 local houseMapUnknownLabel = nil
+
+local function houseZoomLog(message, ...)
+    if not HOUSE_ZOOM_LOG_ENABLED then
+        return
+    end
+
+    local text = message
+    if select("#", ...) > 0 then
+        text = string.format(message, ...)
+    end
+    g_logger.info(HOUSE_ZOOM_LOG_TAG .. " " .. text)
+end
+
+local function clampZoomValue(value, minZoom, maxZoom)
+    local zoom = tonumber(value) or 0
+    if zoom < minZoom then
+        return minZoom
+    end
+    if zoom > maxZoom then
+        return maxZoom
+    end
+    return math.floor(zoom)
+end
+
+local function getHouseZoomProfile(sqm)
+    local minZoom = HOUSE_MINIMAP_MIN_ZOOM
+    local maxZoom = HOUSE_MINIMAP_MAX_ZOOM
+    local defaultZoom = 1
+
+    defaultZoom = clampZoomValue(defaultZoom, minZoom, maxZoom)
+    return {
+        minZoom = minZoom,
+        maxZoom = maxZoom,
+        defaultZoom = defaultZoom
+    }
+end
+
+local function getSavedHouseZoom(houseId)
+    local state = Cyclopedia.House.ViewState or {}
+    state.houseZoomById = state.houseZoomById or {}
+    if not houseId then
+        return nil
+    end
+    return state.houseZoomById[houseId]
+end
+
+local function saveHouseZoom(houseId, zoom)
+    if not houseId then
+        return
+    end
+    Cyclopedia.House.ViewState = Cyclopedia.House.ViewState or {}
+    Cyclopedia.House.ViewState.houseZoomById = Cyclopedia.House.ViewState.houseZoomById or {}
+    Cyclopedia.House.ViewState.houseZoomById[houseId] = zoom
+end
+
+local function applyHouseMinimapZoom(data, minimap)
+    if not data or not minimap then
+        return
+    end
+
+    local profile = getHouseZoomProfile(data.sqm)
+    local savedZoom = getSavedHouseZoom(data.id)
+    local appliedZoom = clampZoomValue(savedZoom ~= nil and savedZoom or profile.defaultZoom, profile.minZoom, profile.maxZoom)
+
+    minimap:setMixZoom(profile.minZoom)
+    minimap:setMaxZoom(profile.maxZoom)
+    minimap:setZoom(appliedZoom)
+
+    houseZoomLog("houseId=%s sqm=%s range=[%d..%d] default=%d applied=%d saved=%s", tostring(data.id), tostring(data.sqm),
+        profile.minZoom, profile.maxZoom, profile.defaultZoom, appliedZoom, tostring(savedZoom))
+end
 
 houseViewStateLog = function(message, ...)
     if not HOUSE_VIEWSTATE_LOG_ENABLED then
@@ -319,6 +393,22 @@ local function createHouseMinimapControls()
         return
     end
 
+    if houseMapCenterButton and houseMapCenterButton:isDestroyed() then
+        houseMapCenterButton = nil
+    end
+    if houseMapMarkButton and houseMapMarkButton:isDestroyed() then
+        houseMapMarkButton = nil
+    end
+    if houseMapZoomInButton and houseMapZoomInButton:isDestroyed() then
+        houseMapZoomInButton = nil
+    end
+    if houseMapZoomOutButton and houseMapZoomOutButton:isDestroyed() then
+        houseMapZoomOutButton = nil
+    end
+    if houseMapUnknownLabel and houseMapUnknownLabel:isDestroyed() then
+        houseMapUnknownLabel = nil
+    end
+
     if not houseMapCenterButton then
         houseMapCenterButton = g_ui.createWidget("Button", UI.LateralBase)
         houseMapCenterButton:setId("houseMapCenterButton")
@@ -387,6 +477,10 @@ ensureHouseMinimap = function()
         return nil
     end
 
+    if houseMinimap and houseMinimap:isDestroyed() then
+        houseMinimap = nil
+    end
+
     if houseMinimap and not houseMinimap:isDestroyed() then
         return houseMinimap
     end
@@ -443,27 +537,61 @@ ensureHouseMinimap = function()
 
             local pos = { x = data.entryx, y = data.entryy, z = data.entryz }
             local description = data.name and data.name ~= "" and data.name or string.format("House %d", data.id or 0)
-            local existing = minimapUi:getFlag(pos)
-            if existing then
-                minimapUi:removeFlag(pos)
+
+            local function findFlagByDescription(minimap, targetDescription)
+                if not minimap or not minimap.flags or not targetDescription then
+                    return nil
+                end
+
+                local normalized = targetDescription:lower()
+                for _, flag in pairs(minimap.flags) do
+                    if type(flag.description) == "string" and flag.description:lower() == normalized then
+                        return flag
+                    end
+                end
+                return nil
             end
-            minimapUi:addFlag(pos, HOUSE_MARK_ICON, description, false)
+
+            local function ensureHouseMark(minimap, markPos, markDescription)
+                if not minimap then
+                    return false, "minimap unavailable"
+                end
+
+                local byPos = minimap:getFlag(markPos)
+                if byPos and byPos.icon == HOUSE_MARK_ICON and byPos.description == markDescription then
+                    return false, "already exists at this position"
+                end
+
+                local byName = findFlagByDescription(minimap, markDescription)
+                if byName and byName.pos and (byName.pos.x ~= markPos.x or byName.pos.y ~= markPos.y or byName.pos.z ~= markPos.z) then
+                    minimap:removeFlag(byName.pos)
+                end
+
+                if byPos then
+                    minimap:removeFlag(markPos)
+                end
+
+                minimap:addFlag(markPos, HOUSE_MARK_ICON, markDescription, false)
+                return true, "created"
+            end
+
+            local createdMain = ensureHouseMark(minimapUi, pos, description)
 
             if Cyclopedia and type(Cyclopedia.getMapMinimap) == "function" then
                 local cyclopediaMapMinimap = Cyclopedia.getMapMinimap()
                 if cyclopediaMapMinimap then
-                    local mapExisting = cyclopediaMapMinimap:getFlag(pos)
-                    if mapExisting then
-                        cyclopediaMapMinimap:removeFlag(pos)
-                    end
-                    cyclopediaMapMinimap:addFlag(pos, HOUSE_MARK_ICON, description, false)
+                    ensureHouseMark(cyclopediaMapMinimap, pos, description)
                     if type(Cyclopedia.applyMapFlagFilters) == "function" then
                         Cyclopedia.applyMapFlagFilters()
                     end
                 end
             end
 
-            displayInfoBox("House Mark", string.format("Map marker added: %s", description))
+            if createdMain then
+                displayInfoBox("House Mark", string.format("Map marker added: %s", description))
+            else
+                displayInfoBox("House Mark", string.format("Map marker already exists: %s", description))
+            end
         end
     end
 
@@ -471,6 +599,13 @@ ensureHouseMinimap = function()
         houseMapZoomInButton.onClick = function()
             if houseMinimap then
                 houseMinimap:zoomIn()
+                local selected = Cyclopedia.House and Cyclopedia.House.lastSelectedHouse
+                local data = selected and selected.data or nil
+                if data and houseMinimap.getZoom then
+                    local currentZoom = houseMinimap:getZoom()
+                    saveHouseZoom(data.id, currentZoom)
+                    houseZoomLog("zoomIn houseId=%s currentZoom=%s", tostring(data.id), tostring(currentZoom))
+                end
             end
         end
     end
@@ -479,6 +614,13 @@ ensureHouseMinimap = function()
         houseMapZoomOutButton.onClick = function()
             if houseMinimap then
                 houseMinimap:zoomOut()
+                local selected = Cyclopedia.House and Cyclopedia.House.lastSelectedHouse
+                local data = selected and selected.data or nil
+                if data and houseMinimap.getZoom then
+                    local currentZoom = houseMinimap:getZoom()
+                    saveHouseZoom(data.id, currentZoom)
+                    houseZoomLog("zoomOut houseId=%s currentZoom=%s", tostring(data.id), tostring(currentZoom))
+                end
             end
         end
     end
@@ -533,6 +675,7 @@ local function updateHousePreview(data)
         local centerPos = { x = data.entryx, y = data.entryy, z = data.entryz }
         houseMinimapCenterPos = centerPos
         minimap:setVisible(true)
+        applyHouseMinimapZoom(data, minimap)
         minimap:setCameraPosition(centerPos)
         minimap:setCrossPosition(centerPos)
         UI.LateralBase.MapViewbase.noHouse:setVisible(false)
