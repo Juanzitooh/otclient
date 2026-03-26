@@ -5335,14 +5335,23 @@ void ProtocolGame::parseCyclopediaCharacterInfo(const InputMessagePtr& msg)
         }
         case Otc::CYCLOPEDIA_CHARACTERINFO_TITLES:
         {
-            msg->getU8(); // current title
+            const uint8_t currentTitle = msg->getU8();
             const uint8_t titlesSize = msg->getU8();
+
+            std::vector<std::tuple<std::string, std::string, bool, bool>> titles;
+            titles.reserve(titlesSize);
+
             for (auto i = 0; i < titlesSize; ++i) {
-                msg->getString(); // title name
-                msg->getString(); // title description
-                msg->getU8(); // bool title permanent
-                msg->getU8(); // bool title unlocked
+                msg->getU8(); // title id (server-side identifier)
+                const auto& titleName = msg->getString();
+                const auto& titleDescription = msg->getString();
+                const bool titlePermanent = static_cast<bool>(msg->getU8());
+                const bool titleUnlocked = static_cast<bool>(msg->getU8());
+
+                titles.emplace_back(titleName, titleDescription, titlePermanent, titleUnlocked);
             }
+
+            g_lua.callGlobalField("g_game", "onParseCyclopediaCharacterTitles", currentTitle, titles);
             break;
         }
         case Otc::CYCLOPEDIA_CHARACTERINFO_OFFENCESTATS:
