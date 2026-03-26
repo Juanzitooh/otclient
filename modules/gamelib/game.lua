@@ -127,37 +127,130 @@ local function normalizePositiveNumber(value)
     return math.floor(value)
 end
 
+local HOUSE_LUA_LOG_TAG = "[cyclopedia-houses-lua]"
+
+local function houseLuaLog(level, message, ...)
+    local text = message
+    if select("#", ...) > 0 then
+        text = string.format(message, ...)
+    end
+
+    if level == "warning" then
+        g_logger.warning(HOUSE_LUA_LOG_TAG .. " " .. text)
+    elseif level == "error" then
+        g_logger.error(HOUSE_LUA_LOG_TAG .. " " .. text)
+    else
+        g_logger.info(HOUSE_LUA_LOG_TAG .. " " .. text)
+    end
+end
+
+local function houseAuctionTypeName(auctionType)
+    if auctionType == CyclopediaHouseAuctionTypes.Show then
+        return "Show"
+    elseif auctionType == CyclopediaHouseAuctionTypes.Bid then
+        return "Bid"
+    elseif auctionType == CyclopediaHouseAuctionTypes.MoveOut then
+        return "MoveOut"
+    elseif auctionType == CyclopediaHouseAuctionTypes.Transfer then
+        return "Transfer"
+    elseif auctionType == CyclopediaHouseAuctionTypes.CancelMoveOut then
+        return "CancelMoveOut"
+    elseif auctionType == CyclopediaHouseAuctionTypes.CancelTransfer then
+        return "CancelTransfer"
+    elseif auctionType == CyclopediaHouseAuctionTypes.AcceptTransfer then
+        return "AcceptTransfer"
+    elseif auctionType == CyclopediaHouseAuctionTypes.RejectTransfer then
+        return "RejectTransfer"
+    end
+
+    return string.format("Unknown(%s)", tostring(auctionType))
+end
+
 function g_game.requestShowHouses(townName)
-    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.Show, 0, 0, 0, townName or "")
+    local normalizedTownName = townName or ""
+    houseLuaLog("info", "TX action=%s houseId=0 timestamp=0 bidValue=0 town=\"%s\"",
+        houseAuctionTypeName(CyclopediaHouseAuctionTypes.Show), normalizedTownName)
+    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.Show, 0, 0, 0, normalizedTownName)
 end
 
 function g_game.requestBidHouse(houseId, bidValue)
-    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.Bid, normalizePositiveNumber(houseId), 0,
-        normalizePositiveNumber(bidValue), "")
+    local normalizedHouseId = normalizePositiveNumber(houseId)
+    local normalizedBid = normalizePositiveNumber(bidValue)
+    if normalizedHouseId == 0 or normalizedBid == 0 then
+        houseLuaLog("warning", "Bid request with low payload houseId=%s bidValue=%s (normalized to %d/%d)",
+            tostring(houseId), tostring(bidValue), normalizedHouseId, normalizedBid)
+    end
+    houseLuaLog("info", "TX action=%s houseId=%d timestamp=0 bidValue=%d",
+        houseAuctionTypeName(CyclopediaHouseAuctionTypes.Bid), normalizedHouseId, normalizedBid)
+    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.Bid, normalizedHouseId, 0, normalizedBid, "")
 end
 
 function g_game.requestMoveOutHouse(houseId, timestamp)
-    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.MoveOut, normalizePositiveNumber(houseId),
-        normalizePositiveNumber(timestamp), 0, "")
+    local normalizedHouseId = normalizePositiveNumber(houseId)
+    local normalizedTimestamp = normalizePositiveNumber(timestamp)
+    if normalizedHouseId == 0 or normalizedTimestamp == 0 then
+        houseLuaLog("warning", "MoveOut request with low payload houseId=%s timestamp=%s (normalized to %d/%d)",
+            tostring(houseId), tostring(timestamp), normalizedHouseId, normalizedTimestamp)
+    end
+    houseLuaLog("info", "TX action=%s houseId=%d timestamp=%d bidValue=0",
+        houseAuctionTypeName(CyclopediaHouseAuctionTypes.MoveOut), normalizedHouseId, normalizedTimestamp)
+    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.MoveOut, normalizedHouseId, normalizedTimestamp, 0, "")
 end
 
 function g_game.requestTransferHouse(houseId, timestamp, newOwner, bidValue)
-    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.Transfer, normalizePositiveNumber(houseId),
-        normalizePositiveNumber(timestamp), normalizePositiveNumber(bidValue), newOwner or "")
+    local normalizedHouseId = normalizePositiveNumber(houseId)
+    local normalizedTimestamp = normalizePositiveNumber(timestamp)
+    local normalizedBid = normalizePositiveNumber(bidValue)
+    local normalizedOwner = newOwner or ""
+    if normalizedHouseId == 0 or normalizedTimestamp == 0 or normalizedOwner == "" then
+        houseLuaLog("warning",
+            "Transfer request with low payload houseId=%s timestamp=%s owner=\"%s\" bidValue=%s (normalized to %d/%d/%s/%d)",
+            tostring(houseId), tostring(timestamp), tostring(newOwner), tostring(bidValue), normalizedHouseId, normalizedTimestamp,
+            normalizedOwner == "" and "<empty>" or normalizedOwner, normalizedBid)
+    end
+    houseLuaLog("info", "TX action=%s houseId=%d timestamp=%d bidValue=%d owner=\"%s\"",
+        houseAuctionTypeName(CyclopediaHouseAuctionTypes.Transfer), normalizedHouseId, normalizedTimestamp, normalizedBid,
+        normalizedOwner)
+    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.Transfer, normalizedHouseId, normalizedTimestamp,
+        normalizedBid, normalizedOwner)
 end
 
 function g_game.requestCancelMoveOutHouse(houseId)
-    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.CancelMoveOut, normalizePositiveNumber(houseId), 0, 0, "")
+    local normalizedHouseId = normalizePositiveNumber(houseId)
+    if normalizedHouseId == 0 then
+        houseLuaLog("warning", "CancelMoveOut request with invalid houseId=%s", tostring(houseId))
+    end
+    houseLuaLog("info", "TX action=%s houseId=%d", houseAuctionTypeName(CyclopediaHouseAuctionTypes.CancelMoveOut),
+        normalizedHouseId)
+    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.CancelMoveOut, normalizedHouseId, 0, 0, "")
 end
 
 function g_game.requestCancelHouseTransfer(houseId)
-    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.CancelTransfer, normalizePositiveNumber(houseId), 0, 0, "")
+    local normalizedHouseId = normalizePositiveNumber(houseId)
+    if normalizedHouseId == 0 then
+        houseLuaLog("warning", "CancelTransfer request with invalid houseId=%s", tostring(houseId))
+    end
+    houseLuaLog("info", "TX action=%s houseId=%d", houseAuctionTypeName(CyclopediaHouseAuctionTypes.CancelTransfer),
+        normalizedHouseId)
+    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.CancelTransfer, normalizedHouseId, 0, 0, "")
 end
 
 function g_game.requestAcceptHouseTransfer(houseId)
-    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.AcceptTransfer, normalizePositiveNumber(houseId), 0, 0, "")
+    local normalizedHouseId = normalizePositiveNumber(houseId)
+    if normalizedHouseId == 0 then
+        houseLuaLog("warning", "AcceptTransfer request with invalid houseId=%s", tostring(houseId))
+    end
+    houseLuaLog("info", "TX action=%s houseId=%d", houseAuctionTypeName(CyclopediaHouseAuctionTypes.AcceptTransfer),
+        normalizedHouseId)
+    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.AcceptTransfer, normalizedHouseId, 0, 0, "")
 end
 
 function g_game.requestRejectHouseTransfer(houseId)
-    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.RejectTransfer, normalizePositiveNumber(houseId), 0, 0, "")
+    local normalizedHouseId = normalizePositiveNumber(houseId)
+    if normalizedHouseId == 0 then
+        houseLuaLog("warning", "RejectTransfer request with invalid houseId=%s", tostring(houseId))
+    end
+    houseLuaLog("info", "TX action=%s houseId=%d", houseAuctionTypeName(CyclopediaHouseAuctionTypes.RejectTransfer),
+        normalizedHouseId)
+    g_game.sendCyclopediaHouseAuction(CyclopediaHouseAuctionTypes.RejectTransfer, normalizedHouseId, 0, 0, "")
 end

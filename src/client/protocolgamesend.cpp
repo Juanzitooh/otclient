@@ -1132,40 +1132,96 @@ void ProtocolGame::sendCyclopediaRequestCharacterInfo(const uint32_t playerId, c
 
 void ProtocolGame::sendCyclopediaHouseAuction(const Otc::CyclopediaHouseAuctionType_t type, const uint32_t houseId, const uint32_t timestamp, const uint64_t bidValue, const std::string_view name)
 {
+    constexpr std::string_view kCyclopediaHousesSourceTag = "Cyclopedia-houses-source";
+    const auto auctionTypeName = [](const Otc::CyclopediaHouseAuctionType_t auctionType) -> std::string_view {
+        switch (auctionType) {
+            case Otc::CYCLOPEDIA_HOUSE_TYPE_NONE:
+                return "Show";
+            case Otc::CYCLOPEDIA_HOUSE_TYPE_BID:
+                return "Bid";
+            case Otc::CYCLOPEDIA_HOUSE_TYPE_MOVEOUT:
+                return "MoveOut";
+            case Otc::CYCLOPEDIA_HOUSE_TYPE_TRANSFER:
+                return "Transfer";
+            case Otc::CYCLOPEDIA_HOUSE_TYPE_CANCEL_MOVEOUT:
+                return "CancelMoveOut";
+            case Otc::CYCLOPEDIA_HOUSE_TYPE_CANCEL_TRANSFER:
+                return "CancelTransfer";
+            case Otc::CYCLOPEDIA_HOUSE_TYPE_ACCEPT_TRANSFER:
+                return "AcceptTransfer";
+            case Otc::CYCLOPEDIA_HOUSE_TYPE_REFECT_TRANSFER:
+                return "RejectTransfer";
+            default:
+                return "Unknown";
+        }
+    };
+
+    g_logger.info("[{}][TX] sendCyclopediaHouseAuction action={}({}) houseId={} timestamp={} bidValue={} name='{}'",
+                  kCyclopediaHousesSourceTag, auctionTypeName(type), static_cast<uint8_t>(type), houseId, timestamp, bidValue, name);
+
     const auto& msg = std::make_shared<OutputMessage>();
     msg->addU8(Proto::ClientCyclopediaHouseAuction);
     msg->addU8(type);
 
     switch (type) {
         case Otc::CYCLOPEDIA_HOUSE_TYPE_NONE:
+            if (name.empty()) {
+                g_logger.info("[{}][TX] Show houses request with empty town name (own houses scope).", kCyclopediaHousesSourceTag);
+            }
             msg->addString(name); // townName
             break;
         case Otc::CYCLOPEDIA_HOUSE_TYPE_BID:
+            if (houseId == 0 || bidValue == 0) {
+                g_logger.warning("[{}][TX] Bid request with suspicious payload houseId={} bidValue={}", kCyclopediaHousesSourceTag, houseId, bidValue);
+            }
             msg->addU32(houseId);
             msg->addU64(bidValue);
             break;
         case Otc::CYCLOPEDIA_HOUSE_TYPE_MOVEOUT:
+            if (houseId == 0 || timestamp == 0) {
+                g_logger.warning("[{}][TX] MoveOut request with suspicious payload houseId={} timestamp={}", kCyclopediaHousesSourceTag, houseId, timestamp);
+            }
             msg->addU32(houseId);
             msg->addU32(timestamp);
             break;
         case Otc::CYCLOPEDIA_HOUSE_TYPE_TRANSFER:
+            if (houseId == 0 || timestamp == 0 || name.empty()) {
+                g_logger.warning("[{}][TX] Transfer request with suspicious payload houseId={} timestamp={} bidValue={} owner='{}'",
+                                 kCyclopediaHousesSourceTag, houseId, timestamp, bidValue, name);
+            }
             msg->addU32(houseId);
             msg->addU32(timestamp);
             msg->addString(name); // newOwner
             msg->addU64(bidValue);
             break;
         case Otc::CYCLOPEDIA_HOUSE_TYPE_CANCEL_MOVEOUT:
+            if (houseId == 0) {
+                g_logger.warning("[{}][TX] CancelMoveOut request with suspicious payload houseId={}", kCyclopediaHousesSourceTag, houseId);
+            }
             msg->addU32(houseId);
             break;
         case Otc::CYCLOPEDIA_HOUSE_TYPE_CANCEL_TRANSFER:
+            if (houseId == 0) {
+                g_logger.warning("[{}][TX] CancelTransfer request with suspicious payload houseId={}", kCyclopediaHousesSourceTag, houseId);
+            }
             msg->addU32(houseId);
             break;
         case Otc::CYCLOPEDIA_HOUSE_TYPE_ACCEPT_TRANSFER:
+            if (houseId == 0) {
+                g_logger.warning("[{}][TX] AcceptTransfer request with suspicious payload houseId={}", kCyclopediaHousesSourceTag, houseId);
+            }
             msg->addU32(houseId);
             break;
         case Otc::CYCLOPEDIA_HOUSE_TYPE_REFECT_TRANSFER:
+            if (houseId == 0) {
+                g_logger.warning("[{}][TX] RejectTransfer request with suspicious payload houseId={}", kCyclopediaHousesSourceTag, houseId);
+            }
             msg->addU32(houseId);
             break;
+        default:
+            g_logger.error("[{}][TX] Unsupported house auction type={} - dropping packet", kCyclopediaHousesSourceTag,
+                           static_cast<uint8_t>(type));
+            return;
     }
 
     send(msg);
