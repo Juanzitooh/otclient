@@ -1780,14 +1780,61 @@ UIWidget
     anchors.right: parent.right
     margin-left: 10
     visible: false
-
+    UIWidget
+      id: filters
+      height: 22
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      image-source: /images/ui/2pixel_up_frame_borderimage
+      image-border: 5
+      CheckBoxCircle
+        id: UnlockedOnly
+        width: 120
+        text: Unlocked only
+        color: #C0C0C0
+        text-offset: 15 0
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.left: parent.left
+        margin-left: 6
+        @onCheckChange: modules.game_cyclopedia.Cyclopedia.characterTitlesToggleUnlocked(self)
+      TextEdit
+        id: SearchEdit
+        size: 180 16
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.right: parent.right
+        margin-right: 7
+        padding-top: 2
+        padding-right: 15
+        padding-bottom: 0
+        placeholder: Search title/description
+        placeholder-color: #6E706F
+        @onTextChange: modules.game_cyclopedia.Cyclopedia.characterTitlesSearch(self:getText())
+    BorderBox
+      id: ListBase
+      anchors.top: filters.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      margin-top: 4
+      margin-bottom: 10
+      UIScrollArea
+        id: List
+        vertical-scrollbar: ListScrollbar
+        anchors.fill: parent
+        margin: 1
+        margin-right: 15
+        background-color: #404040
+        layout:
+          type: verticalBox
+          spacing: 1
       VerticalScrollBar
         id: ListScrollbar
         anchors.top: List.top
         anchors.right: List.right
         anchors.bottom: List.bottom
         margin: 1
-
+        margin-right: -13
         step: 80
         pixel-scroll: true
 
