@@ -2,6 +2,7 @@ local characterPanel = nil
 local UI = nil
 local characterTitlesCache = {}
 local characterTitlesCurrentTitle = 0
+local CHARACTER_APPEARANCES_ANIMATED_PREVIEW = false
 
 local function getCharacterViewState()
     local defaults = {
@@ -128,7 +129,7 @@ local function reset()
         Cyclopedia.characterButton(characterPanel.InfoBase.CharacterButton)
     end
 
-    Cyclopedia.selectCharacterPage()
+    Cyclopedia.selectCharacterPage(false)
     characterPanel.openedCategory = nil
 end
 
@@ -283,7 +284,9 @@ function Cyclopedia.reloadCharacterAppearances()
             local widget = g_ui.createWidget("CharacterAppearance", UI.CharacterAppearances.ListBase.list)
             widget.name:setText(data.name)
             widget.creature:setOutfit(data.outfit)
-            widget.creature:getCreature():setStaticWalking(1000)
+            if CHARACTER_APPEARANCES_ANIMATED_PREVIEW then
+                widget.creature:getCreature():setStaticWalking(1000)
+            end
         end
     end
 end
@@ -1258,7 +1261,7 @@ function Cyclopedia.onSkillChange(localPlayer, id, level, percent)
     Cyclopedia.onBaseCharacterSkillChange(localPlayer, id, localPlayer:getSkillBaseLevel(id))
 end
 
-function Cyclopedia.selectCharacterPage()
+function Cyclopedia.selectCharacterPage(persistViewState)
     local selectedOption = UI.selectedOption
     if UI[selectedOption] then
         UI[selectedOption]:setVisible(false)
@@ -1272,7 +1275,9 @@ function Cyclopedia.selectCharacterPage()
     end
 
     UI.selectedOption = "InfoBase"
-    saveCharacterViewState({ selectedOption = "InfoBase" })
+    if persistViewState ~= false then
+        saveCharacterViewState({ selectedOption = "InfoBase" })
+    end
 end
 
 function Cyclopedia.closeCharacterButtons()
