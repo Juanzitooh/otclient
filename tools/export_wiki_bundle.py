@@ -64,8 +64,12 @@ def main() -> int:
     wiki_text = wiki_path.read_text(encoding="utf-8")
     raw_paths = parse_paths(wiki_text)
 
-    # Sempre inclui a wiki encontrada e o AGENTS global.
-    paths = [wiki_path.relative_to(repo_root).as_posix(), "AGENTS.global.md"] + raw_paths
+    # Sempre inclui a wiki encontrada, AGENTS global e o proprio script de export.
+    paths = [
+        wiki_path.relative_to(repo_root).as_posix(),
+        "AGENTS.global.md",
+        "tools/export_wiki_bundle.py",
+    ] + raw_paths
 
     # Dedup preservando ordem
     seen = set()
