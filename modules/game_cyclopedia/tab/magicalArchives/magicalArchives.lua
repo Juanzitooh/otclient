@@ -3,6 +3,58 @@ local currentSpell = nil
 local allSpells = {}
 local filteredSpells = {}
 
+local function getMagicalArchivesViewState()
+    local defaults = {
+        selectedTab = "combat",
+        selectedSpellKey = "",
+        searchText = ""
+    }
+
+    if Cyclopedia.getTabState then
+        return Cyclopedia.getTabState("magicalArchives", defaults)
+    end
+
+    return defaults
+end
+
+local function saveMagicalArchivesViewState(statePatch)
+    if Cyclopedia.saveTabState then
+        Cyclopedia.saveTabState("magicalArchives", statePatch)
+    end
+end
+
+local function getSpellStateKey(spell)
+    if not spell then
+        return ""
+    end
+
+    if spell.spellName and spell.spellName ~= "" then
+        return spell.spellName
+    end
+
+    if spell.name and spell.name ~= "" then
+        return spell.name
+    end
+
+    if spell.words and spell.words ~= "" then
+        return spell.words
+    end
+
+    return ""
+end
+
+local function resolveSpellDetailsTab(spell, requestedTab)
+    local tabName = requestedTab or "combat"
+    local isRune = spell and spell.type == "Conjure"
+    if tabName == "rune" and not isRune then
+        tabName = "combat"
+    end
+    if tabName ~= "combat" and tabName ~= "additional" and tabName ~= "rune" then
+        tabName = "combat"
+    end
+    return tabName
+end
+
 -- Filters state
 local filters = {
     charVocationFilter = true,
@@ -198,16 +250,23 @@ selectTab = function(tabName)
     if additionalContent then additionalContent:setVisible(false) end
     if runeSpellContent then runeSpellContent:setVisible(false) end
     
-    if tabName == 'combat' then
+    local activeTab = tabName
+    if activeTab ~= "combat" and activeTab ~= "additional" and activeTab ~= "rune" then
+        activeTab = "combat"
+    end
+
+    if activeTab == 'combat' then
         if combatStatsTab then combatStatsTab:setChecked(true) end
         if combatStatsContent then combatStatsContent:setVisible(true) end
-    elseif tabName == 'additional' then
+    elseif activeTab == 'additional' then
         if additionalTab then additionalTab:setChecked(true) end
         if additionalContent then additionalContent:setVisible(true) end
-    elseif tabName == 'rune' then
+    elseif activeTab == 'rune' then
         if runeSpellTab then runeSpellTab:setChecked(true) end
         if runeSpellContent then runeSpellContent:setVisible(true) end
     end
+
+    saveMagicalArchivesViewState({ selectedTab = activeTab })
 end
 
 onAimTargetChange = function(checkbox)
@@ -760,14 +819,24 @@ end
 function setupSearchUI()
     local searchEdit = UI:recursiveGetChildById('searchEdit')
     if not searchEdit then return end
+
+    local viewState = getMagicalArchivesViewState()
+    if searchEdit:getText() ~= (viewState.searchText or "") then
+        searchEdit:setText(viewState.searchText or "")
+    end
     
     searchEdit.onTextChange = function(self, text)
+        saveMagicalArchivesViewState({ searchText = text or "" })
         if text and text ~= '' then
             searchSpells(text)
         else
             -- When search is cleared, re-apply all filters
             applyAllFilters()
         end
+    end
+
+    if viewState.searchText and viewState.searchText ~= "" then
+        searchSpells(viewState.searchText)
     end
 end
 
@@ -804,6 +873,10 @@ function updateSpellListUI()
     
     local player = g_game.getLocalPlayer()
     local playerLevel = player and player:getLevel() or 1
+    local viewState = getMagicalArchivesViewState()
+    local selectedSpellKey = viewState.selectedSpellKey or ""
+    local firstWidget = nil
+    local selectedWidget = nil
     
     for i, spell in ipairs(filteredSpells) do
         local widget = g_ui.createWidget('SpellListItem', spellList)
@@ -841,6 +914,12 @@ function updateSpellListUI()
             
             widget.spell = spell
             widget:setFocusable(true)
+            if not firstWidget then
+                firstWidget = widget
+            end
+            if selectedSpellKey ~= "" and getSpellStateKey(spell) == selectedSpellKey then
+                selectedWidget = widget
+            end
             
             widget.onFocusChange = function(self, focused)
                 if focused then
@@ -851,10 +930,17 @@ function updateSpellListUI()
     end
     
     if #filteredSpells == 0 then
+        currentSpell = nil
         local emptyLabel = g_ui.createWidget('Label', spellList)
         emptyLabel:setText(tr('No spells found'))
         emptyLabel:setColor('#909090')
         emptyLabel:setTextAlign(AlignCenter)
+    elseif selectedWidget then
+        selectedWidget:focus()
+        selectSpellDetails(selectedWidget.spell)
+    elseif firstWidget then
+        firstWidget:focus()
+        selectSpellDetails(firstWidget.spell)
     end
 end
 
@@ -919,6 +1005,7 @@ end
 
 function selectSpellDetails(spell)
     currentSpell = spell
+    saveMagicalArchivesViewState({ selectedSpellKey = getSpellStateKey(spell) })
     
     local emptyState = UI:recursiveGetChildById('emptyState')
     local spellDetails = UI:recursiveGetChildById('spellDetails')
@@ -994,8 +1081,9 @@ function selectSpellDetails(spell)
         end
     end
     
-    -- Select combat stats tab by default
-    selectTab('combat')
+    local viewState = getMagicalArchivesViewState()
+    local selectedTab = resolveSpellDetailsTab(spell, viewState.selectedTab)
+    selectTab(selectedTab)
 end
 
 function updateCombatStatsUI(spell)
