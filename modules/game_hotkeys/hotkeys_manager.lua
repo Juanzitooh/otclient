@@ -661,7 +661,7 @@ function executeHotkeyItem(action, itemId, subType)
                 g_game.useWith(item, useThing)
             end
         else
-            g_game.useInventoryItemWith(itemId, useThing, subType or -1)
+            g_game.useInventoryItemWith(itemId, useThing)
         end
     end
 end
