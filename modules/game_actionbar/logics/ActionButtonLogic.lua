@@ -230,26 +230,25 @@ local function use_item_at_cursor_position(button)
         return false
     end
 
+    local subType = button.item:getItemSubType() or -1
     local function safeStartUseWith()
-        modules.game_interface.startUseWith(item, button.item:getItemSubType() or -1)
+        modules.game_interface.startUseWith(item, subType)
+        return false
     end
 
     local mapPanel = modules.game_interface and modules.game_interface.getMapPanel and modules.game_interface.getMapPanel()
     if not mapPanel then
-        safeStartUseWith()
-        return false
+        return safeStartUseWith()
     end
 
     local mousePosition = g_window.getMousePosition()
     if not mapPanel:containsPoint(mousePosition) then
-        safeStartUseWith()
-        return false
+        return safeStartUseWith()
     end
 
     local mapPosition = mapPanel:getPosition(mousePosition)
     if not mapPosition then
-        safeStartUseWith()
-        return false
+        return safeStartUseWith()
     end
 
     local localPlayer = g_game.getLocalPlayer()
@@ -262,8 +261,7 @@ local function use_item_at_cursor_position(button)
 
     local tile = g_map.getTile(mapPosition)
     if not tile then
-        safeStartUseWith()
-        return false
+        return safeStartUseWith()
     end
 
     local useThing = nil
@@ -274,11 +272,10 @@ local function use_item_at_cursor_position(button)
     end
 
     if not useThing then
-        safeStartUseWith()
-        return false
+        return safeStartUseWith()
     end
 
-    g_game.useWith(item, useThing, button.item:getItemSubType() or -1)
+    g_game.useWith(item, useThing, subType)
     return true
 end
 -- /*=============================================
