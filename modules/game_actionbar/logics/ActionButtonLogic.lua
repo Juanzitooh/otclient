@@ -216,13 +216,7 @@ local function executeSpecialAction(specialActionId)
     elseif specialActionId == "attackPrevious" then
         modules.game_battle.attackNext(true)
     elseif specialActionId == "toggleChase" then
-        if g_game.getChaseMode and DontChase and ChaseOpponent then
-            local currentMode = g_game.getChaseMode()
-            local nextMode = currentMode == ChaseOpponent and DontChase or ChaseOpponent
-            g_game.setChaseMode(nextMode)
-        else
-            g_game.setChaseMode(ChaseOpponent)
-        end
+        modules.game_hotkeys.toggleChaseMode()
     end
 end
 

@@ -520,7 +520,7 @@ function doKeyCombo(keyCombo)
         elseif hotKey.action == HOTKEY_ACTION_ATTACK_PREV then
             modules.game_battle.attackNext(true)
         elseif hotKey.action == HOTKEY_ACTION_TOGGLE_CHASE then
-            g_game.setChaseMode(ChaseOpponent)
+            toggleChaseMode()
         end
 
     elseif hotKey.itemId == nil then
@@ -540,6 +540,12 @@ function doKeyCombo(keyCombo)
     else
         executeHotkeyItem(hotKey.useType, hotKey.itemId, hotKey.subType)
     end
+end
+
+function toggleChaseMode()
+    local currentMode = g_game.getChaseMode()
+    local nextMode = currentMode == ChaseOpponent and DontChase or ChaseOpponent
+    g_game.setChaseMode(nextMode)
 end
 
 function executeHotkeyItem(action, itemId, subType)
