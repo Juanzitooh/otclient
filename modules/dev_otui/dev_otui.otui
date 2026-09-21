@@ -1,3 +1,125 @@
+OtuiInspectorLine < UILabel
+  height: 14
+  font: verdana-11px-monochrome
+  color: #d7d7d7
+  background-color: alpha
+  text-offset: 1 0
+  phantom: true
+
+OtuiGlobalInspectorPanel < UIWidget
+  width: 360
+  height: 300
+  padding: 6
+  background-color: #242424ee
+  border-width: 1
+  border-color: #a0a0a0
+  phantom: true
+  focusable: false
+
+  UILabel
+    id: inspectorTitle
+    height: 16
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    font: verdana-11px-monochrome
+    color: #f0d26a
+    text-offset: 1 0
+    phantom: true
+    !text: 'OTUI Inspector'
+
+  UILabel
+    id: inspectorMode
+    height: 14
+    anchors.top: inspectorTitle.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 2
+    font: verdana-11px-monochrome
+    color: #a0d0a0
+    text-offset: 1 0
+    phantom: true
+    !text: 'Hover highlighted in yellow | left click fixes it'
+
+  UILabel
+    id: inspectorHoverTitle
+    height: 12
+    anchors.top: inspectorMode.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 4
+    font: verdana-11px-monochrome
+    color: #f0d26a
+    text-offset: 1 0
+    phantom: true
+    !text: 'HOVER NOW'
+
+  UILabel
+    id: inspectorHoverSummary
+    height: 48
+    anchors.top: inspectorHoverTitle.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 1
+    font: verdana-11px-monochrome
+    color: #d7d7d7
+    text-wrap: true
+    text-offset: 1 0
+    phantom: true
+    !text: 'No widget under cursor.'
+
+  UILabel
+    id: inspectorSelectedTitle
+    height: 12
+    anchors.top: inspectorHoverSummary.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 4
+    font: verdana-11px-monochrome
+    color: #8fe08f
+    text-offset: 1 0
+    phantom: true
+    !text: 'SELECTED WIDGET'
+
+  TextList
+    id: inspectorDetails
+    anchors.top: inspectorSelectedTitle.bottom
+    anchors.left: parent.left
+    anchors.right: inspectorScroll.left
+    anchors.bottom: inspectorStatus.top
+    margin-top: 2
+    margin-right: 4
+    margin-bottom: 4
+    padding: 1
+    focusable: false
+    phantom: false
+    vertical-scrollbar: inspectorScroll
+
+  VerticalScrollBar
+    id: inspectorScroll
+    anchors.top: inspectorSelectedTitle.bottom
+    anchors.right: parent.right
+    anchors.bottom: inspectorStatus.top
+    margin-top: 2
+    margin-bottom: 4
+    step: 14
+    pixels-scroll: true
+    phantom: false
+
+  UILabel
+    id: inspectorStatus
+    height: 26
+    anchors.bottom: parent.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    font: verdana-11px-monochrome
+    color: #dfdf7f
+    text-wrap: true
+    text-align: topLeft
+    text-offset: 1 0
+    phantom: true
+    !text: 'OTUI Inspect mode: ON'
+
 OtuiTreeItem < UILabel
   height: 14
   font: verdana-11px-monochrome
