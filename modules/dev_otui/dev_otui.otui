@@ -42,7 +42,7 @@ OtuiInspectorField < UIWidget
 
 OtuiGlobalInspectorPanel < UIWidget
   width: 400
-  height: 330
+  height: 342
   padding: 8
   image-source: /images/ui/window
   image-border: 6
@@ -92,7 +92,7 @@ OtuiGlobalInspectorPanel < UIWidget
 
   UIWidget
     id: inspectorHoverSummary
-    height: 58
+    height: 70
     anchors.top: inspectorHoverTitle.bottom
     anchors.left: parent.left
     anchors.right: parent.right
