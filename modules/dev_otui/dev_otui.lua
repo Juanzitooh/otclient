@@ -1248,8 +1248,7 @@ end
 local function rebuildInspectorDetails(widget)
   if not inspectDetailsList or inspectDetailsList:isDestroyed() then return end
   updateLuaReferencesButton(widget)
-  local details = widget and buildGlobalInspectorDetails(widget) or ''
-  inspectDetailsText = details ~= '' and details or 'No fixed selection.'
+  inspectDetailsText = widget and 'Selected widget details available.' or 'No fixed selection.'
   inspectDetailsList:destroyChildren()
 
   if not widget then
