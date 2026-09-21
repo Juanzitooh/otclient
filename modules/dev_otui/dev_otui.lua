@@ -1001,13 +1001,15 @@ local function discoverLuaReferences(widget)
   local references = {}
   local dynamicPossible = data.warning ~= 'none'
   local seenFiles = {}
+  local filePriority = {}
   local files = {}
   local moduleDirectory = luaReferenceModuleDirectory(data)
 
-  local function addFiles(candidates)
+  local function addFiles(candidates, priority)
     for _, file in ipairs(candidates) do
       if file ~= '/modules/dev_otui/dev_otui.lua' and not seenFiles[file] then
         seenFiles[file] = true
+        filePriority[file] = priority
         table.insert(files, file)
       end
     end
@@ -1015,13 +1017,16 @@ local function discoverLuaReferences(widget)
 
   -- Search the owning module first so the most relevant source is available
   -- even when a project-wide search has to be expanded afterwards.
-  addFiles(luaReferenceFiles(moduleDirectory))
-  addFiles(luaReferenceFiles('/modules'))
+  addFiles(luaReferenceFiles(moduleDirectory), 1)
+  addFiles(luaReferenceFiles('/modules'), 2)
 
   for _, file in ipairs(files) do
     local found, hasDynamic = scanLuaReferenceFile(file, id, data.className)
     dynamicPossible = dynamicPossible or hasDynamic
-    for _, reference in ipairs(found) do table.insert(references, reference) end
+    for _, reference in ipairs(found) do
+      reference.scope = filePriority[file] == 1 and 'owner module' or 'other modules'
+      table.insert(references, reference)
+    end
   end
 
   local areaOrder = {
@@ -1038,6 +1043,11 @@ local function discoverLuaReferences(widget)
     ['unresolved match'] = 11,
   }
   table.sort(references, function(first, second)
+    local firstFilePriority = filePriority[first.file] or 2
+    local secondFilePriority = filePriority[second.file] or 2
+    if firstFilePriority ~= secondFilePriority then
+      return firstFilePriority < secondFilePriority
+    end
     local firstOrder = areaOrder[first.area] or 99
     local secondOrder = areaOrder[second.area] or 99
     if firstOrder ~= secondOrder then return firstOrder < secondOrder end
@@ -1104,6 +1114,7 @@ local function luaReferencesSection(widget)
     table.insert(lines, 'File: ' .. reference.file)
     table.insert(lines, 'Function: ' .. reference.functionName)
     table.insert(lines, 'Line: ' .. tostring(reference.line))
+    table.insert(lines, 'Scope: ' .. (reference.scope or 'other modules'))
     table.insert(lines, 'Area: ' .. reference.area)
     table.insert(lines, 'Kind: ' .. reference.kind)
     table.insert(lines, 'Confidence: ' .. reference.confidence)
@@ -1346,8 +1357,20 @@ local function populateLuaReferencesWindow(widget, data, result)
 
   local currentFile = nil
   local currentFunction = nil
+  local currentScope = nil
   local currentArea = nil
   for _, reference in ipairs(result.references) do
+    if reference.scope ~= currentScope then
+      currentScope = reference.scope
+      currentArea = nil
+      currentFile = nil
+      currentFunction = nil
+      local scopeLabel = g_ui.createWidget('OtuiLuaReferenceArea', luaReferencesList)
+      scopeLabel:setText(string.upper(reference.scope or 'OTHER MODULES'))
+      scopeLabel:setTooltip(reference.scope == 'owner module' and
+        'References found in the module that owns the selected widget.' or
+        'References found outside the owning module.')
+    end
     if reference.area ~= currentArea then
       currentArea = reference.area
       currentFile = nil
