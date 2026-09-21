@@ -21,8 +21,14 @@ the last widget state so its details and scrollbar remain usable.
   report independently.
 - The selected report is grouped into `IDENTITY`, `LAYOUT`, `STATE` and `SOURCE`
   sections and uses the same framed panel language as the Enter Game screen.
+- With a fixed selection, **Lua References** opens a separate scrollable modal.
+  It searches the owning module first and then the rest of the client modules,
+  grouping matches by Lua file and function with kind, confidence, line and
+  code context. Dynamic or approximate matches are marked `dynamic/unresolved`.
 - Right click copies the short summary.
 - `Shift` + right click copies the detailed report.
+- The detailed report includes a complete `LUA REFERENCES` section, while
+  **Copy References** copies only that section for prompt-driven workflows.
 - `Escape` or `Ctrl+Alt+I` exits Inspect mode.
 
 Inspect mode consumes mouse clicks and does not edit, move, resize, save, or
@@ -145,9 +151,9 @@ In the client terminal (`Ctrl+T`):
 modules.dev_otui.selfTest()
 ```
 
-The self-test also covers runtime summary/detail formatting, missing widgets,
-runtime-only mapping warnings, anchors, margins, and the four-corner panel
-placement contract.
+The self-test also covers runtime summary/detail formatting, Lua reference
+sections, modal style instantiation, missing widgets, runtime-only mapping
+warnings, anchors, margins, and the four-corner panel placement contract.
 
 It asserts, among others: byte-for-byte round-trip, composite blocks such as
 `layout:` not being mistaken for child widgets, edits not touching neighbouring

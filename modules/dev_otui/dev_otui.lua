@@ -18,6 +18,12 @@ local resizeHandle = nil   -- resize handle, bottom-right corner
 local inspectLayer = nil
 local inspectPanel = nil
 local inspectDetailsList = nil
+local luaReferencesWindow = nil
+local luaReferencesList = nil
+local luaReferencesWidget = nil
+local luaReferencesData = nil
+local luaReferencesCacheWidget = nil
+local luaReferencesCache = nil
 local inspectHoverBox = nil
 local inspectSelectionBox = nil
 local inspectMode = false
@@ -69,6 +75,7 @@ local HANDLE_SIZE = 10
 local INSPECTOR_PANEL_WIDTH = 400
 local INSPECTOR_PANEL_HEIGHT = 342
 local INSPECTOR_PANEL_MARGIN = 12
+local LUA_REFERENCE_CONTEXT_LENGTH = 110
 
 -- ============================================================ helpers
 
@@ -547,6 +554,332 @@ local function globalInspectorData(widget)
   }
 end
 
+local function luaPatternEscape(value)
+  return (value:gsub('([%^%$%(%)%%%.%[%]%*%+%-%?])', '%%%1'))
+end
+
+local function luaReferenceFiles(directory)
+  if not directory then return {} end
+
+  local files = {}
+  pcall(function()
+    files = g_resources.listDirectoryFiles(directory, true, false, true)
+  end)
+
+  local result = {}
+  for _, file in ipairs(files) do
+    if file:ends('.lua') then table.insert(result, file) end
+  end
+  table.sort(result)
+  return result
+end
+
+local function luaFunctionName(line)
+  return line:match('^%s*local%s+function%s+([%w_%.:]+)') or
+    line:match('^%s*function%s+([%w_%.:]+)')
+end
+
+local function countLuaTokens(line, token)
+  local count = 0
+  local escaped = luaPatternEscape(token)
+  for _ in line:gmatch('%f[%a]' .. escaped .. '%f[^%a]') do count = count + 1 end
+  return count
+end
+
+local function luaFunctionNames(lines)
+  local names = {}
+  local stack = {}
+  local blockDepth = 0
+
+  for lineNumber, originalLine in ipairs(lines) do
+    local line = originalLine:gsub('%-%-.*', '')
+    local functionName = luaFunctionName(line)
+    names[lineNumber] = functionName or (stack[#stack] and stack[#stack].name) or 'unknown'
+
+    local opens = countLuaTokens(line, 'function') + countLuaTokens(line, 'repeat')
+    if line:match('^%s*if%s+') or line:match('%sif%s+') then
+      opens = opens + countLuaTokens(line, 'then')
+    end
+    opens = opens + countLuaTokens(line, 'do')
+    local closes = countLuaTokens(line, 'end') + countLuaTokens(line, 'until')
+
+    if functionName then
+      table.insert(stack, { name = functionName, depth = blockDepth + 1 })
+    end
+    blockDepth = math.max(0, blockDepth + opens - closes)
+    while stack[#stack] and blockDepth < stack[#stack].depth do
+      table.remove(stack)
+    end
+  end
+
+  return names
+end
+
+local function luaReferenceKind(line)
+  local lower = line:lower()
+  if lower:find('recursivegetchildbyid', 1, true) or lower:find('getchildbyid', 1, true) then
+    return 'lookup'
+  end
+  if lower:find('createwidget', 1, true) or lower:find('setid', 1, true) then
+    return 'creation'
+  end
+  if lower:find('settext', 1, true) or lower:find('sethtml', 1, true) then
+    return 'text'
+  end
+  if lower:find('setvisible', 1, true) or lower:match('%.show%s*%(') or
+      lower:match('%.hide%s*%(') then
+    return 'visibility'
+  end
+  if lower:find('setenabled', 1, true) or lower:match('%.enable%s*%(') or
+      lower:match('%.disable%s*%(') then
+    return 'enabled/state'
+  end
+  if lower:find('setchecked', 1, true) or lower:find('seton', 1, true) then
+    return 'checked/on'
+  end
+  if lower:find('destroy', 1, true) or lower:find('remove', 1, true) then
+    return 'destroy'
+  end
+  if lower:find('callback', 1, true) or lower:find('connect', 1, true) or
+      lower:find('onclick', 1, true) or lower:find('onchange', 1, true) or
+      lower:find('onfocus', 1, true) then
+    return 'callback'
+  end
+  return 'dynamic/unresolved'
+end
+
+local function luaReferenceIsRelevant(line)
+  local lower = line:lower()
+  return lower:find('getchildbyid', 1, true) or lower:find('recursivegetchildbyid', 1, true) or
+    lower:find('createwidget', 1, true) or lower:find('settext', 1, true) or
+    lower:find('setvisible', 1, true) or lower:find('setenabled', 1, true) or
+    lower:find('setchecked', 1, true) or lower:find('seton', 1, true) or
+    lower:find('destroy', 1, true) or lower:find('remove', 1, true) or
+    lower:find('callback', 1, true) or lower:find('onclick', 1, true) or
+    lower:find('onchange', 1, true) or lower:find('onfocus', 1, true) or
+    lower:match('%.show%s*%(') or lower:match('%.hide%s*%(')
+end
+
+local function luaReferenceHasExactId(line, id)
+  if not id or id == '' or id == 'unknown' then return false, false end
+
+  local quoted = line:find("'" .. id .. "'", 1, true) or
+    line:find('"' .. id .. '"', 1, true)
+  if quoted then return true, true end
+
+  if id:match('^[%w_]+$') then
+    local escaped = luaPatternEscape(id)
+    if line:find('%f[%w_]' .. escaped .. '%f[^%w_]') then
+      return true, false
+    end
+  end
+  return false, false
+end
+
+local function luaReferenceHasPartialId(line, id)
+  if not id or id == '' or id == 'unknown' or #id < 6 then return false end
+  local prefixLength = math.max(4, math.floor(#id * 0.6))
+  return line:lower():find(id:sub(1, prefixLength):lower(), 1, true) ~= nil
+end
+
+local function luaReferenceShortContext(line)
+  local context = line:trim()
+  if #context <= LUA_REFERENCE_CONTEXT_LENGTH then return context end
+  return context:sub(1, LUA_REFERENCE_CONTEXT_LENGTH - 3) .. '...'
+end
+
+local function scanLuaReferenceFile(file, id)
+  local okRead, text = pcall(function() return g_resources.readFileContents(file) end)
+  if not okRead or not text then return {}, false end
+
+  local lines = {}
+  for line in (text .. '\n'):gmatch('(.-)\n') do table.insert(lines, line) end
+  local functions = luaFunctionNames(lines)
+  local aliases = {}
+  local createdAliases = {}
+  local references = {}
+  local dynamicPossible = false
+
+  for _, originalLine in ipairs(lines) do
+    local line = originalLine:gsub('%-%-.*', '')
+    local exact = luaReferenceHasExactId(line, id)
+    local createdAlias = line:match('([%w_]+)%s*:%s*setId%s*%(%s*[\'\"]' ..
+      luaPatternEscape(id or '') .. '[\'\"]')
+    if exact and createdAlias then createdAliases[createdAlias] = true end
+  end
+
+  for lineNumber, originalLine in ipairs(lines) do
+    local line = originalLine:gsub('%-%-.*', '')
+    local trimmedLine = line:trim()
+    if trimmedLine ~= '' then
+      local exact, quoted = luaReferenceHasExactId(line, id)
+      local alias = false
+      for name in pairs(aliases) do
+        if line:find('%f[%w_]' .. luaPatternEscape(name) .. '%f[^%w_]', 1) then
+          alias = true
+          break
+        end
+      end
+
+      local createsAlias = line:match('[%w_]+%s*=%s*[%w_:]+%s*getChildById%s*%(%s*[\'\"]' ..
+        luaPatternEscape(id or '') .. '[\'\"]') or
+        line:match('local%s+([%w_]+)%s*=%s*.-getChildById%s*%(%s*[\'\"]' ..
+          luaPatternEscape(id or '') .. '[\'\"]')
+      local assignedAlias = line:match('local%s+([%w_]+)%s*=%s*.-getChildById')
+      if createsAlias or assignedAlias then
+        aliases[createsAlias or assignedAlias] = true
+      end
+
+      local relevant = luaReferenceIsRelevant(line)
+      local partial = luaReferenceHasPartialId(line, id)
+      local isReference = exact or alias
+      if isReference then
+        local kind = luaReferenceKind(line)
+        local confidence = (quoted or alias) and 'high' or 'medium'
+        table.insert(references, {
+          file = file,
+          line = lineNumber,
+          functionName = functions[lineNumber] or 'unknown',
+          kind = kind,
+          confidence = confidence,
+          context = trimmedLine,
+          shortContext = luaReferenceShortContext(trimmedLine),
+        })
+      elseif line:lower():find('createwidget', 1, true) then
+        local createdAliasName = line:match('local%s+([%w_]+)%s*=') or
+          line:match('([%w_]+)%s*=')
+        if createdAliasName and createdAliases[createdAliasName] then
+          table.insert(references, {
+            file = file,
+            line = lineNumber,
+            functionName = functions[lineNumber] or 'unknown',
+            kind = 'creation',
+            confidence = 'medium',
+            context = trimmedLine,
+            shortContext = luaReferenceShortContext(trimmedLine),
+          })
+        end
+      elseif relevant and partial then
+        dynamicPossible = true
+        table.insert(references, {
+          file = file,
+          line = lineNumber,
+          functionName = functions[lineNumber] or 'unknown',
+          kind = 'dynamic/unresolved',
+          confidence = 'dynamic/unresolved',
+          context = trimmedLine,
+          shortContext = luaReferenceShortContext(trimmedLine),
+        })
+      elseif relevant and (line:match('getChildById%s*%(%s*[%w_]+%s*%)') or
+          line:match('recursiveGetChildById%s*%(%s*[%w_]+%s*%)')) then
+        dynamicPossible = true
+      end
+    end
+  end
+
+  return references, dynamicPossible
+end
+
+local function luaReferenceModuleDirectory(data)
+  if not data or not targetPath then return nil end
+  if not targetPath:match('^/modules/') then return nil end
+  return targetPath:match('^(.*)/[^/]+$')
+end
+
+local function discoverLuaReferences(widget)
+  local data = globalInspectorData(widget)
+  if not data then return { references = {}, dynamicPossible = false } end
+
+  local id = data.id
+  if id == 'unknown' or id == '' then
+    return { references = {}, dynamicPossible = true }
+  end
+
+  local references = {}
+  local dynamicPossible = data.warning ~= 'none'
+  local seenFiles = {}
+  local files = {}
+  local moduleDirectory = luaReferenceModuleDirectory(data)
+
+  local function addFiles(candidates)
+    for _, file in ipairs(candidates) do
+      if not seenFiles[file] then
+        seenFiles[file] = true
+        table.insert(files, file)
+      end
+    end
+  end
+
+  -- Search the owning module first so the most relevant source is available
+  -- even when a project-wide search has to be expanded afterwards.
+  addFiles(luaReferenceFiles(moduleDirectory))
+  addFiles(luaReferenceFiles('/modules'))
+
+  for _, file in ipairs(files) do
+    local found, hasDynamic = scanLuaReferenceFile(file, id)
+    dynamicPossible = dynamicPossible or hasDynamic
+    for _, reference in ipairs(found) do table.insert(references, reference) end
+  end
+
+  table.sort(references, function(first, second)
+    if first.file ~= second.file then return first.file < second.file end
+    return first.line < second.line
+  end)
+
+  local unique = {}
+  local result = {}
+  for _, reference in ipairs(references) do
+    local key = table.concat({ reference.file, reference.line, reference.kind, reference.context }, ':')
+    if not unique[key] then
+      unique[key] = true
+      table.insert(result, reference)
+    end
+  end
+
+  return {
+    references = result,
+    dynamicPossible = dynamicPossible,
+  }
+end
+
+local function getLuaReferences(widget)
+  if luaReferencesCacheWidget == widget and luaReferencesCache then
+    return luaReferencesCache
+  end
+  luaReferencesCacheWidget = widget
+  luaReferencesCache = discoverLuaReferences(widget)
+  return luaReferencesCache
+end
+
+local function luaReferencesSection(widget)
+  local data = globalInspectorData(widget)
+  if not data then
+    return 'LUA REFERENCES\n\nNo Lua references found for this widget.'
+  end
+
+  local result = getLuaReferences(widget)
+  local lines = { 'LUA REFERENCES' }
+  if #result.references == 0 then
+    table.insert(lines, '')
+    table.insert(lines, result.dynamicPossible and
+      'Static references not found.\nDynamic or unresolved references may exist.' or
+      'No Lua references found for this widget.')
+    return table.concat(lines, '\n')
+  end
+
+  for _, reference in ipairs(result.references) do
+    table.insert(lines, '')
+    table.insert(lines, 'File: ' .. reference.file)
+    table.insert(lines, 'Function: ' .. reference.functionName)
+    table.insert(lines, 'Line: ' .. tostring(reference.line))
+    table.insert(lines, 'Kind: ' .. reference.kind)
+    table.insert(lines, 'Confidence: ' .. reference.confidence)
+    table.insert(lines, 'Context:')
+    table.insert(lines, '  ' .. reference.context)
+  end
+  return table.concat(lines, '\n')
+end
+
 --- Build a short, prompt-friendly description of a runtime widget.
 -- @param widget UIWidget: visible runtime widget selected by the inspector.
 -- @return string: short widget summary or the empty-state message.
@@ -576,7 +909,7 @@ function buildGlobalInspectorDetails(widget)
     }, '\n')
   end
 
-  return table.concat({
+  local details = table.concat({
     'OTUI Runtime Widget Details',
     '',
     'Class: ' .. data.className,
@@ -603,6 +936,7 @@ function buildGlobalInspectorDetails(widget)
     'Mapping status: ' .. data.mapping,
     'Dynamic warning: ' .. data.warning,
   }, '\n')
+  return details .. '\n\n' .. luaReferencesSection(widget)
 end
 
 local function inspectorPointInRect(point, rect)
@@ -724,6 +1058,122 @@ local function setInspectorStatus(message)
   end
 end
 
+local function isLuaReferencesPoint(mousePos)
+  return luaReferencesWindow and not luaReferencesWindow:isDestroyed() and
+    mousePos and luaReferencesWindow:containsPoint(mousePos)
+end
+
+local function updateLuaReferencesButton(widget)
+  if not inspectPanel or inspectPanel:isDestroyed() then return end
+  local button = inspectPanel:recursiveGetChildById('luaReferencesBtn')
+  if not button then return end
+
+  local available = widget and not widget:isDestroyed()
+  button:setVisible(available)
+  button:setEnabled(available)
+  button:setTooltip(available and 'Find Lua code that creates or changes this widget.' or '')
+end
+
+local function luaReferenceConfidenceColor(confidence)
+  if confidence == 'high' then return '#9fe09f' end
+  if confidence == 'medium' then return '#f0d26a' end
+  return '#ff9d6e'
+end
+
+local function populateLuaReferencesWindow(widget, data, result)
+  if not luaReferencesWindow or luaReferencesWindow:isDestroyed() then return end
+  luaReferencesWindow:setText('Lua References · ' .. data.id)
+
+  local subtitle = luaReferencesWindow:recursiveGetChildById('referencesSubtitle')
+  if subtitle then
+    local sourceFile = data.source:gsub(':%d+$', '')
+    subtitle:setText(sourceFile .. ' · ' .. data.sourceLine .. ' · ' .. data.path)
+  end
+
+  luaReferencesList = luaReferencesWindow:recursiveGetChildById('referencesList')
+  if not luaReferencesList then return end
+  luaReferencesList:destroyChildren()
+
+  if #result.references == 0 then
+    local empty = g_ui.createWidget('OtuiLuaReferenceEmpty', luaReferencesList)
+    empty:setText(result.dynamicPossible and
+      'Static references not found.\nDynamic or unresolved references may exist.' or
+      'No Lua references found for this widget.')
+    empty:setTooltip(empty:getText())
+    return
+  end
+
+  local currentFile = nil
+  local currentFunction = nil
+  for _, reference in ipairs(result.references) do
+    if reference.file ~= currentFile then
+      currentFile = reference.file
+      currentFunction = nil
+      local fileLabel = g_ui.createWidget('OtuiLuaReferenceFile', luaReferencesList)
+      fileLabel:setText(reference.file)
+      fileLabel:setTooltip(reference.file)
+    end
+    if reference.functionName ~= currentFunction then
+      currentFunction = reference.functionName
+      local functionLabel = g_ui.createWidget('OtuiLuaReferenceFunction', luaReferencesList)
+      functionLabel:setText('Function: ' .. reference.functionName)
+      functionLabel:setTooltip('Function: ' .. reference.functionName)
+    end
+
+    local row = g_ui.createWidget('OtuiLuaReferenceRow', luaReferencesList)
+    local summary = row:getChildById('referenceSummary')
+    local context = row:getChildById('referenceContext')
+    summary:setText(string.format('[%s] line %d · %s', reference.confidence,
+      reference.line, reference.kind))
+    summary:setColor(luaReferenceConfidenceColor(reference.confidence))
+    summary:setTooltip(reference.context)
+    context:setText(reference.shortContext)
+    context:setTooltip(reference.context)
+  end
+end
+
+function closeLuaReferences()
+  if luaReferencesWindow and not luaReferencesWindow:isDestroyed() then
+    luaReferencesWindow:destroy()
+  end
+  luaReferencesWindow = nil
+  luaReferencesList = nil
+  luaReferencesWidget = nil
+  luaReferencesData = nil
+  if inspectLayer and not inspectLayer:isDestroyed() then
+    inspectLayer:focus()
+  end
+end
+
+function openLuaReferences()
+  local widget = inspectSelectedWidget
+  if not widget or widget:isDestroyed() then
+    setInspectorStatus('Fix a widget selection before opening Lua references.')
+    return
+  end
+
+  closeLuaReferences()
+  luaReferencesWidget = widget
+  luaReferencesData = globalInspectorData(widget)
+  local result = getLuaReferences(widget)
+  luaReferencesWindow = g_ui.createWidget('OtuiLuaReferencesWindow', inspectLayer)
+  luaReferencesWindow:setFocusable(true)
+  luaReferencesWindow:show()
+  luaReferencesWindow:raise()
+  populateLuaReferencesWindow(widget, luaReferencesData, result)
+  luaReferencesWindow:focus()
+end
+
+function copyLuaReferences()
+  local widget = luaReferencesWidget or inspectSelectedWidget
+  if not widget or widget:isDestroyed() then
+    setInspectorStatus('No fixed widget selection to copy.')
+    return
+  end
+  g_window.setClipboardText(luaReferencesSection(widget))
+  setInspectorStatus('Lua references copied to clipboard.')
+end
+
 local function inspectorHoverSummary(widget)
   local data = globalInspectorData(widget)
   if not data then return 'No widget under cursor.' end
@@ -797,6 +1247,7 @@ end
 
 local function rebuildInspectorDetails(widget)
   if not inspectDetailsList or inspectDetailsList:isDestroyed() then return end
+  updateLuaReferencesButton(widget)
   local details = widget and buildGlobalInspectorDetails(widget) or ''
   inspectDetailsText = details ~= '' and details or 'No fixed selection.'
   inspectDetailsList:destroyChildren()
@@ -826,6 +1277,7 @@ end
 local function updateInspectorPanel(widget, mousePos)
   if not inspectPanel or inspectPanel:isDestroyed() then return end
   if inspectSelectedWidget and inspectSelectedWidget:isDestroyed() then
+    closeLuaReferences()
     inspectSelectedWidget = nil
     inspectPanelRect = nil
     inspectDisplayedWidget = nil
@@ -872,7 +1324,7 @@ end
 function inspectWidgetAt(mousePos)
   if not inspectMode or not inspectLayer or inspectLayer:isDestroyed() then return nil end
   mousePos = mousePos or g_window.getMousePosition()
-  if isInspectorPanelPoint(mousePos) then
+  if isInspectorPanelPoint(mousePos) or isLuaReferencesPoint(mousePos) then
     refreshGlobalInspectorVisuals()
     updateInspectorPanel(inspectHoverWidget, mousePos)
     return inspectHoverWidget
@@ -959,7 +1411,7 @@ function setInspectMode(enabled)
     end
 
     inspectLayer.onMousePress = function(_, mousePos, button)
-      if isInspectorPanelPoint(mousePos) then return false end
+      if isInspectorPanelPoint(mousePos) or isLuaReferencesPoint(mousePos) then return false end
       local widget = inspectWidgetAt(mousePos)
       if button == MouseLeftButton then
         inspectSelectedWidget = widget
@@ -993,7 +1445,7 @@ function setInspectMode(enabled)
     end
 
     inspectLayer.onMouseWheel = function(_, mousePos)
-      if isInspectorPanelPoint(mousePos) then return false end
+      if isInspectorPanelPoint(mousePos) or isLuaReferencesPoint(mousePos) then return false end
       return true
     end
 
@@ -1021,6 +1473,7 @@ function setInspectMode(enabled)
   end
 
   inspectMode = false
+  closeLuaReferences()
   if inspectHoverBox and not inspectHoverBox:isDestroyed() then inspectHoverBox:hide() end
   if inspectSelectionBox and not inspectSelectionBox:isDestroyed() then inspectSelectionBox:hide() end
   if inspectLayer and not inspectLayer:isDestroyed() then
@@ -3044,6 +3497,13 @@ function selfTest()
     'global inspector details should include margins')
   check(fakeDetails:find('Anchors: top, left', 1, true) ~= nil,
     'global inspector details should include anchors')
+  check(fakeDetails:find('LUA REFERENCES', 1, true) ~= nil,
+    'global inspector details should include Lua references')
+  check(luaReferencesSection(fakeWidget):find('LUA REFERENCES', 1, true) ~= nil,
+    'Lua reference copy should expose its own section')
+  local referencesWindow = g_ui.createWidget('OtuiLuaReferencesWindow', rootWidget)
+  check(referencesWindow ~= nil, 'Lua references modal style should instantiate')
+  if referencesWindow then referencesWindow:destroy() end
   check(#fakeSections == 4 and fakeSections[1].title == 'IDENTITY' and
       fakeSections[4].title == 'SOURCE',
     'inspector UI details should expose the four grouped sections')
