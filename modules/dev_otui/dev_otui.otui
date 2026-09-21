@@ -100,7 +100,7 @@ OtuiLuaReferenceEmpty < UILabel
 
 OtuiLuaReferencesWindow < Window
   id: otuiLuaReferencesWindow
-  size: 620 500
+  size: 620 540
   image-source: /images/ui/window
   image-border: 6
   image-border-top: 27
@@ -109,7 +109,7 @@ OtuiLuaReferencesWindow < Window
 
   UILabel
     id: referencesSubtitle
-    height: 30
+    height: 48
     anchors.top: parent.top
     anchors.left: parent.left
     anchors.right: parent.right
@@ -222,7 +222,7 @@ OtuiGlobalInspectorPanel < UIWidget
 
   UIWidget
     id: inspectorHoverSummary
-    height: 70
+    height: 92
     anchors.top: inspectorHoverTitle.bottom
     anchors.left: parent.left
     anchors.right: parent.right

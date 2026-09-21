@@ -73,7 +73,7 @@ local AUTO_RELOAD_INTERVAL = 300
 local MAX_TREE_DEPTH = 12
 local HANDLE_SIZE = 10
 local INSPECTOR_PANEL_WIDTH = 400
-local INSPECTOR_PANEL_HEIGHT = 342
+local INSPECTOR_PANEL_HEIGHT = 380
 local INSPECTOR_PANEL_MARGIN = 12
 local LUA_REFERENCE_CONTEXT_LENGTH = 110
 
@@ -3642,7 +3642,7 @@ function selfTest()
   local qaViewport = { x = 0, y = 0, width = 800, height = 600 }
   local qaWidgetRect = { x = 390, y = 290, width = 20, height = 20 }
   local preferredPanel = chooseInspectorPanelRect({ x = 400, y = 100 }, qaWidgetRect, qaViewport)
-  check(preferredPanel.x == 388 and preferredPanel.y == 246,
+  check(preferredPanel.x == 388 and preferredPanel.y == 208,
     'inspector panel should prefer the bottom-right corner')
   check(not isInspectorPanelRectValid(preferredPanel, { x = 450, y = 300 }, qaWidgetRect, qaViewport),
     'inspector panel should treat its own area as occupied by the cursor')
