@@ -245,9 +245,8 @@ OtuiGlobalInspectorPanel < UIWidget
     height: 18
     anchors.top: inspectorHoverSummary.bottom
     anchors.left: parent.left
-    anchors.right: luaReferencesBtn.left
+    anchors.right: parent.right
     margin-top: 5
-    margin-right: 4
     font: verdana-11px-rounded
     color: #8fe08f
     text-offset: 1 0
@@ -258,8 +257,9 @@ OtuiGlobalInspectorPanel < UIWidget
     id: luaReferencesBtn
     width: 112
     height: 18
-    anchors.top: inspectorSelectedTitle.top
+    anchors.top: inspectorHoverSummary.bottom
     anchors.right: parent.right
+    margin-top: 5
     visible: false
     !text: 'Lua References'
     @onClick: modules.dev_otui.openLuaReferences()
