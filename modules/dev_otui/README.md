@@ -7,6 +7,28 @@ approximation.
 
 Open it with the button on the top-right menu, or `Ctrl+Alt+U`.
 
+## Runtime Inspect mode
+
+Press `Ctrl+Alt+I` to inspect the live `rootWidget` without opening the editor
+or loading an `.otui` file. Move the mouse over any visible widget to see a
+compact runtime report immediately. The panel prefers the bottom-right corner,
+keeps a 12 px margin, and changes corners only when the current position would
+cover the cursor or the observed widget. Hovering the inspector itself keeps
+the last widget state so its details and scrollbar remain usable.
+
+- Left click fixes the current widget and keeps its green highlight and report.
+- The panel shows a compact `HOVER NOW` summary and a detailed `SELECTED WIDGET`
+  report independently.
+- Right click copies the short summary.
+- `Shift` + right click copies the detailed report.
+- `Escape` or `Ctrl+Alt+I` exits Inspect mode.
+
+Inspect mode consumes mouse clicks and does not edit, move, resize, save, or
+otherwise change the observed widget. It is separate from the editor's `Edit`
+mode. Runtime-created widgets report `unknown` source data when no trustworthy
+mapping exists; preview widgets loaded by this editor can report their `.otui`
+path and source line.
+
 ## Quick start
 
 1. **Open...** and pick any `.otui` in the project — it renders on screen and
@@ -34,6 +56,7 @@ your text editor.
 | `Auto-reload` | watch the file and reload it on change (300 ms) |
 | `Debug boxes` | toggle `g_ui.setDebugBoxesDrawing`, outlining every widget |
 | `Edit` | click to select on screen, drag to move, green corner to resize |
+| `Ctrl+Alt+I` | inspect any visible runtime widget without editing it |
 | `$on` / `$checked` / `$disabled` | force widget states to inspect their styling |
 | `hidden` | hide the selected widget, to see what is underneath it |
 | `Apply (preview)` | apply the panel to the live widget; the file is untouched |
@@ -119,6 +142,10 @@ In the client terminal (`Ctrl+T`):
 ```lua
 modules.dev_otui.selfTest()
 ```
+
+The self-test also covers runtime summary/detail formatting, missing widgets,
+runtime-only mapping warnings, anchors, margins, and the four-corner panel
+placement contract.
 
 It asserts, among others: byte-for-byte round-trip, composite blocks such as
 `layout:` not being mistaken for child widgets, edits not touching neighbouring
