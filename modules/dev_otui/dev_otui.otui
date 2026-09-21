@@ -1,30 +1,65 @@
-OtuiInspectorLine < UILabel
+OtuiInspectorSection < UILabel
   height: 14
-  font: verdana-11px-monochrome
-  color: #d7d7d7
-  background-color: alpha
-  text-offset: 1 0
+  margin-top: 5
+  font: verdana-11px-rounded
+  color: #f0d26a
+  text-offset: 1 1
   phantom: true
 
+OtuiInspectorEmpty < UILabel
+  height: 32
+  font: verdana-11px-monochrome
+  color: #a0a0a0
+  text-wrap: true
+  text-offset: 1 1
+  phantom: true
+
+OtuiInspectorField < UIWidget
+  height: 15
+  phantom: true
+
+  UILabel
+    id: fieldKey
+    width: 86
+    height: 15
+    anchors.top: parent.top
+    anchors.left: parent.left
+    font: verdana-11px-monochrome
+    color: #a0a0a0
+    text-offset: 1 1
+    phantom: true
+
+  UILabel
+    id: fieldValue
+    height: 15
+    anchors.top: parent.top
+    anchors.left: fieldKey.right
+    anchors.right: parent.right
+    font: verdana-11px-monochrome
+    color: #dfdfdf
+    text-offset: 1 1
+    phantom: true
+
 OtuiGlobalInspectorPanel < UIWidget
-  width: 360
-  height: 300
-  padding: 6
-  background-color: #242424ee
-  border-width: 1
-  border-color: #a0a0a0
+  width: 400
+  height: 330
+  padding: 8
+  image-source: /images/ui/window
+  image-border: 6
+  image-border-top: 27
   phantom: true
   focusable: false
 
   UILabel
     id: inspectorTitle
-    height: 16
+    height: 18
     anchors.top: parent.top
     anchors.left: parent.left
     anchors.right: parent.right
-    font: verdana-11px-monochrome
-    color: #f0d26a
-    text-offset: 1 0
+    font: cipsoftFont
+    color: #dfdfdf
+    text-align: center
+    text-offset: 0 2
     phantom: true
     !text: 'OTUI Inspector'
 
@@ -34,48 +69,64 @@ OtuiGlobalInspectorPanel < UIWidget
     anchors.top: inspectorTitle.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 2
-    font: verdana-11px-monochrome
-    color: #a0d0a0
+    margin-top: 1
+    font: verdana-11px-rounded
+    color: #a0a0a0
+    text-align: center
     text-offset: 1 0
     phantom: true
     !text: 'Hover highlighted in yellow | left click fixes it'
 
   UILabel
     id: inspectorHoverTitle
-    height: 12
+    height: 14
     anchors.top: inspectorMode.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 4
-    font: verdana-11px-monochrome
+    margin-top: 5
+    font: verdana-11px-rounded
     color: #f0d26a
     text-offset: 1 0
     phantom: true
     !text: 'HOVER NOW'
 
-  UILabel
+  UIWidget
     id: inspectorHoverSummary
-    height: 48
+    height: 58
     anchors.top: inspectorHoverTitle.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 1
-    font: verdana-11px-monochrome
-    color: #d7d7d7
-    text-wrap: true
-    text-offset: 1 0
+    margin-top: 2
+    background-color: #404040
+    border-width-top: 1
+    border-width-left: 1
+    border-width-bottom: 1
+    border-width-right: 1
+    border-color-top: #1b1b1a
+    border-color-left: #1b1b1a
+    border-color-bottom: #6b6b6b
+    border-color-right: #6b6b6b
     phantom: true
-    !text: 'No widget under cursor.'
+
+    UILabel
+      id: inspectorHoverSummaryText
+      anchors.fill: parent
+      margin: 5
+      font: verdana-11px-monochrome
+      color: #dfdfdf
+      text-wrap: true
+      text-offset: 1 1
+      phantom: true
+      !text: 'No widget under cursor.'
 
   UILabel
     id: inspectorSelectedTitle
-    height: 12
+    height: 14
     anchors.top: inspectorHoverSummary.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 4
-    font: verdana-11px-monochrome
+    margin-top: 5
+    font: verdana-11px-rounded
     color: #8fe08f
     text-offset: 1 0
     phantom: true
@@ -90,7 +141,16 @@ OtuiGlobalInspectorPanel < UIWidget
     margin-top: 2
     margin-right: 4
     margin-bottom: 4
-    padding: 1
+    padding: 4
+    border-width-top: 1
+    border-width-left: 1
+    border-width-bottom: 1
+    border-width-right: 1
+    border-color-top: #1b1b1a
+    border-color-left: #1b1b1a
+    border-color-bottom: #6b6b6b
+    border-color-right: #6b6b6b
+    background-color: #404040
     focusable: false
     phantom: false
     vertical-scrollbar: inspectorScroll
@@ -100,20 +160,21 @@ OtuiGlobalInspectorPanel < UIWidget
     anchors.top: inspectorSelectedTitle.bottom
     anchors.right: parent.right
     anchors.bottom: inspectorStatus.top
+    width: 10
     margin-top: 2
     margin-bottom: 4
-    step: 14
+    step: 15
     pixels-scroll: true
     phantom: false
 
   UILabel
     id: inspectorStatus
-    height: 26
+    height: 18
     anchors.bottom: parent.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    font: verdana-11px-monochrome
-    color: #dfdf7f
+    font: verdana-11px-rounded
+    color: #f0d26a
     text-wrap: true
     text-align: topLeft
     text-offset: 1 0

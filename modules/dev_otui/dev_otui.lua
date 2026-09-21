@@ -66,8 +66,8 @@ local styleCache = nil     -- style palette; depends on the open file
 local AUTO_RELOAD_INTERVAL = 300
 local MAX_TREE_DEPTH = 12
 local HANDLE_SIZE = 10
-local INSPECTOR_PANEL_WIDTH = 360
-local INSPECTOR_PANEL_HEIGHT = 300
+local INSPECTOR_PANEL_WIDTH = 400
+local INSPECTOR_PANEL_HEIGHT = 330
 local INSPECTOR_PANEL_MARGIN = 12
 
 -- ============================================================ helpers
@@ -735,11 +735,58 @@ local function inspectorHoverSummary(widget)
   }, '\n')
 end
 
+local function globalInspectorSections(widget)
+  local data = globalInspectorData(widget)
+  if not data then return nil end
+  return {
+    {
+      title = 'IDENTITY',
+      fields = {
+        { 'Class', data.className },
+        { 'Id', data.id },
+        { 'Runtime path', data.path },
+        { 'Parent', data.parent },
+        { 'Children', data.children },
+      },
+    },
+    {
+      title = 'LAYOUT',
+      fields = {
+        { 'Rect', data.rect },
+        { 'Position', data.position },
+        { 'Size', data.size },
+        { 'Anchors', data.anchors },
+        { 'Margins', data.margins },
+      },
+    },
+    {
+      title = 'STATE',
+      fields = {
+        { 'Visible', data.visible },
+        { 'Enabled', data.enabled },
+        { 'On', data.on },
+        { 'Checked', data.checked },
+        { 'Disabled', data.disabled },
+        { 'Hidden', data.hidden },
+      },
+    },
+    {
+      title = 'SOURCE',
+      fields = {
+        { 'Source', data.source },
+        { 'Source line', data.sourceLine },
+        { 'Mapping', data.mapping },
+        { 'Warning', data.warning },
+      },
+    },
+  }
+end
+
 local function updateInspectorHoverSummary(widget)
   if not inspectPanel or inspectPanel:isDestroyed() then return end
   if widget == inspectDisplayedHoverWidget then return end
 
-  local label = inspectPanel:recursiveGetChildById('inspectorHoverSummary')
+  local label = inspectPanel:recursiveGetChildById('inspectorHoverSummaryText')
   if label then
     local summary = inspectorHoverSummary(widget)
     label:setText(summary)
@@ -750,18 +797,28 @@ end
 
 local function rebuildInspectorDetails(widget)
   if not inspectDetailsList or inspectDetailsList:isDestroyed() then return end
-  local details = widget and buildGlobalInspectorDetails(widget) or table.concat({
-    'No fixed selection.',
-    '',
-    'Left click a widget to pin its details here.',
-  }, '\n')
-  inspectDetailsText = details
+  local details = widget and buildGlobalInspectorDetails(widget) or ''
+  inspectDetailsText = details ~= '' and details or 'No fixed selection.'
   inspectDetailsList:destroyChildren()
-  for line in details:gmatch('[^\r\n]+') do
-    if line ~= 'OTUI Runtime Widget Details' and line ~= '' then
-      local label = g_ui.createWidget('OtuiInspectorLine', inspectDetailsList)
-      label:setText(line)
-      label:setTooltip(line)
+
+  if not widget then
+    local emptyLabel = g_ui.createWidget('OtuiInspectorEmpty', inspectDetailsList)
+    emptyLabel:setText('Left click a widget to pin its details here.')
+    emptyLabel:setTooltip('Left click a widget to pin its details here.')
+    return
+  end
+
+  for _, section in ipairs(globalInspectorSections(widget)) do
+    local sectionLabel = g_ui.createWidget('OtuiInspectorSection', inspectDetailsList)
+    sectionLabel:setText(section.title)
+
+    for _, field in ipairs(section.fields) do
+      local fieldWidget = g_ui.createWidget('OtuiInspectorField', inspectDetailsList)
+      local keyLabel = fieldWidget:getChildById('fieldKey')
+      local valueLabel = fieldWidget:getChildById('fieldValue')
+      keyLabel:setText(field[1])
+      valueLabel:setText(field[2])
+      valueLabel:setTooltip(field[2])
     end
   end
 end
@@ -800,8 +857,8 @@ local function updateInspectorPanel(widget, mousePos)
   local modeLabel = inspectPanel:recursiveGetChildById('inspectorMode')
   if modeLabel then
     modeLabel:setText(inspectSelectedWidget and
-      'Selected fixed in green | left click changes it' or
-      'Hover highlighted in yellow | left click fixes it')
+      'SELECTED FIXED · left click changes it' or
+      'HOVER MODE · left click pins it')
   end
   local statusLabel = inspectPanel:recursiveGetChildById('inspectorStatus')
   if statusLabel then
@@ -2974,6 +3031,7 @@ function selfTest()
 
   local fakeSummary = buildGlobalInspectorSummary(fakeWidget)
   local fakeDetails = buildGlobalInspectorDetails(fakeWidget)
+  local fakeSections = globalInspectorSections(fakeWidget)
   check(fakeSummary:find('Class: UIButton', 1, true) ~= nil,
     'global inspector summary should include the class')
   check(fakeSummary:find('Id: closeButton', 1, true) ~= nil,
@@ -2986,13 +3044,16 @@ function selfTest()
     'global inspector details should include margins')
   check(fakeDetails:find('Anchors: top, left', 1, true) ~= nil,
     'global inspector details should include anchors')
+  check(#fakeSections == 4 and fakeSections[1].title == 'IDENTITY' and
+      fakeSections[4].title == 'SOURCE',
+    'inspector UI details should expose the four grouped sections')
   check(buildGlobalInspectorDetails(nil):find('No widget found at this position.', 1, true) ~= nil,
     'global inspector should handle an empty hit test')
 
   local qaViewport = { x = 0, y = 0, width = 800, height = 600 }
   local qaWidgetRect = { x = 390, y = 290, width = 20, height = 20 }
   local preferredPanel = chooseInspectorPanelRect({ x = 400, y = 100 }, qaWidgetRect, qaViewport)
-  check(preferredPanel.x == 428 and preferredPanel.y == 288,
+  check(preferredPanel.x == 388 and preferredPanel.y == 258,
     'inspector panel should prefer the bottom-right corner')
   check(not isInspectorPanelRectValid(preferredPanel, { x = 450, y = 300 }, qaWidgetRect, qaViewport),
     'inspector panel should treat its own area as occupied by the cursor')
