@@ -15,6 +15,20 @@ local selectionBox = nil   -- green rectangle around the selected widget
 local hoverBox = nil       -- yellow rectangle around the widget under the mouse
 local resizeHandle = nil   -- resize handle, bottom-right corner
 
+local inspectLayer = nil
+local inspectPanel = nil
+local inspectDetailsList = nil
+local inspectHoverBox = nil
+local inspectSelectionBox = nil
+local inspectMode = false
+local inspectHoverWidget = nil
+local inspectSelectedWidget = nil
+local inspectPanelRect = nil
+local inspectDisplayedWidget = nil
+local inspectDisplayedHoverWidget = nil
+local inspectDetailsText = ''
+local inspectStatusText = 'OTUI Inspect mode: OFF'
+
 local targetPath = nil
 local targetFileTime = 0
 local watchEvent = nil
@@ -52,6 +66,9 @@ local styleCache = nil     -- style palette; depends on the open file
 local AUTO_RELOAD_INTERVAL = 300
 local MAX_TREE_DEPTH = 12
 local HANDLE_SIZE = 10
+local INSPECTOR_PANEL_WIDTH = 360
+local INSPECTOR_PANEL_HEIGHT = 300
+local INSPECTOR_PANEL_MARGIN = 12
 
 -- ============================================================ helpers
 
@@ -74,13 +91,14 @@ local function normalizePath(path)
   return path
 end
 
--- Stacking (bottom -> top): stage, captureLayer, editorWindow, boxes.
+-- Stacking (bottom -> top): stage, captureLayer, editorWindow, boxes, inspector.
 local function restackLayers()
   if captureLayer and not captureLayer:isDestroyed() then captureLayer:raise() end
   if editorWindow and not editorWindow:isDestroyed() then editorWindow:raise() end
   if hoverBox and not hoverBox:isDestroyed() then hoverBox:raise() end
   if selectionBox and not selectionBox:isDestroyed() then selectionBox:raise() end
   if resizeHandle and not resizeHandle:isDestroyed() then resizeHandle:raise() end
+  if inspectLayer and not inspectLayer:isDestroyed() then inspectLayer:raise() end
 end
 
 local function describePath(widget)
@@ -347,6 +365,618 @@ local function nodeForWidget(widget)
   end
 
   return node, nil, { kind = 'widget', path = path }
+end
+
+-- ============================================================ global inspector
+
+local function safeWidgetCall(widget, callback, fallback)
+  local ok, value = pcall(callback)
+  if ok and value ~= nil then return value end
+  return fallback
+end
+
+local function inspectorText(value)
+  if value == nil or tostring(value) == '' then return 'unknown' end
+  return tostring(value)
+end
+
+local function inspectorBoolean(value)
+  if value == nil then return 'unknown' end
+  return tostring(value)
+end
+
+local function inspectorRectText(rect)
+  if not rect then return 'unknown' end
+  return string.format('x=%s y=%s w=%s h=%s', inspectorText(rect.x), inspectorText(rect.y),
+    inspectorText(rect.width), inspectorText(rect.height))
+end
+
+local function inspectorPositionText(rect)
+  if not rect then return 'unknown' end
+  return string.format('x=%s y=%s', inspectorText(rect.x), inspectorText(rect.y))
+end
+
+local function inspectorSizeText(rect)
+  if not rect then return 'unknown' end
+  return string.format('w=%s h=%s', inspectorText(rect.width), inspectorText(rect.height))
+end
+
+local function inspectorMarginsText(widget)
+  local top = safeWidgetCall(widget, function() return widget:getMarginTop() end, nil)
+  local right = safeWidgetCall(widget, function() return widget:getMarginRight() end, nil)
+  local bottom = safeWidgetCall(widget, function() return widget:getMarginBottom() end, nil)
+  local left = safeWidgetCall(widget, function() return widget:getMarginLeft() end, nil)
+  if top == nil and right == nil and bottom == nil and left == nil then return 'unknown' end
+  return string.format('top=%s right=%s bottom=%s left=%s', inspectorText(top), inspectorText(right),
+    inspectorText(bottom), inspectorText(left))
+end
+
+local function inspectorAnchorName(anchor)
+  local names = {
+    [AnchorTop] = 'top',
+    [AnchorBottom] = 'bottom',
+    [AnchorLeft] = 'left',
+    [AnchorRight] = 'right',
+    [AnchorVerticalCenter] = 'verticalCenter',
+    [AnchorHorizontalCenter] = 'horizontalCenter',
+  }
+  return names[anchor] or 'unknown'
+end
+
+local function inspectorAnchorsText(widget, node)
+  if node then
+    local anchors = {}
+    for _, prop in ipairs(Otml.properties(node)) do
+      if prop.tag:sub(1, 8) == 'anchors.' and prop.value then
+        table.insert(anchors, prop.tag .. ': ' .. prop.value)
+      end
+    end
+    if #anchors > 0 then return table.concat(anchors, ', ') end
+    return 'none'
+  end
+
+  local anchors = safeWidgetCall(widget, function() return widget:getAnchors() end, nil)
+  if type(anchors) ~= 'table' then return 'unknown' end
+  local names = {}
+  for _, anchor in ipairs(anchors) do
+    table.insert(names, inspectorAnchorName(anchor))
+  end
+  if #names == 0 then return 'none' end
+  return table.concat(names, ', ')
+end
+
+local function isWidgetDescendantOf(widget, ancestor)
+  local current = widget
+  while current do
+    if current == ancestor then return true end
+    current = safeWidgetCall(current, function() return current:getParent() end, nil)
+  end
+  return false
+end
+
+local function globalInspectorNode(widget)
+  if not stage or stage:isDestroyed() or not doc then return nil end
+  if not isWidgetDescendantOf(widget, stage) then return nil end
+  local ok, node = pcall(function() return nodeForWidget(widget) end)
+  return ok and node or nil
+end
+
+local function globalInspectorOrigin(widget)
+  local node = globalInspectorNode(widget)
+  if node and targetPath then
+    local line = inspectorText(node.line)
+    return targetPath .. ':' .. line, line, 'known', 'none', node
+  end
+
+  local runtimeSource = safeWidgetCall(widget, function() return widget:getSource() end, nil)
+  if type(runtimeSource) == 'string' and runtimeSource ~= '' and runtimeSource ~= '[C]' then
+    return runtimeSource, 'unknown', 'runtime source',
+      'runtime-only or dynamic; not editable in Inspect mode', nil
+  end
+
+  return 'unknown', 'unknown', 'runtime-only or dynamic',
+    'runtime-only or dynamic; not editable in Inspect mode', nil
+end
+
+local function globalInspectorPath(widget)
+  local parts = {}
+  local current = widget
+  while current and current ~= rootWidget do
+    local name = safeWidgetCall(current, function() return current:getStyleName() end, nil)
+    local id = safeWidgetCall(current, function() return current:getId() end, nil)
+    local part = id and id ~= '' and id or inspectorText(name)
+    table.insert(parts, 1, part)
+    current = safeWidgetCall(current, function() return current:getParent() end, nil)
+  end
+  table.insert(parts, 1, 'root')
+  return table.concat(parts, ' > ')
+end
+
+local function globalInspectorParentPath(widget)
+  local parent = safeWidgetCall(widget, function() return widget:getParent() end, nil)
+  if not parent then return 'unknown' end
+  return globalInspectorPath(parent)
+end
+
+local function globalInspectorChildren(widget)
+  local count = safeWidgetCall(widget, function() return widget:getChildCount() end, nil)
+  if count ~= nil then return tostring(count) end
+  local children = safeWidgetCall(widget, function() return widget:getChildren() end, nil)
+  if type(children) == 'table' then return tostring(#children) end
+  return 'unknown'
+end
+
+local function globalInspectorData(widget)
+  if not widget or safeWidgetCall(widget, function() return widget:isDestroyed() end, false) then
+    return nil
+  end
+
+  local rect = safeWidgetCall(widget, function() return widget:getRect() end, nil)
+  local className = safeWidgetCall(widget, function() return widget:getStyleName() end, nil)
+  local id = safeWidgetCall(widget, function() return widget:getId() end, nil)
+  local source, sourceLine, mapping, warning, node = globalInspectorOrigin(widget)
+  local on = safeWidgetCall(widget, function() return widget:isOn() end, nil)
+  local checked = safeWidgetCall(widget, function() return widget:isChecked() end, nil)
+  local disabled = safeWidgetCall(widget, function() return widget:isDisabled() end, nil)
+  local hidden = safeWidgetCall(widget, function() return widget:isHidden() end, nil)
+  local visible = safeWidgetCall(widget, function() return widget:isEffectivelyVisible() end, nil)
+  local enabled = safeWidgetCall(widget, function() return widget:isEnabled() end, nil)
+
+  return {
+    className = inspectorText(className),
+    id = inspectorText(id),
+    path = globalInspectorPath(widget),
+    parent = globalInspectorParentPath(widget),
+    children = globalInspectorChildren(widget),
+    rect = inspectorRectText(rect),
+    position = inspectorPositionText(rect),
+    size = inspectorSizeText(rect),
+    visible = inspectorBoolean(visible),
+    enabled = inspectorBoolean(enabled),
+    on = inspectorBoolean(on),
+    checked = inspectorBoolean(checked),
+    disabled = inspectorBoolean(disabled),
+    hidden = inspectorBoolean(hidden),
+    styleName = inspectorText(className),
+    margins = inspectorMarginsText(widget),
+    anchors = inspectorAnchorsText(widget, node),
+    source = source,
+    sourceLine = sourceLine,
+    mapping = mapping,
+    warning = warning,
+  }
+end
+
+--- Build a short, prompt-friendly description of a runtime widget.
+-- @param widget UIWidget: visible runtime widget selected by the inspector.
+-- @return string: short widget summary or the empty-state message.
+function buildGlobalInspectorSummary(widget)
+  local data = globalInspectorData(widget)
+  if not data then return 'No widget found at this position.' end
+  return table.concat({
+    'OTUI Runtime Widget',
+    'Class: ' .. data.className,
+    'Id: ' .. data.id,
+    'Path: ' .. data.path,
+    'Rect: ' .. data.rect,
+    'Source: ' .. data.source,
+  }, '\n')
+end
+
+--- Build the detailed report copied by the runtime inspector.
+-- @param widget UIWidget: visible runtime widget selected by the inspector.
+-- @return string: detailed report containing only runtime-readable fields.
+function buildGlobalInspectorDetails(widget)
+  local data = globalInspectorData(widget)
+  if not data then
+    return table.concat({
+      'OTUI Runtime Widget Details',
+      '',
+      'No widget found at this position.',
+    }, '\n')
+  end
+
+  return table.concat({
+    'OTUI Runtime Widget Details',
+    '',
+    'Class: ' .. data.className,
+    'Id: ' .. data.id,
+    'Runtime path: ' .. data.path,
+    'Parent: ' .. data.parent,
+    'Children: ' .. data.children,
+    'Rect: ' .. data.rect,
+    'Position: ' .. data.position,
+    'Size: ' .. data.size,
+    'Visible: ' .. data.visible,
+    'Enabled: ' .. data.enabled,
+    'On: ' .. data.on,
+    'Checked: ' .. data.checked,
+    'Disabled: ' .. data.disabled,
+    'Hidden: ' .. data.hidden,
+    'State: on=' .. data.on .. ' checked=' .. data.checked ..
+      ' disabled=' .. data.disabled .. ' hidden=' .. data.hidden,
+    'Style name: ' .. data.styleName,
+    'Margins: ' .. data.margins,
+    'Anchors: ' .. data.anchors,
+    'Source: ' .. data.source,
+    'Source line: ' .. data.sourceLine,
+    'Mapping status: ' .. data.mapping,
+    'Dynamic warning: ' .. data.warning,
+  }, '\n')
+end
+
+local function inspectorPointInRect(point, rect)
+  return rect and point.x >= rect.x and point.x <= rect.x + rect.width and
+    point.y >= rect.y and point.y <= rect.y + rect.height
+end
+
+local function inspectorRectsIntersect(first, second)
+  return first and second and first.x < second.x + second.width and
+    first.x + first.width > second.x and first.y < second.y + second.height and
+    first.y + first.height > second.y
+end
+
+local function chooseInspectorPanelRect(mousePos, widgetRect, viewport)
+  local margin = INSPECTOR_PANEL_MARGIN
+  local width = math.min(INSPECTOR_PANEL_WIDTH, math.max(1, viewport.width - margin * 2))
+  local height = math.min(INSPECTOR_PANEL_HEIGHT, math.max(1, viewport.height - margin * 2))
+  local right = viewport.x + viewport.width - width - margin
+  local bottom = viewport.y + viewport.height - height - margin
+  local candidates = {
+    { x = right, y = bottom },
+    { x = viewport.x + margin, y = bottom },
+    { x = right, y = viewport.y + margin },
+    { x = viewport.x + margin, y = viewport.y + margin },
+  }
+
+  local fallback = nil
+  for _, candidate in ipairs(candidates) do
+    local rect = { x = candidate.x, y = candidate.y, width = width, height = height }
+    if not fallback and not inspectorPointInRect(mousePos, rect) then
+      fallback = rect
+    end
+    if not inspectorPointInRect(mousePos, rect) and
+        not inspectorRectsIntersect(rect, widgetRect) then
+      return rect
+    end
+  end
+  return fallback or {
+    x = candidates[1].x,
+    y = candidates[1].y,
+    width = width,
+    height = height,
+  }
+end
+
+local function isInspectorPanelRectInsideViewport(rect, viewport)
+  return rect and rect.x >= viewport.x + INSPECTOR_PANEL_MARGIN and
+    rect.y >= viewport.y + INSPECTOR_PANEL_MARGIN and
+    rect.x + rect.width <= viewport.x + viewport.width - INSPECTOR_PANEL_MARGIN and
+    rect.y + rect.height <= viewport.y + viewport.height - INSPECTOR_PANEL_MARGIN
+end
+
+local function isInspectorPanelRectValid(rect, mousePos, widgetRect, viewport)
+  if not isInspectorPanelRectInsideViewport(rect, viewport) then return false end
+  if inspectorPointInRect(mousePos, rect) then return false end
+  return not inspectorRectsIntersect(rect, widgetRect)
+end
+
+local function isInspectorPanelPoint(mousePos)
+  return inspectPanelRect and inspectorPointInRect(mousePos, inspectPanelRect)
+end
+
+--- Position the information panel in the safest screen corner for the cursor.
+-- @param mousePos Point: current cursor position.
+-- @param widgetRect Rect: optional rect of the observed widget.
+-- @return Rect: selected panel rectangle, when the inspector is visible.
+function positionInspectorPanel(mousePos, widgetRect)
+  if not inspectPanel or inspectPanel:isDestroyed() then return nil end
+  local viewport = rootWidget:getRect()
+  inspectPanelRect = chooseInspectorPanelRect(mousePos, widgetRect, viewport)
+  inspectPanel:breakAnchors()
+  inspectPanel:setRect(inspectPanelRect)
+  return inspectPanelRect
+end
+
+local function isInspectorOverlayWidget(widget)
+  if widget == inspectLayer or widget == hoverBox or widget == selectionBox or
+    widget == resizeHandle or widget == inspectHoverBox or widget == inspectSelectionBox or
+    widget == captureLayer then
+    return true
+  end
+  for _, guide in ipairs(guides) do
+    if widget == guide then return true end
+  end
+  return isWidgetDescendantOf(widget, inspectLayer)
+end
+
+local function findGlobalWidgetAt(parent, mousePos)
+  if not parent or parent:isDestroyed() then return nil end
+  if parent:isClipping() and not parent:containsPaddingPoint(mousePos) then return nil end
+
+  local children = parent:getChildren()
+  for index = #children, 1, -1 do
+    local child = children[index]
+    if not isInspectorOverlayWidget(child) and child:isExplicitlyVisible() then
+      local descendant = findGlobalWidgetAt(child, mousePos)
+      if descendant then return descendant end
+      if child:containsPoint(mousePos) then return child end
+    end
+  end
+  return nil
+end
+
+local function refreshGlobalInspectorVisuals()
+  moveBoxTo(inspectHoverBox, inspectHoverWidget)
+  moveBoxTo(inspectSelectionBox, inspectSelectedWidget)
+  restackLayers()
+end
+
+local function setInspectorStatus(message)
+  inspectStatusText = message
+  if editorWindow then status(message) end
+  if inspectPanel and not inspectPanel:isDestroyed() then
+    local label = inspectPanel:recursiveGetChildById('inspectorStatus')
+    if label then
+      label:setText(message)
+      label:setTooltip(message)
+    end
+  end
+end
+
+local function inspectorHoverSummary(widget)
+  local data = globalInspectorData(widget)
+  if not data then return 'No widget under cursor.' end
+  return table.concat({
+    'Class: ' .. data.className,
+    'Id: ' .. data.id,
+    'Path: ' .. data.path,
+    'Rect: ' .. data.rect,
+  }, '\n')
+end
+
+local function updateInspectorHoverSummary(widget)
+  if not inspectPanel or inspectPanel:isDestroyed() then return end
+  if widget == inspectDisplayedHoverWidget then return end
+
+  local label = inspectPanel:recursiveGetChildById('inspectorHoverSummary')
+  if label then
+    local summary = inspectorHoverSummary(widget)
+    label:setText(summary)
+    label:setTooltip(summary)
+  end
+  inspectDisplayedHoverWidget = widget
+end
+
+local function rebuildInspectorDetails(widget)
+  if not inspectDetailsList or inspectDetailsList:isDestroyed() then return end
+  local details = widget and buildGlobalInspectorDetails(widget) or table.concat({
+    'No fixed selection.',
+    '',
+    'Left click a widget to pin its details here.',
+  }, '\n')
+  inspectDetailsText = details
+  inspectDetailsList:destroyChildren()
+  for line in details:gmatch('[^\r\n]+') do
+    if line ~= 'OTUI Runtime Widget Details' and line ~= '' then
+      local label = g_ui.createWidget('OtuiInspectorLine', inspectDetailsList)
+      label:setText(line)
+      label:setTooltip(line)
+    end
+  end
+end
+
+local function updateInspectorPanel(widget, mousePos)
+  if not inspectPanel or inspectPanel:isDestroyed() then return end
+  if inspectSelectedWidget and inspectSelectedWidget:isDestroyed() then
+    inspectSelectedWidget = nil
+    inspectPanelRect = nil
+    inspectDisplayedWidget = nil
+    inspectDetailsText = ''
+  end
+
+  local viewport = rootWidget:getRect()
+  local observedRect = widget and widget:getRect() or nil
+  local shouldReposition = not inspectPanelRect
+  if inspectSelectedWidget then
+    shouldReposition = shouldReposition or
+      not isInspectorPanelRectInsideViewport(inspectPanelRect, viewport)
+  elseif not isInspectorPanelPoint(mousePos) then
+    shouldReposition = shouldReposition or not isInspectorPanelRectValid(
+      inspectPanelRect, mousePos, observedRect, viewport)
+  end
+
+  if shouldReposition then
+    local positioningRect = inspectSelectedWidget and inspectSelectedWidget:getRect() or observedRect
+    positionInspectorPanel(mousePos, positioningRect)
+  end
+
+  if inspectSelectedWidget ~= inspectDisplayedWidget or inspectDetailsText == '' then
+    inspectDisplayedWidget = inspectSelectedWidget
+    rebuildInspectorDetails(inspectSelectedWidget)
+  end
+  updateInspectorHoverSummary(widget)
+
+  local modeLabel = inspectPanel:recursiveGetChildById('inspectorMode')
+  if modeLabel then
+    modeLabel:setText(inspectSelectedWidget and
+      'Selected fixed in green | left click changes it' or
+      'Hover highlighted in yellow | left click fixes it')
+  end
+  local statusLabel = inspectPanel:recursiveGetChildById('inspectorStatus')
+  if statusLabel then
+    statusLabel:setText(inspectStatusText)
+    statusLabel:setTooltip(inspectStatusText)
+  end
+  inspectPanel:show()
+  restackLayers()
+end
+
+function inspectWidgetAt(mousePos)
+  if not inspectMode or not inspectLayer or inspectLayer:isDestroyed() then return nil end
+  mousePos = mousePos or g_window.getMousePosition()
+  if isInspectorPanelPoint(mousePos) then
+    refreshGlobalInspectorVisuals()
+    updateInspectorPanel(inspectHoverWidget, mousePos)
+    return inspectHoverWidget
+  end
+  inspectHoverWidget = findGlobalWidgetAt(rootWidget, mousePos)
+  refreshGlobalInspectorVisuals()
+  updateInspectorPanel(inspectHoverWidget, mousePos)
+  return inspectHoverWidget
+end
+
+function copyInspectorSummary(widget)
+  widget = widget or inspectSelectedWidget or inspectHoverWidget
+  if not widget or widget:isDestroyed() then
+    setInspectorStatus('No widget found at this position.')
+    return
+  end
+  g_window.setClipboardText(buildGlobalInspectorSummary(widget))
+  setInspectorStatus('Inspector summary copied to clipboard.')
+end
+
+function copyInspectorDetails(widget)
+  widget = widget or inspectSelectedWidget or inspectHoverWidget
+  if not widget or widget:isDestroyed() then
+    setInspectorStatus('No widget found at this position.')
+    return
+  end
+  g_window.setClipboardText(buildGlobalInspectorDetails(widget))
+  setInspectorStatus('Inspector details copied to clipboard.')
+end
+
+local function isInspectToggleKey(keyCode, keyboardModifiers)
+  return keyCode == KeyI and bit.band(keyboardModifiers, KeyboardCtrlModifier) ~= 0 and
+    bit.band(keyboardModifiers, KeyboardAltModifier) ~= 0
+end
+
+function toggleInspectMode()
+  setInspectMode(not inspectMode)
+  return true
+end
+
+function setInspectMode(enabled)
+  enabled = enabled == true
+  if inspectMode == enabled then return end
+
+  if enabled then
+    if captureLayer then
+      setPickMode(false)
+      local pickCheck = editorWindow and editorWindow:recursiveGetChildById('pickCheck')
+      if pickCheck then
+        pickCheck.suppress = true
+        pickCheck:setChecked(false)
+        pickCheck.suppress = false
+      end
+    end
+
+    inspectMode = true
+    inspectHoverWidget = nil
+    inspectSelectedWidget = nil
+    inspectDisplayedWidget = nil
+    inspectDisplayedHoverWidget = nil
+    inspectPanelRect = nil
+    inspectDetailsText = ''
+    if hoverBox and not hoverBox:isDestroyed() then hoverBox:hide() end
+    if selectionBox and not selectionBox:isDestroyed() then selectionBox:hide() end
+
+    inspectLayer = g_ui.createWidget('UIWidget', rootWidget)
+    inspectLayer:setId('otuiInspectLayer')
+    inspectLayer:fill('parent')
+    inspectLayer:setFocusable(true)
+    inspectLayer:setPhantom(false)
+
+    inspectPanel = g_ui.createWidget('OtuiGlobalInspectorPanel', inspectLayer)
+    inspectPanel:setId('otuiGlobalInspectorPanel')
+    inspectPanel:setPhantom(true)
+    inspectPanel:setFocusable(false)
+    inspectDetailsList = inspectPanel:recursiveGetChildById('inspectorDetails')
+
+    inspectHoverBox = ensureBox(inspectHoverBox, '#ffcc00')
+    inspectSelectionBox = ensureBox(inspectSelectionBox, '#00ff00')
+
+    inspectLayer.onMouseMove = function(_, mousePos)
+      inspectWidgetAt(mousePos)
+      return true
+    end
+
+    inspectLayer.onMousePress = function(_, mousePos, button)
+      if isInspectorPanelPoint(mousePos) then return false end
+      local widget = inspectWidgetAt(mousePos)
+      if button == MouseLeftButton then
+        inspectSelectedWidget = widget
+        inspectPanelRect = nil
+        if widget then
+          positionInspectorPanel(mousePos, widget:getRect())
+          setInspectorStatus('Widget selection fixed.')
+        else
+          setInspectorStatus('No widget found at this position.')
+        end
+        refreshGlobalInspectorVisuals()
+        updateInspectorPanel(widget, mousePos)
+        return true
+      end
+
+      if button == MouseRightButton then
+        if not widget and not inspectSelectedWidget then
+          setInspectorStatus('No widget found at this position.')
+        elseif g_keyboard.isShiftPressed() then
+          copyInspectorDetails()
+        else
+          copyInspectorSummary()
+        end
+        return true
+      end
+      return true
+    end
+
+    inspectLayer.onMouseRelease = function()
+      return true
+    end
+
+    inspectLayer.onMouseWheel = function(_, mousePos)
+      if isInspectorPanelPoint(mousePos) then return false end
+      return true
+    end
+
+    inspectLayer.onKeyDown = function(_, keyCode, keyboardModifiers)
+      if isInspectToggleKey(keyCode, keyboardModifiers) then return false end
+      return true
+    end
+
+    inspectLayer.onKeyPress = function(_, keyCode, keyboardModifiers)
+      if isInspectToggleKey(keyCode, keyboardModifiers) then return false end
+      if keyCode == KeyEscape then
+        scheduleEvent(function()
+          if inspectMode then setInspectMode(false) end
+        end, 1)
+      end
+      return true
+    end
+
+    inspectLayer:grabMouse()
+    restackLayers()
+    inspectLayer:focus()
+    setInspectorStatus('OTUI Inspect mode: ON')
+    inspectWidgetAt(g_window.getMousePosition())
+    return
+  end
+
+  inspectMode = false
+  if inspectHoverBox and not inspectHoverBox:isDestroyed() then inspectHoverBox:hide() end
+  if inspectSelectionBox and not inspectSelectionBox:isDestroyed() then inspectSelectionBox:hide() end
+  if inspectLayer and not inspectLayer:isDestroyed() then
+    inspectLayer:ungrabMouse()
+    inspectLayer:destroy()
+  end
+  inspectLayer, inspectPanel, inspectDetailsList = nil, nil, nil
+  inspectHoverWidget, inspectSelectedWidget = nil, nil
+  inspectDisplayedWidget, inspectDisplayedHoverWidget = nil, nil
+  inspectPanelRect, inspectDetailsText = nil, ''
+  refreshSelectionVisuals()
+  setInspectorStatus('OTUI Inspect mode: OFF')
+  restackLayers()
 end
 
 local function readDocument(path)
@@ -2317,6 +2947,70 @@ function selfTest()
     'clearNodeSelection must reset all three, nodeError included')
   currentNode, nodeError, currentRef = keepNode, keepError, keepRef
 
+  -- Runtime inspector reports must remain useful without a file-backed preview.
+  local fakeParent = {}
+  function fakeParent:getStyleName() return 'UIPanel' end
+  function fakeParent:getId() return 'panel' end
+  function fakeParent:getParent() return nil end
+
+  local fakeWidget = {}
+  function fakeWidget:getStyleName() return 'UIButton' end
+  function fakeWidget:getId() return 'closeButton' end
+  function fakeWidget:getParent() return fakeParent end
+  function fakeWidget:getChildCount() return 0 end
+  function fakeWidget:getRect() return { x = 143, y = 69, width = 32, height = 20 } end
+  function fakeWidget:isDestroyed() return false end
+  function fakeWidget:isOn() return true end
+  function fakeWidget:isChecked() return false end
+  function fakeWidget:isDisabled() return false end
+  function fakeWidget:isHidden() return false end
+  function fakeWidget:isEffectivelyVisible() return true end
+  function fakeWidget:isEnabled() return true end
+  function fakeWidget:getMarginTop() return 1 end
+  function fakeWidget:getMarginRight() return 2 end
+  function fakeWidget:getMarginBottom() return 3 end
+  function fakeWidget:getMarginLeft() return 4 end
+  function fakeWidget:getAnchors() return { AnchorTop, AnchorLeft } end
+
+  local fakeSummary = buildGlobalInspectorSummary(fakeWidget)
+  local fakeDetails = buildGlobalInspectorDetails(fakeWidget)
+  check(fakeSummary:find('Class: UIButton', 1, true) ~= nil,
+    'global inspector summary should include the class')
+  check(fakeSummary:find('Id: closeButton', 1, true) ~= nil,
+    'global inspector summary should include the id')
+  check(fakeSummary:find('Rect: x=143 y=69 w=32 h=20', 1, true) ~= nil,
+    'global inspector summary should include the rect')
+  check(fakeDetails:find('Mapping status: runtime-only or dynamic', 1, true) ~= nil,
+    'global inspector details should flag runtime-only widgets')
+  check(fakeDetails:find('Margins: top=1 right=2 bottom=3 left=4', 1, true) ~= nil,
+    'global inspector details should include margins')
+  check(fakeDetails:find('Anchors: top, left', 1, true) ~= nil,
+    'global inspector details should include anchors')
+  check(buildGlobalInspectorDetails(nil):find('No widget found at this position.', 1, true) ~= nil,
+    'global inspector should handle an empty hit test')
+
+  local qaViewport = { x = 0, y = 0, width = 800, height = 600 }
+  local qaWidgetRect = { x = 390, y = 290, width = 20, height = 20 }
+  local preferredPanel = chooseInspectorPanelRect({ x = 400, y = 100 }, qaWidgetRect, qaViewport)
+  check(preferredPanel.x == 428 and preferredPanel.y == 288,
+    'inspector panel should prefer the bottom-right corner')
+  check(not isInspectorPanelRectValid(preferredPanel, { x = 450, y = 300 }, qaWidgetRect, qaViewport),
+    'inspector panel should treat its own area as occupied by the cursor')
+  for _, point in ipairs({
+    { x = 20, y = 20 }, { x = 780, y = 20 },
+    { x = 20, y = 580 }, { x = 780, y = 580 },
+  }) do
+    local panelRect = chooseInspectorPanelRect(point, qaWidgetRect, qaViewport)
+    check(panelRect.x >= INSPECTOR_PANEL_MARGIN and
+      panelRect.y >= INSPECTOR_PANEL_MARGIN,
+      'inspector panel should stay inside the viewport')
+    check(panelRect.x + panelRect.width <= qaViewport.width - INSPECTOR_PANEL_MARGIN and
+      panelRect.y + panelRect.height <= qaViewport.height - INSPECTOR_PANEL_MARGIN,
+      'inspector panel should respect the viewport margin')
+    check(not inspectorPointInRect(point, panelRect),
+      'inspector panel should not cover the cursor')
+  end
+
   -- A read failure must reach the user. readDocument writes the module's `doc`,
   -- so the current one is put back before returning.
   local savedDoc = doc
@@ -2372,23 +3066,33 @@ function init()
   Keybind.bind('Debug', 'Toggle OTUI Editor', {
     { type = KEY_DOWN, callback = toggle }
   })
+
+  Keybind.new('Debug', 'Toggle OTUI Inspector', 'Ctrl+Alt+I', '')
+  Keybind.bind('Debug', 'Toggle OTUI Inspector', {
+    { type = KEY_DOWN, callback = toggleInspectMode }
+  })
 end
 
 function terminate()
+  if inspectMode then setInspectMode(false) end
+
   removeEvent(watchEvent)
   watchEvent = nil
 
   Keybind.delete('Debug', 'Toggle OTUI Editor')
+  Keybind.delete('Debug', 'Toggle OTUI Inspector')
 
   closePicker()
   closeGallery()
   closeStage()
 
   clearGuides()
-  for _, widget in ipairs({ selectionBox, hoverBox, resizeHandle, captureLayer }) do
+  for _, widget in ipairs({ selectionBox, hoverBox, resizeHandle, captureLayer,
+                            inspectSelectionBox, inspectHoverBox }) do
     if widget and not widget:isDestroyed() then widget:destroy() end
   end
   selectionBox, hoverBox, resizeHandle, captureLayer = nil, nil, nil, nil
+  inspectSelectionBox, inspectHoverBox = nil, nil
   selectedPath = nil
   doc = nil
 
