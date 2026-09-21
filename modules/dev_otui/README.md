@@ -19,6 +19,8 @@ the last widget state so its details and scrollbar remain usable.
 - Left click fixes the current widget and keeps its green highlight and report.
 - The panel shows a compact `HOVER NOW` summary and a detailed `SELECTED WIDGET`
   report independently.
+- The selected report is grouped into `IDENTITY`, `LAYOUT`, `STATE` and `SOURCE`
+  sections and uses the same framed panel language as the Enter Game screen.
 - Right click copies the short summary.
 - `Shift` + right click copies the detailed report.
 - `Escape` or `Ctrl+Alt+I` exits Inspect mode.
