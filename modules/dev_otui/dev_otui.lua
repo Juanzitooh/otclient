@@ -591,6 +591,7 @@ local function luaReferenceOtuiFiles(directory)
 end
 
 local GENERIC_LUA_WIDGET_STYLES = {
+  Item = true,
   UIWidget = true,
   Panel = true,
   UILabel = true,
@@ -600,6 +601,38 @@ local GENERIC_LUA_WIDGET_STYLES = {
 
 local function isGenericLuaWidgetStyle(styleName)
   return styleName and GENERIC_LUA_WIDGET_STYLES[styleName] == true
+end
+
+local GENERIC_LUA_WIDGET_IDS = {
+  button = true,
+  child = true,
+  content = true,
+  data = true,
+  description = true,
+  icon = true,
+  image = true,
+  info = true,
+  item = true,
+  label = true,
+  list = true,
+  name = true,
+  panel = true,
+  parent = true,
+  row = true,
+  separator = true,
+  slot = true,
+  status = true,
+  text = true,
+  time = true,
+  title = true,
+  type = true,
+  value = true,
+  widget = true,
+  window = true,
+}
+
+local function isGenericLuaWidgetId(id)
+  return id and GENERIC_LUA_WIDGET_IDS[id:lower()] == true
 end
 
 local function luaFunctionName(line)
@@ -701,7 +734,12 @@ local function luaReferenceHasExactId(line, id)
 
   local quoted = line:find("'" .. id .. "'", 1, true) or
     line:find('"' .. id .. '"', 1, true)
-  if quoted then return true, true end
+  if quoted then
+    local quoteEnd = quoted + #id + 1
+    local suffix = line:sub(quoteEnd + 1)
+    if not suffix:match('^%s*%.%.') then return true, true end
+    return false, false
+  end
 
   if id:match('^[%w_]+$') then
     local escaped = luaPatternEscape(id)
@@ -738,6 +776,7 @@ local function scanLuaReferenceFile(file, id, styleName)
   local widgetAliases = {}
   local createdWidgetAliases = {}
   local explicitWidgetAliases = {}
+  local parentAliases = {}
   local references = {}
   local dynamicPossible = false
 
@@ -770,6 +809,11 @@ local function scanLuaReferenceFile(file, id, styleName)
           line:find('"' .. styleName .. '"', 1, true)) then
       local widgetAlias = line:match('([%w_]+)%s*=%s*.-createWidget%s*%(')
       if widgetAlias then createdWidgetAliases[widgetAlias] = true end
+    end
+
+    local parentAlias, createdStyle = line:match('([%w_]+)%s*=%s*.-createWidget%s*%(%s*[\'"]([%w_]+)[\'"]')
+    if parentAlias and createdStyle and not isGenericLuaWidgetStyle(createdStyle) then
+      parentAliases[parentAlias] = createdStyle
     end
   end
 
@@ -812,6 +856,9 @@ local function scanLuaReferenceFile(file, id, styleName)
         (line:find("'" .. styleName .. "'", 1, true) or
           line:find('"' .. styleName .. '"', 1, true)) and
         (not isGenericLuaWidgetStyle(styleName) or widgetAliasName ~= nil)
+      local isStyleReuse = styleName and lowerLine:find('createwidget', 1, true) and
+        (line:find("'" .. styleName .. "'", 1, true) or
+          line:find('"' .. styleName .. '"', 1, true)) and not isStyleCreation
       local isChildLookup = widgetAliasName and
         (lowerLine:find('getchildbyid', 1, true) or
           lowerLine:find('recursivegetchildbyid', 1, true))
@@ -821,10 +868,26 @@ local function scanLuaReferenceFile(file, id, styleName)
       local attributeName = widgetAliasName and
         line:match(luaPatternEscape(widgetAliasName) .. '%.([%w_]+)%s*=')
       local isReference = exact or alias
+      local memberPattern = '%.' .. luaPatternEscape(id or '') .. '%s*[:.]'
+      local parentAliasName = line:match('([%w_]+)' .. memberPattern)
+      local isContextualMember = isGenericLuaWidgetId(id) and parentAliasName and
+        parentAliases[parentAliasName] ~= nil
+      local isTokenOnly = isGenericLuaWidgetId(id) and exact and not isContextualMember and
+        not quoted
       local isMetadataKey = luaReferenceMetadataKey(line, id)
       if isMetadataKey then
         addReference(lineNumber, 'metadata', 'high', 'metadata mapping', trimmedLine,
           'The selected id is used as a data or tooltip table key.')
+      elseif isContextualMember then
+        addReference(lineNumber, luaReferenceKind(line), 'high', 'contextual runtime',
+          trimmedLine, 'The generic child id is accessed through the parent alias "' ..
+          parentAliasName .. '" (' .. parentAliases[parentAliasName] .. ').')
+      elseif isStyleReuse then
+        addReference(lineNumber, 'style reuse', 'low', 'style reuse', trimmedLine,
+          'The style is reused, but this line does not identify the selected instance.')
+      elseif isTokenOnly then
+        addReference(lineNumber, 'text/token match', 'low', 'text/token match', trimmedLine,
+          'The generic id appears as a variable, table field, or text token without widget context.')
       elseif isStyleCreation then
         addReference(lineNumber, 'creation', 'high', 'creation', trimmedLine,
           'Created with the selected OTUI style.')
@@ -867,7 +930,7 @@ local function luaReferenceModuleDirectory(data)
   return targetPath:match('^(.*)/[^/]+$')
 end
 
-local function luaReferenceOtuiSources(styleName, id)
+local function luaReferenceOtuiSources(styleName, id, preferredDirectory)
   if (not styleName or styleName == '' or styleName == 'unknown') and
       (not id or id == '' or id == 'unknown') then
     return {}
@@ -903,6 +966,13 @@ local function luaReferenceOtuiSources(styleName, id)
       end
     end
   end
+  table.sort(sources, function(first, second)
+    local firstPreferred = preferredDirectory and first.file:find(preferredDirectory, 1, true) ~= nil
+    local secondPreferred = preferredDirectory and second.file:find(preferredDirectory, 1, true) ~= nil
+    if firstPreferred ~= secondPreferred then return firstPreferred end
+    if first.file ~= second.file then return first.file < second.file end
+    return first.line < second.line
+  end)
   return sources
 end
 
@@ -947,9 +1017,12 @@ local function discoverLuaReferences(widget)
     ['child lookup'] = 3,
     ['dynamic child mapping'] = 4,
     ['runtime attribute'] = 5,
-    ['metadata mapping'] = 6,
-    mutation = 7,
-    ['unresolved match'] = 8,
+    ['contextual runtime'] = 6,
+    ['metadata mapping'] = 7,
+    ['style reuse'] = 8,
+    mutation = 9,
+    ['text/token match'] = 10,
+    ['unresolved match'] = 11,
   }
   table.sort(references, function(first, second)
     local firstOrder = areaOrder[first.area] or 99
@@ -972,7 +1045,7 @@ local function discoverLuaReferences(widget)
   return {
     references = result,
     dynamicPossible = dynamicPossible,
-    otuiSources = luaReferenceOtuiSources(data.className, data.id),
+    otuiSources = luaReferenceOtuiSources(data.className, data.id, moduleDirectory),
   }
 end
 
@@ -997,7 +1070,9 @@ local function luaReferencesSection(widget)
     table.insert(lines, '')
     table.insert(lines, 'OTUI DEFINITION')
     table.insert(lines, 'Style: ' .. data.className)
-    for _, source in ipairs(result.otuiSources) do
+    for sourceIndex, source in ipairs(result.otuiSources) do
+      table.insert(lines, sourceIndex == 1 and 'Role: primary context match' or
+        'Role: style/id reuse')
       table.insert(lines, 'File: ' .. source.file)
       table.insert(lines, 'Line: ' .. tostring(source.line))
       table.insert(lines, 'Match: ' .. (source.kind or 'source'))
@@ -3684,6 +3759,25 @@ function selfTest()
   local preySources = luaReferenceOtuiSources('UIWidget', 'shopPermButton')
   check(#preySources > 0 and preySources[1].file == '/modules/game_prey/prey.otui',
     'OTUI source lookup should resolve a generic widget by id')
+  local trackerReferences = scanLuaReferenceFile(
+    '/modules/game_imbuementtracker/imbuementtracker.lua', 'item', 'Item')
+  local hasContextualTrackerReference = false
+  local hasTokenTrackerReference = false
+  for _, reference in ipairs(trackerReferences) do
+    hasContextualTrackerReference = hasContextualTrackerReference or
+      reference.area == 'contextual runtime'
+    hasTokenTrackerReference = hasTokenTrackerReference or
+      reference.area == 'text/token match'
+  end
+  check(hasContextualTrackerReference and hasTokenTrackerReference,
+    'generic ids should distinguish parent context from token matches')
+  local reuseReferences = scanLuaReferenceFile(
+    '/modules/game_containers/containers.lua', 'item', 'Item')
+  local hasStyleReuse = false
+  for _, reference in ipairs(reuseReferences) do
+    hasStyleReuse = hasStyleReuse or reference.area == 'style reuse'
+  end
+  check(hasStyleReuse, 'generic style creations should be marked as style reuse')
   local referencesWindow = g_ui.createWidget('OtuiLuaReferencesWindow', rootWidget)
   check(referencesWindow ~= nil, 'Lua references modal style should instantiate')
   if referencesWindow then referencesWindow:destroy() end
