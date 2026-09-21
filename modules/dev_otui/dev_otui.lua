@@ -574,6 +574,22 @@ local function luaReferenceFiles(directory)
   return result
 end
 
+local function luaReferenceOtuiFiles(directory)
+  if not directory then return {} end
+
+  local files = {}
+  pcall(function()
+    files = g_resources.listDirectoryFiles(directory, true, false, true)
+  end)
+
+  local result = {}
+  for _, file in ipairs(files) do
+    if file:ends('.otui') then table.insert(result, file) end
+  end
+  table.sort(result)
+  return result
+end
+
 local function luaFunctionName(line)
   return line:match('^%s*local%s+function%s+([%w_%.:]+)') or
     line:match('^%s*function%s+([%w_%.:]+)')
@@ -655,7 +671,8 @@ local function luaReferenceIsRelevant(line)
     lower:find('setvisible', 1, true) or lower:find('setenabled', 1, true) or
     lower:find('setchecked', 1, true) or lower:find('seton', 1, true) or
     lower:find('destroy', 1, true) or lower:find('remove', 1, true) or
-    lower:find('callback', 1, true) or lower:find('onclick', 1, true) or
+    lower:find('callback', 1, true) or lower:find('connect', 1, true) or
+    lower:find('onclick', 1, true) or
     lower:find('onchange', 1, true) or lower:find('onfocus', 1, true) or
     lower:match('%.show%s*%(') or lower:match('%.hide%s*%(')
 end
@@ -678,6 +695,9 @@ end
 
 local function luaReferenceHasPartialId(line, id)
   if not id or id == '' or id == 'unknown' or #id < 6 then return false end
+  if id:match('^(widget|child|item|button|label|window|panel)%d+$') then
+    return false
+  end
   local prefixLength = math.max(4, math.floor(#id * 0.6))
   return line:lower():find(id:sub(1, prefixLength):lower(), 1, true) ~= nil
 end
@@ -688,7 +708,7 @@ local function luaReferenceShortContext(line)
   return context:sub(1, LUA_REFERENCE_CONTEXT_LENGTH - 3) .. '...'
 end
 
-local function scanLuaReferenceFile(file, id)
+local function scanLuaReferenceFile(file, id, styleName)
   local okRead, text = pcall(function() return g_resources.readFileContents(file) end)
   if not okRead or not text then return {}, false end
 
@@ -696,16 +716,37 @@ local function scanLuaReferenceFile(file, id)
   for line in (text .. '\n'):gmatch('(.-)\n') do table.insert(lines, line) end
   local functions = luaFunctionNames(lines)
   local aliases = {}
-  local createdAliases = {}
+  local widgetAliases = {}
   local references = {}
   local dynamicPossible = false
+
+  local function addReference(lineNumber, kind, confidence, area, context, reason)
+    table.insert(references, {
+      file = file,
+      line = lineNumber,
+      functionName = functions[lineNumber] or 'unknown',
+      kind = kind,
+      confidence = confidence,
+      area = area,
+      context = context,
+      shortContext = luaReferenceShortContext(context),
+      reason = reason,
+    })
+  end
 
   for _, originalLine in ipairs(lines) do
     local line = originalLine:gsub('%-%-.*', '')
     local exact = luaReferenceHasExactId(line, id)
     local createdAlias = line:match('([%w_]+)%s*:%s*setId%s*%(%s*[\'\"]' ..
       luaPatternEscape(id or '') .. '[\'\"]')
-    if exact and createdAlias then createdAliases[createdAlias] = true end
+    if exact and createdAlias then aliases[createdAlias] = true end
+
+    if styleName and line:lower():find('createwidget', 1, true) and
+        (line:find("'" .. styleName .. "'", 1, true) or
+          line:find('"' .. styleName .. '"', 1, true)) then
+      local widgetAlias = line:match('([%w_]+)%s*=%s*.-createWidget%s*%(')
+      if widgetAlias then widgetAliases[widgetAlias] = true end
+    end
   end
 
   for lineNumber, originalLine in ipairs(lines) do
@@ -714,9 +755,16 @@ local function scanLuaReferenceFile(file, id)
     if trimmedLine ~= '' then
       local exact, quoted = luaReferenceHasExactId(line, id)
       local alias = false
+      local widgetAliasName = nil
       for name in pairs(aliases) do
         if line:find('%f[%w_]' .. luaPatternEscape(name) .. '%f[^%w_]', 1) then
           alias = true
+          break
+        end
+      end
+      for name in pairs(widgetAliases) do
+        if line:find('%f[%w_]' .. luaPatternEscape(name) .. '%f[^%w_]', 1) then
+          widgetAliasName = name
           break
         end
       end
@@ -725,51 +773,49 @@ local function scanLuaReferenceFile(file, id)
         luaPatternEscape(id or '') .. '[\'\"]') or
         line:match('local%s+([%w_]+)%s*=%s*.-getChildById%s*%(%s*[\'\"]' ..
           luaPatternEscape(id or '') .. '[\'\"]')
-      local assignedAlias = line:match('local%s+([%w_]+)%s*=%s*.-getChildById')
-      if createsAlias or assignedAlias then
-        aliases[createsAlias or assignedAlias] = true
-      end
+      if createsAlias then aliases[createsAlias] = true end
 
       local relevant = luaReferenceIsRelevant(line)
       local partial = luaReferenceHasPartialId(line, id)
+      local lowerLine = line:lower()
+      local isStyleCreation = styleName and lowerLine:find('createwidget', 1, true) and
+        (line:find("'" .. styleName .. "'", 1, true) or
+          line:find('"' .. styleName .. '"', 1, true))
+      local isChildLookup = widgetAliasName and
+        (lowerLine:find('getchildbyid', 1, true) or
+          lowerLine:find('recursivegetchildbyid', 1, true))
+      local isDynamicChildLookup = isChildLookup and
+        not line:match('getChildById%s*%(%s*[\'"][^\'"]+[\'"]') and
+        not line:match('recursiveGetChildById%s*%(%s*[\'"][^\'"]+[\'"]')
+      local attributeName = widgetAliasName and
+        line:match(luaPatternEscape(widgetAliasName) .. '%.([%w_]+)%s*=')
       local isReference = exact or alias
-      if isReference then
+      if isStyleCreation then
+        addReference(lineNumber, 'creation', 'high', 'creation', trimmedLine,
+          'Created with the selected OTUI style.')
+      elseif isReference then
         local kind = luaReferenceKind(line)
         local confidence = (quoted or alias) and 'high' or 'medium'
-        table.insert(references, {
-          file = file,
-          line = lineNumber,
-          functionName = functions[lineNumber] or 'unknown',
-          kind = kind,
-          confidence = confidence,
-          context = trimmedLine,
-          shortContext = luaReferenceShortContext(trimmedLine),
-        })
-      elseif line:lower():find('createwidget', 1, true) then
-        local createdAliasName = line:match('local%s+([%w_]+)%s*=') or
-          line:match('([%w_]+)%s*=')
-        if createdAliasName and createdAliases[createdAliasName] then
-          table.insert(references, {
-            file = file,
-            line = lineNumber,
-            functionName = functions[lineNumber] or 'unknown',
-            kind = 'creation',
-            confidence = 'medium',
-            context = trimmedLine,
-            shortContext = luaReferenceShortContext(trimmedLine),
-          })
-        end
+        addReference(lineNumber, kind, confidence, 'direct runtime id', trimmedLine,
+          'The selected runtime id or a confirmed alias appears here.')
+      elseif isDynamicChildLookup then
+        dynamicPossible = true
+        addReference(lineNumber, 'dynamic/unresolved', 'dynamic/unresolved',
+          'dynamic child mapping', trimmedLine,
+          'The child id is supplied by a runtime expression.')
+      elseif isChildLookup then
+        addReference(lineNumber, 'lookup', 'high', 'child lookup', trimmedLine,
+          'The selected OTUI style owns this child lookup.')
+      elseif attributeName then
+        addReference(lineNumber, 'dynamic/unresolved', 'high', 'runtime attribute',
+          trimmedLine, 'Lua field assigned directly on the selected widget.')
+      elseif widgetAliasName and relevant then
+        addReference(lineNumber, luaReferenceKind(line), 'high', 'mutation', trimmedLine,
+          'The selected OTUI style instance is mutated here.')
       elseif relevant and partial then
         dynamicPossible = true
-        table.insert(references, {
-          file = file,
-          line = lineNumber,
-          functionName = functions[lineNumber] or 'unknown',
-          kind = 'dynamic/unresolved',
-          confidence = 'dynamic/unresolved',
-          context = trimmedLine,
-          shortContext = luaReferenceShortContext(trimmedLine),
-        })
+        addReference(lineNumber, 'dynamic/unresolved', 'dynamic/unresolved',
+          'unresolved match', trimmedLine, 'Only a partial identifier match was found.')
       elseif relevant and (line:match('getChildById%s*%(%s*[%w_]+%s*%)') or
           line:match('recursiveGetChildById%s*%(%s*[%w_]+%s*%)')) then
         dynamicPossible = true
@@ -784,6 +830,37 @@ local function luaReferenceModuleDirectory(data)
   if not data or not targetPath then return nil end
   if not targetPath:match('^/modules/') then return nil end
   return targetPath:match('^(.*)/[^/]+$')
+end
+
+local function luaReferenceOtuiSources(styleName)
+  if not styleName or styleName == '' or styleName == 'unknown' then return {} end
+
+  local files = {}
+  local seen = {}
+  for _, directory in ipairs({ '/modules', '/styles' }) do
+    for _, file in ipairs(luaReferenceOtuiFiles(directory)) do
+      if not seen[file] then
+        seen[file] = true
+        table.insert(files, file)
+      end
+    end
+  end
+
+  local sources = {}
+  local pattern = '^%s*' .. luaPatternEscape(styleName) .. '%s*<'
+  for _, file in ipairs(files) do
+    local okRead, text = pcall(function() return g_resources.readFileContents(file) end)
+    if okRead and text then
+      local lineNumber = 0
+      for line in (text .. '\n'):gmatch('(.-)\n') do
+        lineNumber = lineNumber + 1
+        if line:match(pattern) then
+          table.insert(sources, { file = file, line = lineNumber })
+        end
+      end
+    end
+  end
+  return sources
 end
 
 local function discoverLuaReferences(widget)
@@ -816,12 +893,24 @@ local function discoverLuaReferences(widget)
   addFiles(luaReferenceFiles('/modules'))
 
   for _, file in ipairs(files) do
-    local found, hasDynamic = scanLuaReferenceFile(file, id)
+    local found, hasDynamic = scanLuaReferenceFile(file, id, data.className)
     dynamicPossible = dynamicPossible or hasDynamic
     for _, reference in ipairs(found) do table.insert(references, reference) end
   end
 
+  local areaOrder = {
+    ['direct runtime id'] = 1,
+    creation = 2,
+    ['child lookup'] = 3,
+    ['dynamic child mapping'] = 4,
+    ['runtime attribute'] = 5,
+    mutation = 6,
+    ['unresolved match'] = 7,
+  }
   table.sort(references, function(first, second)
+    local firstOrder = areaOrder[first.area] or 99
+    local secondOrder = areaOrder[second.area] or 99
+    if firstOrder ~= secondOrder then return firstOrder < secondOrder end
     if first.file ~= second.file then return first.file < second.file end
     return first.line < second.line
   end)
@@ -839,6 +928,7 @@ local function discoverLuaReferences(widget)
   return {
     references = result,
     dynamicPossible = dynamicPossible,
+    otuiSources = luaReferenceOtuiSources(data.className),
   }
 end
 
@@ -859,6 +949,15 @@ local function luaReferencesSection(widget)
 
   local result = getLuaReferences(widget)
   local lines = { 'LUA REFERENCES' }
+  if #result.otuiSources > 0 then
+    table.insert(lines, '')
+    table.insert(lines, 'OTUI DEFINITION')
+    table.insert(lines, 'Style: ' .. data.className)
+    for _, source in ipairs(result.otuiSources) do
+      table.insert(lines, 'File: ' .. source.file)
+      table.insert(lines, 'Line: ' .. tostring(source.line))
+    end
+  end
   if #result.references == 0 then
     table.insert(lines, '')
     table.insert(lines, result.dynamicPossible and
@@ -872,8 +971,10 @@ local function luaReferencesSection(widget)
     table.insert(lines, 'File: ' .. reference.file)
     table.insert(lines, 'Function: ' .. reference.functionName)
     table.insert(lines, 'Line: ' .. tostring(reference.line))
+    table.insert(lines, 'Area: ' .. reference.area)
     table.insert(lines, 'Kind: ' .. reference.kind)
     table.insert(lines, 'Confidence: ' .. reference.confidence)
+    if reference.reason then table.insert(lines, 'Reason: ' .. reference.reason) end
     table.insert(lines, 'Context:')
     table.insert(lines, '  ' .. reference.context)
   end
@@ -1087,7 +1188,13 @@ local function populateLuaReferencesWindow(widget, data, result)
   local subtitle = luaReferencesWindow:recursiveGetChildById('referencesSubtitle')
   if subtitle then
     local sourceFile = data.source:gsub(':%d+$', '')
-    subtitle:setText(sourceFile .. ' - line ' .. data.sourceLine .. ' - ' .. data.path)
+    local sourceLine = data.sourceLine
+    if sourceFile == 'unknown' and result.otuiSources[1] then
+      sourceFile = result.otuiSources[1].file
+      sourceLine = tostring(result.otuiSources[1].line) .. ' (style)'
+    end
+    subtitle:setText('Style: ' .. data.className .. ' - ' .. sourceFile ..
+      ' - line ' .. sourceLine .. ' - ' .. data.path)
   end
 
   luaReferencesList = luaReferencesWindow:recursiveGetChildById('referencesList')
@@ -1105,7 +1212,16 @@ local function populateLuaReferencesWindow(widget, data, result)
 
   local currentFile = nil
   local currentFunction = nil
+  local currentArea = nil
   for _, reference in ipairs(result.references) do
+    if reference.area ~= currentArea then
+      currentArea = reference.area
+      currentFile = nil
+      currentFunction = nil
+      local areaLabel = g_ui.createWidget('OtuiLuaReferenceArea', luaReferencesList)
+      areaLabel:setText(string.upper(reference.area))
+      areaLabel:setTooltip(reference.reason or reference.area)
+    end
     if reference.file ~= currentFile then
       currentFile = reference.file
       currentFunction = nil
@@ -1123,10 +1239,10 @@ local function populateLuaReferencesWindow(widget, data, result)
     local row = g_ui.createWidget('OtuiLuaReferenceRow', luaReferencesList)
     local summary = row:getChildById('referenceSummary')
     local context = row:getChildById('referenceContext')
-    summary:setText(string.format('[%s] line %d - %s', reference.confidence,
-      reference.line, reference.kind))
+    summary:setText(string.format('[%s] line %d - %s - %s', reference.confidence,
+      reference.line, reference.kind, reference.area))
     summary:setColor(luaReferenceConfidenceColor(reference.confidence))
-    summary:setTooltip(reference.context)
+    summary:setTooltip(reference.reason or reference.context)
     context:setText(reference.shortContext)
     context:setTooltip(reference.context)
   end
@@ -3500,6 +3616,20 @@ function selfTest()
     'global inspector details should include Lua references')
   check(luaReferencesSection(fakeWidget):find('LUA REFERENCES', 1, true) ~= nil,
     'Lua reference copy should expose its own section')
+  local characterReferences, characterDynamic = scanLuaReferenceFile(
+    '/modules/client_entergame/characterlist.lua', 'widget6554', 'CharacterWidget')
+  local hasCharacterCreation = false
+  local hasDynamicChildMapping = false
+  local hasRuntimeAttribute = false
+  for _, reference in ipairs(characterReferences) do
+    hasCharacterCreation = hasCharacterCreation or reference.area == 'creation'
+    hasDynamicChildMapping = hasDynamicChildMapping or reference.area == 'dynamic child mapping'
+    hasRuntimeAttribute = hasRuntimeAttribute or reference.area == 'runtime attribute'
+  end
+  check(hasCharacterCreation, 'Lua references should detect CharacterWidget creation')
+  check(hasDynamicChildMapping and characterDynamic,
+    'Lua references should explain dynamic child lookup')
+  check(hasRuntimeAttribute, 'Lua references should expose runtime widget attributes')
   local referencesWindow = g_ui.createWidget('OtuiLuaReferencesWindow', rootWidget)
   check(referencesWindow ~= nil, 'Lua references modal style should instantiate')
   if referencesWindow then referencesWindow:destroy() end
