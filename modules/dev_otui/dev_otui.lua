@@ -847,7 +847,7 @@ local function scanLuaReferenceFile(file, id, styleName)
         luaPatternEscape(id or '') .. '[\'\"]') or
         line:match('local%s+([%w_]+)%s*=%s*.-getChildById%s*%(%s*[\'\"]' ..
           luaPatternEscape(id or '') .. '[\'\"]')
-      if createsAlias then aliases[createsAlias] = true end
+      if createsAlias and quoted then aliases[createsAlias] = true end
 
       local relevant = luaReferenceIsRelevant(line)
       local partial = luaReferenceHasPartialId(line, id)
@@ -925,9 +925,12 @@ local function scanLuaReferenceFile(file, id, styleName)
 end
 
 local function luaReferenceModuleDirectory(data)
-  if not data or not targetPath then return nil end
-  if not targetPath:match('^/modules/') then return nil end
-  return targetPath:match('^(.*)/[^/]+$')
+  if not data then return nil end
+  local source = data.source and data.source:gsub(':%d+$', '') or nil
+  if not source or source == '' or source == 'unknown' then return nil end
+  if source:match('^/modules/') then return source:match('^(.*)/[^/]+$') end
+  local moduleName = source:match('^/(game_[^/]+)/') or source:match('^/(client_[^/]+)/')
+  return moduleName and '/modules/' .. moduleName or nil
 end
 
 local function luaReferenceOtuiSources(styleName, id, preferredDirectory)
@@ -959,9 +962,19 @@ local function luaReferenceOtuiSources(styleName, id, preferredDirectory)
       for line in (text .. '\n'):gmatch('(.-)\n') do
         lineNumber = lineNumber + 1
         if idPattern and line:match(idPattern) then
-          table.insert(sources, { file = file, line = lineNumber, kind = 'id' })
+          table.insert(sources, {
+            file = file,
+            line = lineNumber,
+            kind = 'id',
+            primary = preferredDirectory and file:find(preferredDirectory, 1, true) ~= nil,
+          })
         elseif stylePattern and line:match(stylePattern) then
-          table.insert(sources, { file = file, line = lineNumber, kind = 'style' })
+          table.insert(sources, {
+            file = file,
+            line = lineNumber,
+            kind = 'style',
+            primary = preferredDirectory and file:find(preferredDirectory, 1, true) ~= nil,
+          })
         end
       end
     end
@@ -993,7 +1006,7 @@ local function discoverLuaReferences(widget)
 
   local function addFiles(candidates)
     for _, file in ipairs(candidates) do
-      if not seenFiles[file] then
+      if file ~= '/modules/dev_otui/dev_otui.lua' and not seenFiles[file] then
         seenFiles[file] = true
         table.insert(files, file)
       end
@@ -1012,12 +1025,12 @@ local function discoverLuaReferences(widget)
   end
 
   local areaOrder = {
-    ['direct runtime id'] = 1,
-    creation = 2,
-    ['child lookup'] = 3,
-    ['dynamic child mapping'] = 4,
-    ['runtime attribute'] = 5,
-    ['contextual runtime'] = 6,
+    ['contextual runtime'] = 1,
+    ['direct runtime id'] = 2,
+    creation = 3,
+    ['child lookup'] = 4,
+    ['dynamic child mapping'] = 5,
+    ['runtime attribute'] = 6,
     ['metadata mapping'] = 7,
     ['style reuse'] = 8,
     mutation = 9,
@@ -1071,8 +1084,8 @@ local function luaReferencesSection(widget)
     table.insert(lines, 'OTUI DEFINITION')
     table.insert(lines, 'Style: ' .. data.className)
     for sourceIndex, source in ipairs(result.otuiSources) do
-      table.insert(lines, sourceIndex == 1 and 'Role: primary context match' or
-        'Role: style/id reuse')
+      table.insert(lines, source.primary and 'Role: primary context match' or
+        (sourceIndex == 1 and 'Role: candidate context' or 'Role: style/id reuse'))
       table.insert(lines, 'File: ' .. source.file)
       table.insert(lines, 'Line: ' .. tostring(source.line))
       table.insert(lines, 'Match: ' .. (source.kind or 'source'))
