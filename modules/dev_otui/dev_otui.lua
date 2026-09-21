@@ -1082,12 +1082,12 @@ end
 
 local function populateLuaReferencesWindow(widget, data, result)
   if not luaReferencesWindow or luaReferencesWindow:isDestroyed() then return end
-  luaReferencesWindow:setText('Lua References · ' .. data.id)
+  luaReferencesWindow:setText('Lua References: ' .. data.id)
 
   local subtitle = luaReferencesWindow:recursiveGetChildById('referencesSubtitle')
   if subtitle then
     local sourceFile = data.source:gsub(':%d+$', '')
-    subtitle:setText(sourceFile .. ' · ' .. data.sourceLine .. ' · ' .. data.path)
+    subtitle:setText(sourceFile .. ' - line ' .. data.sourceLine .. ' - ' .. data.path)
   end
 
   luaReferencesList = luaReferencesWindow:recursiveGetChildById('referencesList')
@@ -1123,7 +1123,7 @@ local function populateLuaReferencesWindow(widget, data, result)
     local row = g_ui.createWidget('OtuiLuaReferenceRow', luaReferencesList)
     local summary = row:getChildById('referenceSummary')
     local context = row:getChildById('referenceContext')
-    summary:setText(string.format('[%s] line %d · %s', reference.confidence,
+    summary:setText(string.format('[%s] line %d - %s', reference.confidence,
       reference.line, reference.kind))
     summary:setColor(luaReferenceConfidenceColor(reference.confidence))
     summary:setTooltip(reference.context)

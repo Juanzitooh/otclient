@@ -105,6 +105,7 @@ OtuiLuaReferencesWindow < Window
     anchors.top: parent.top
     anchors.left: parent.left
     anchors.right: parent.right
+    margin-top: 22
     font: verdana-11px-rounded
     color: #a0a0a0
     text-wrap: true
