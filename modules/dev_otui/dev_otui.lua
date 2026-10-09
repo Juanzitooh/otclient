@@ -519,7 +519,9 @@ local function globalInspectorData(widget)
   end
 
   local rect = safeWidgetCall(widget, function() return widget:getRect() end, nil)
-  local className = safeWidgetCall(widget, function() return widget:getStyleName() end, nil)
+  local styleName = safeWidgetCall(widget, function() return widget:getStyleName() end, nil)
+  local className = safeWidgetCall(widget, function() return widget:getClassName() end, nil)
+  if not className or className == '' then className = styleName end
   local id = safeWidgetCall(widget, function() return widget:getId() end, nil)
   local source, sourceLine, mapping, warning, node = globalInspectorOrigin(widget)
   local on = safeWidgetCall(widget, function() return widget:isOn() end, nil)
@@ -544,7 +546,7 @@ local function globalInspectorData(widget)
     checked = inspectorBoolean(checked),
     disabled = inspectorBoolean(disabled),
     hidden = inspectorBoolean(hidden),
-    styleName = inspectorText(className),
+    styleName = inspectorText(styleName),
     margins = inspectorMarginsText(widget),
     anchors = inspectorAnchorsText(widget, node),
     source = source,
@@ -999,7 +1001,7 @@ local function discoverLuaReferences(widget)
     return {
       references = {},
       dynamicPossible = true,
-      otuiSources = luaReferenceOtuiSources(data.className, data.id, moduleDirectory),
+      otuiSources = luaReferenceOtuiSources(data.styleName, data.id, moduleDirectory),
     }
   end
 
@@ -1025,7 +1027,7 @@ local function discoverLuaReferences(widget)
   addFiles(luaReferenceFiles('/modules'), 2)
 
   for _, file in ipairs(files) do
-    local found, hasDynamic = scanLuaReferenceFile(file, id, data.className)
+    local found, hasDynamic = scanLuaReferenceFile(file, id, data.styleName)
     dynamicPossible = dynamicPossible or hasDynamic
     for _, reference in ipairs(found) do
       reference.scope = filePriority[file] == 1 and 'owner module' or 'other modules'
@@ -1072,7 +1074,7 @@ local function discoverLuaReferences(widget)
   return {
     references = result,
     dynamicPossible = dynamicPossible,
-    otuiSources = luaReferenceOtuiSources(data.className, data.id, moduleDirectory),
+    otuiSources = luaReferenceOtuiSources(data.styleName, data.id, moduleDirectory),
   }
 end
 
@@ -1096,7 +1098,7 @@ local function luaReferencesSection(widget)
   if #result.otuiSources > 0 then
     table.insert(lines, '')
     table.insert(lines, 'OTUI DEFINITION')
-    table.insert(lines, 'Style: ' .. data.className)
+    table.insert(lines, 'Style: ' .. data.styleName)
     for sourceIndex, source in ipairs(result.otuiSources) do
       table.insert(lines, source.primary and 'Role: primary context match' or
         (sourceIndex == 1 and 'Role: candidate context' or 'Role: style/id reuse'))
@@ -1342,7 +1344,7 @@ local function populateLuaReferencesWindow(widget, data, result)
       sourceFile = source.file
       sourceLine = tostring(source.line) .. ' (' .. (source.kind or 'source') .. ')'
     end
-    subtitle:setText('Style: ' .. data.className .. ' - ' .. sourceFile ..
+    subtitle:setText('Style: ' .. data.styleName .. ' - ' .. sourceFile ..
       ' - line ' .. sourceLine .. ' - ' .. data.path)
   end
 
@@ -3740,7 +3742,8 @@ function selfTest()
   function fakeParent:getParent() return nil end
 
   local fakeWidget = {}
-  function fakeWidget:getStyleName() return 'UIButton' end
+  function fakeWidget:getStyleName() return 'TestButton' end
+  function fakeWidget:getClassName() return 'UIButton' end
   function fakeWidget:getId() return 'closeButton' end
   function fakeWidget:getParent() return fakeParent end
   function fakeWidget:getChildCount() return 0 end
@@ -3773,6 +3776,8 @@ function selfTest()
     'global inspector details should include margins')
   check(fakeDetails:find('Anchors: top, left', 1, true) ~= nil,
     'global inspector details should include anchors')
+  check(fakeDetails:find('Style name: TestButton', 1, true) ~= nil,
+    'global inspector details should preserve the OTUI style name')
   check(fakeDetails:find('LUA REFERENCES', 1, true) ~= nil,
     'global inspector details should include Lua references')
   check(luaReferencesSection(fakeWidget):find('LUA REFERENCES', 1, true) ~= nil,
