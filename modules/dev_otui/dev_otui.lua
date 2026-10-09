@@ -1633,9 +1633,18 @@ function copyInspectorDetails(widget)
   setInspectorStatus('Inspector details copied to clipboard.')
 end
 
+local function isInspectToggleCombo(keyCombo, keys)
+  return keys and (keyCombo == keys.primary or keyCombo == keys.secondary)
+end
+
 local function isInspectToggleKey(keyCode, keyboardModifiers)
-  return keyCode == KeyI and bit.band(keyboardModifiers, KeyboardCtrlModifier) ~= 0 and
-    bit.band(keyboardModifiers, KeyboardAltModifier) ~= 0
+  local keyCombo = determineKeyComboDesc(keyCode, keyboardModifiers)
+  local ok, keys = pcall(function()
+    return Keybind.getKeybindKeys('Debug', 'Toggle OTUI Inspector')
+  end)
+  if not ok or not keys then return false end
+
+  return isInspectToggleCombo(keyCombo, keys)
 end
 
 function toggleInspectMode()
@@ -3790,6 +3799,12 @@ function selfTest()
     'anonymous widget references should always include OTUI sources')
   local anonymousSectionOk = pcall(luaReferencesSection, anonymousWidget)
   check(anonymousSectionOk, 'anonymous widgets should not break Lua reference copies')
+  check(isInspectToggleCombo('Ctrl+Alt+I', { primary = 'Ctrl+Alt+I' }),
+    'configured primary inspector shortcut should be recognized')
+  check(isInspectToggleCombo('F8', { secondary = 'F8' }),
+    'configured secondary inspector shortcut should be recognized')
+  check(not isInspectToggleCombo('Ctrl+Alt+I', { primary = 'F8' }),
+    'unconfigured inspector shortcut should not be swallowed')
   local characterReferences, characterDynamic = scanLuaReferenceFile(
     '/modules/client_entergame/characterlist.lua', 'widget6554', 'CharacterWidget')
   local hasCharacterCreation = false
