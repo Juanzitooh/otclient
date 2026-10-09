@@ -994,8 +994,13 @@ local function discoverLuaReferences(widget)
   if not data then return { references = {}, dynamicPossible = false } end
 
   local id = data.id
+  local moduleDirectory = luaReferenceModuleDirectory(data)
   if id == 'unknown' or id == '' then
-    return { references = {}, dynamicPossible = true }
+    return {
+      references = {},
+      dynamicPossible = true,
+      otuiSources = luaReferenceOtuiSources(data.className, data.id, moduleDirectory),
+    }
   end
 
   local references = {}
@@ -1003,7 +1008,6 @@ local function discoverLuaReferences(widget)
   local seenFiles = {}
   local filePriority = {}
   local files = {}
-  local moduleDirectory = luaReferenceModuleDirectory(data)
 
   local function addFiles(candidates, priority)
     for _, file in ipairs(candidates) do
@@ -3773,6 +3777,14 @@ function selfTest()
     'global inspector details should include Lua references')
   check(luaReferencesSection(fakeWidget):find('LUA REFERENCES', 1, true) ~= nil,
     'Lua reference copy should expose its own section')
+  local anonymousWidget = setmetatable({}, { __index = fakeWidget })
+  function anonymousWidget:getId() return nil end
+  local anonymousReferencesOk, anonymousReferences = pcall(discoverLuaReferences, anonymousWidget)
+  check(anonymousReferencesOk, 'anonymous widgets should not break Lua reference discovery')
+  check(anonymousReferencesOk and type(anonymousReferences.otuiSources) == 'table',
+    'anonymous widget references should always include OTUI sources')
+  local anonymousSectionOk = pcall(luaReferencesSection, anonymousWidget)
+  check(anonymousSectionOk, 'anonymous widgets should not break Lua reference copies')
   local characterReferences, characterDynamic = scanLuaReferenceFile(
     '/modules/client_entergame/characterlist.lua', 'widget6554', 'CharacterWidget')
   local hasCharacterCreation = false
