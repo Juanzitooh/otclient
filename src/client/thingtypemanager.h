@@ -86,6 +86,13 @@ public:
     bool isDatLoaded() { return m_datLoaded; }
     bool isValidDatId(const uint16_t id, const ThingCategory category) const { return category < ThingLastCategory && id >= 1 && id < m_thingTypes[category].size(); }
 
+#ifdef FRAMEWORK_EDITOR
+    void invalidateTextureCache();
+    std::string getAppearanceEditorData(int version, int category, int id);
+    bool saveAppearanceEditorData(int version, int category, int id, const std::string& changes);
+    int createAppearanceFromSprite(int version, int category, int spriteId, const std::string& name, const std::string& description);
+#endif
+
 private:
     const nlohmann::json& getCatalogContent(const std::string& file);
     void clearCatalogContent();

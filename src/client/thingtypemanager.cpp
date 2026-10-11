@@ -24,6 +24,13 @@
 
 #include <nlohmann/json.hpp>
 
+#ifdef FRAMEWORK_EDITOR
+#include <filesystem>
+#include <fstream>
+#include <limits>
+#include <string_view>
+#endif
+
 #include "game.h"
 #include "spriteappearances.h"
 #include "thingtype.h"
@@ -31,6 +38,7 @@
 #include "framework/core/resourcemanager.h"
 #include "framework/otml/otmldocument.h"
 #ifdef FRAMEWORK_PROTOBUF
+#include <appearances.pb.h>
 #include <staticdata.pb.h>
 #endif
 
@@ -43,10 +51,419 @@
 
 ThingTypeManager g_things;
 
+#if defined(FRAMEWORK_EDITOR) && defined(FRAMEWORK_PROTOBUF)
+namespace {
+
+using AppearanceBank = google::protobuf::RepeatedPtrField<appearances::Appearance>;
+
+const AppearanceBank* getAppearanceBank(const appearances::Appearances& library, const int category)
+{
+    switch (category) {
+        case ThingCategoryItem: return &library.object();
+        case ThingCategoryCreature: return &library.outfit();
+        case ThingCategoryEffect: return &library.effect();
+        case ThingCategoryMissile: return &library.missile();
+        default: throw stdext::exception("invalid appearance category");
+    }
+}
+
+AppearanceBank* getAppearanceBank(appearances::Appearances& library, const int category)
+{
+    switch (category) {
+        case ThingCategoryItem: return library.mutable_object();
+        case ThingCategoryCreature: return library.mutable_outfit();
+        case ThingCategoryEffect: return library.mutable_effect();
+        case ThingCategoryMissile: return library.mutable_missile();
+        default: throw stdext::exception("invalid appearance category");
+    }
+}
+
+std::filesystem::path getAppearanceEditorFile(const std::string& catalogPath, const int version)
+{
+    namespace fs = std::filesystem;
+    if (version < 1500 || version >= 1600)
+        throw stdext::exception("appearance editing is supported only for client versions 15.x");
+
+    std::error_code error;
+    const auto writeRoot = fs::canonical(g_resources.getWriteDir(), error);
+    if (error)
+        throw stdext::exception("unable to resolve the writable directory: {}", error.message());
+
+    const auto package = writeRoot / "sprite-editor" / "data" / "things" / std::to_string(version);
+    const auto catalog = package / "catalog-content.json";
+    const auto ensureNoSymlinks = [&](const fs::path& target) {
+        const auto relative = target.lexically_relative(writeRoot);
+        if (relative.empty() || relative.is_absolute() || *relative.begin() == "..")
+            throw stdext::exception("appearance editor path is outside the writable directory");
+
+        auto current = writeRoot;
+        for (const auto& part : relative) {
+            current /= part;
+            error.clear();
+            const auto status = fs::symlink_status(current, error);
+            if (error == std::errc::no_such_file_or_directory)
+                continue;
+            if (error)
+                throw stdext::exception("unable to validate appearance editor path: {}", error.message());
+            if (fs::is_symlink(status))
+                throw stdext::exception("appearance work copies cannot contain symbolic links");
+        }
+    };
+
+    ensureNoSymlinks(catalog);
+    error.clear();
+    if (!fs::is_regular_file(catalog, error) || error)
+        throw stdext::exception("the active appearance catalog is not a regular file");
+    const auto resolvedCatalog = fs::canonical(catalog, error);
+    if (error)
+        throw stdext::exception("unable to resolve the appearance catalog: {}", error.message());
+    const auto activeCatalog = fs::canonical(catalogPath, error);
+    if (error || resolvedCatalog != activeCatalog)
+        throw stdext::exception("appearance editing is allowed only for the active work copy");
+
+    std::ifstream catalogStream(catalog, std::ios::binary);
+    if (!catalogStream)
+        throw stdext::exception("unable to read the work copy catalog");
+    const auto document = nlohmann::json::parse(catalogStream);
+
+    std::string appearanceFile;
+    for (const auto& entry : document) {
+        if (entry.value("type", std::string{}) == "appearances") {
+            appearanceFile = entry.at("file").get<std::string>();
+            break;
+        }
+    }
+    if (appearanceFile.empty())
+        throw stdext::exception("the work copy catalog does not contain an appearances file");
+
+    auto relativeFile = fs::path(appearanceFile).lexically_normal();
+    if (relativeFile.empty() || relativeFile.is_absolute() || relativeFile.has_root_name() || relativeFile.has_root_directory())
+        throw stdext::exception("invalid appearances file path in work copy catalog");
+    for (const auto& part : relativeFile) {
+        if (part == ".." || part == ".")
+            throw stdext::exception("invalid appearances file path in work copy catalog");
+    }
+
+    const auto target = package / relativeFile;
+    ensureNoSymlinks(target);
+    error.clear();
+    if (!fs::is_regular_file(target, error) || error)
+        throw stdext::exception("the work copy appearances file is missing or invalid");
+    return target;
+}
+
+appearances::Appearance* findAppearance(appearances::Appearances& library, const int category, const int id)
+{
+    for (auto& appearance : *getAppearanceBank(library, category)) {
+        if (appearance.id() == static_cast<uint32_t>(id))
+            return &appearance;
+    }
+    return nullptr;
+}
+
+const appearances::Appearance* findAppearance(const appearances::Appearances& library, const int category, const int id)
+{
+    for (const auto& appearance : *getAppearanceBank(library, category)) {
+        if (appearance.id() == static_cast<uint32_t>(id))
+            return &appearance;
+    }
+    return nullptr;
+}
+
+void collectAppearanceFields(const google::protobuf::Message& message, const std::string& prefix, nlohmann::json& booleans, nlohmann::json& values)
+{
+    const auto* descriptor = message.GetDescriptor();
+    const auto* reflection = message.GetReflection();
+    for (int index = 0; index < descriptor->field_count(); ++index) {
+        const auto* field = descriptor->field(index);
+        if (field->is_repeated())
+            continue;
+        const auto fieldName = std::string(field->name());
+        const auto name = prefix.empty() ? fieldName : prefix + "." + fieldName;
+        if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+            collectAppearanceFields(reflection->GetMessage(message, field), name, booleans, values);
+            continue;
+        }
+
+        switch (field->cpp_type()) {
+            case google::protobuf::FieldDescriptor::CPPTYPE_BOOL:
+                booleans[name] = reflection->GetBool(message, field);
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
+                values[name] = reflection->GetInt32(message, field);
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
+                values[name] = reflection->GetInt64(message, field);
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_UINT32:
+                values[name] = reflection->GetUInt32(message, field);
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_UINT64:
+                values[name] = reflection->GetUInt64(message, field);
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_ENUM:
+                values[name] = reflection->GetEnumValue(message, field);
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+void setAppearanceScalar(google::protobuf::Message& message, const std::string& path, const nlohmann::json& value)
+{
+    const auto separator = path.find('.');
+    const auto* descriptor = message.GetDescriptor();
+    const auto* field = descriptor->FindFieldByName(path.substr(0, separator));
+    if (!field || field->is_repeated())
+        throw stdext::exception("unknown appearance property '{}'", path);
+
+    auto* reflection = message.GetReflection();
+    if (separator != std::string::npos) {
+        if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE)
+            throw stdext::exception("invalid appearance property path");
+        setAppearanceScalar(*reflection->MutableMessage(&message, field), path.substr(separator + 1), value);
+        return;
+    }
+
+    switch (field->cpp_type()) {
+        case google::protobuf::FieldDescriptor::CPPTYPE_BOOL:
+            if (!value.is_boolean()) throw stdext::exception("appearance flag '{}' must be boolean", path);
+            reflection->SetBool(&message, field, value.get<bool>());
+            return;
+        case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
+            if (!value.is_number_integer()) throw stdext::exception("appearance value '{}' must be an integer", path);
+            if (value.get<int64_t>() < std::numeric_limits<int32_t>::min() || value.get<int64_t>() > std::numeric_limits<int32_t>::max())
+                throw stdext::exception("appearance value '{}' is out of range", path);
+            reflection->SetInt32(&message, field, value.get<int32_t>());
+            return;
+        case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
+            if (!value.is_number_integer()) throw stdext::exception("appearance value '{}' must be an integer", path);
+            reflection->SetInt64(&message, field, value.get<int64_t>());
+            return;
+        case google::protobuf::FieldDescriptor::CPPTYPE_UINT32:
+            if (!value.is_number_unsigned() && (!value.is_number_integer() || value.get<int64_t>() < 0))
+                throw stdext::exception("appearance value '{}' must be a non-negative integer", path);
+            if (value.get<uint64_t>() > std::numeric_limits<uint32_t>::max())
+                throw stdext::exception("appearance value '{}' is out of range", path);
+            reflection->SetUInt32(&message, field, value.get<uint32_t>());
+            return;
+        case google::protobuf::FieldDescriptor::CPPTYPE_UINT64:
+            if (!value.is_number_unsigned() && (!value.is_number_integer() || value.get<int64_t>() < 0))
+                throw stdext::exception("appearance value '{}' must be a non-negative integer", path);
+            reflection->SetUInt64(&message, field, value.get<uint64_t>());
+            return;
+        case google::protobuf::FieldDescriptor::CPPTYPE_ENUM: {
+            if (!value.is_number_integer()) throw stdext::exception("appearance enum '{}' must be an integer", path);
+            const auto number = value.get<int32_t>();
+            const auto* enumValue = field->enum_type()->FindValueByNumber(number);
+            if (!enumValue) throw stdext::exception("unknown value for appearance enum '{}'", path);
+            reflection->SetEnum(&message, field, enumValue);
+            return;
+        }
+        default:
+            throw stdext::exception("appearance property '{}' is not an editable scalar", path);
+    }
+}
+
+void readAppearancesFile(const std::filesystem::path& path, appearances::Appearances& library)
+{
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream || !library.ParseFromIstream(&stream))
+        throw stdext::exception("could not parse the work copy appearances file");
+}
+
+void writeAppearancesFile(const std::filesystem::path& path, const appearances::Appearances& library)
+{
+    namespace fs = std::filesystem;
+    const auto temporary = fs::path(path.string() + ".sprite-editor.tmp");
+    const auto backup = fs::path(path.string() + ".sprite-editor.bak");
+    std::error_code error;
+    for (const auto& candidate : { temporary, backup }) {
+        const auto status = fs::symlink_status(candidate, error);
+        if (!error && fs::is_symlink(status))
+            throw stdext::exception("appearance work copy contains an unsafe temporary path");
+        if (error == std::errc::no_such_file_or_directory)
+            error.clear();
+        else if (error)
+            throw stdext::exception("unable to validate appearance temporary path: {}", error.message());
+    }
+    if (fs::exists(backup, error)) {
+        if (!fs::exists(path, error)) {
+            fs::rename(backup, path, error);
+            if (error) throw stdext::exception("could not recover the previous appearances file: {}", error.message());
+        } else {
+            fs::remove(backup, error);
+        }
+    }
+    error.clear();
+    fs::remove(temporary, error);
+    std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+    if (!stream || !library.SerializeToOstream(&stream))
+        throw stdext::exception("could not write the temporary appearances file");
+    stream.flush();
+    if (!stream)
+        throw stdext::exception("could not flush the temporary appearances file");
+    stream.close();
+
+    appearances::Appearances verification;
+    readAppearancesFile(temporary, verification);
+
+    error.clear();
+    fs::rename(path, backup, error);
+    if (error)
+        throw stdext::exception("could not stage the previous appearances file: {}", error.message());
+    fs::rename(temporary, path, error);
+    if (error) {
+        std::error_code rollbackError;
+        fs::rename(backup, path, rollbackError);
+        throw stdext::exception("could not replace the appearances file: {}", error.message());
+    }
+    fs::remove(backup, error);
+}
+
+}
+#endif
+
+#ifdef FRAMEWORK_EDITOR
+void ThingTypeManager::invalidateTextureCache()
+{
+    for (auto& category : m_thingTypes) {
+        for (const auto& thingType : category) {
+            if (thingType)
+                thingType->unload();
+        }
+    }
+}
+
+std::string ThingTypeManager::getAppearanceEditorData(const int version, const int category, const int id)
+{
+#ifdef FRAMEWORK_PROTOBUF
+    if (id < 1)
+        throw stdext::exception("appearance ID must be positive");
+    const auto path = getAppearanceEditorFile(m_catalogContentPath, version);
+    appearances::Appearances library;
+    readAppearancesFile(path, library);
+    const auto* appearance = findAppearance(library, category, id);
+    if (!appearance)
+        throw stdext::exception("appearance {} was not found", id);
+
+    nlohmann::json result = { { "bools", nlohmann::json::object() }, { "values", nlohmann::json::object() } };
+    collectAppearanceFields(appearance->flags(), "", result["bools"], result["values"]);
+    result["name"] = appearance->name();
+    result["description"] = appearance->description();
+    return result.dump();
+#else
+    throw stdext::exception("protobuf support is required to edit appearances");
+#endif
+}
+
+bool ThingTypeManager::saveAppearanceEditorData(const int version, const int category, const int id, const std::string& changes)
+{
+#ifdef FRAMEWORK_PROTOBUF
+    if (id < 1)
+        throw stdext::exception("appearance ID must be positive");
+    const auto updates = nlohmann::json::parse(changes);
+    if (!updates.is_object())
+        throw stdext::exception("appearance changes must be an object");
+
+    const auto path = getAppearanceEditorFile(m_catalogContentPath, version);
+    appearances::Appearances library;
+    readAppearancesFile(path, library);
+    auto* appearance = findAppearance(library, category, id);
+    if (!appearance)
+        throw stdext::exception("appearance {} was not found", id);
+
+    const auto strings = updates.find("strings");
+    if (strings != updates.end()) {
+        if (!strings->is_object())
+            throw stdext::exception("appearance changes section 'strings' must be an object");
+        for (const auto* field : { "name", "description" }) {
+            const auto it = strings->find(field);
+            if (it == strings->end())
+                continue;
+            if (!it->is_string())
+                throw stdext::exception("appearance field '{}' must be text", field);
+            const auto value = it->get<std::string>();
+            const size_t maximumLength = std::string_view(field) == "name" ? 128 : 512;
+            if (value.size() > maximumLength)
+                throw stdext::exception("appearance field '{}' is too long", field);
+            if (std::string_view(field) == "name")
+                appearance->set_name(value);
+            else
+                appearance->set_description(value);
+        }
+    }
+
+    auto* flags = appearance->mutable_flags();
+    for (const auto* section : { "bools", "values" }) {
+        const auto it = updates.find(section);
+        if (it == updates.end())
+            continue;
+        if (!it->is_object())
+            throw stdext::exception("appearance changes section '{}' must be an object", section);
+        for (auto field = it->begin(); field != it->end(); ++field)
+            setAppearanceScalar(*flags, field.key(), field.value());
+    }
+
+    writeAppearancesFile(path, library);
+    return true;
+#else
+    throw stdext::exception("protobuf support is required to edit appearances");
+#endif
+}
+
+int ThingTypeManager::createAppearanceFromSprite(const int version, const int category, const int spriteId,
+                                                 const std::string& name, const std::string& description)
+{
+#ifdef FRAMEWORK_PROTOBUF
+    if (version < 1500 || version >= 1600)
+        throw stdext::exception("appearance creation is supported only for client versions 15.x");
+    if (spriteId < 1 || name.empty() || name.size() > 128 || description.size() > 512)
+        throw stdext::exception("enter a sprite ID, a name up to 128 characters, and a description up to 512 characters");
+    if (!g_spriteAppearances.getSheetBySpriteId(spriteId, false))
+        throw stdext::exception("sprite {} is not part of the active work copy", spriteId);
+
+    const auto path = getAppearanceEditorFile(m_catalogContentPath, version);
+    appearances::Appearances library;
+    readAppearancesFile(path, library);
+    auto* bank = getAppearanceBank(library, category);
+    uint32_t maximumId = 0;
+    for (const auto& appearance : *bank)
+        maximumId = std::max(maximumId, appearance.id());
+    if (maximumId >= std::numeric_limits<uint16_t>::max())
+        throw stdext::exception("the selected appearance category has no available 15.x IDs");
+
+    const uint32_t id = maximumId + 1;
+    auto* appearance = bank->Add();
+    appearance->set_id(id);
+    appearance->set_name(name);
+    appearance->set_description(description);
+
+    auto* frameGroup = appearance->mutable_frame_group()->Add();
+    frameGroup->set_fixed_frame_group(category == ThingCategoryCreature
+        ? appearances::FIXED_FRAME_GROUP_OUTFIT_IDLE
+        : appearances::FIXED_FRAME_GROUP_OBJECT_INITIAL);
+    frameGroup->set_id(0);
+    auto* spriteInfo = frameGroup->mutable_sprite_info();
+    spriteInfo->set_pattern_width(1);
+    spriteInfo->set_pattern_height(1);
+    spriteInfo->set_pattern_depth(1);
+    spriteInfo->set_layers(1);
+    spriteInfo->add_sprite_id(static_cast<uint32_t>(spriteId));
+
+    writeAppearancesFile(path, library);
+    return static_cast<int>(id);
+#else
+    throw stdext::exception("protobuf support is required to create appearances");
+#endif
+}
+#endif
+
 const nlohmann::json& ThingTypeManager::getCatalogContent(const std::string& file)
 {
     const auto path = g_resources.resolvePath(g_resources.guessFilePath(file + "catalog-content", "json"));
-    if (path != m_catalogContentPath) {
+    if (path != m_catalogContentPath || !m_catalogContent) {
         m_catalogContent = std::make_unique<nlohmann::json>(nlohmann::json::parse(g_resources.readFileContents(path)));
         m_catalogContentPath = path;
     }
@@ -166,6 +583,7 @@ bool ThingTypeManager::loadOtml(std::string file)
 bool ThingTypeManager::loadAppearances(const std::string& file)
 {
 #ifdef FRAMEWORK_PROTOBUF
+    m_catalogContent.reset();
     try {
         try {
             m_assetIdentifier = g_resources.readFileContents(g_resources.resolvePath(g_resources.guessFilePath(file + "assets", "json.sha256")));

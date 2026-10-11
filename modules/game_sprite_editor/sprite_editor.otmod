@@ -1,0 +1,13 @@
+Module
+  name: game_sprite_editor
+  description: Offline management and import of modern client assets
+  author: OTClient contributors
+  autoload: true
+  sandboxed: true
+  dependencies:
+    - client_topmenu
+    - game_features
+    - game_things
+  scripts: [ sprite_editor ]
+  @onLoad: init()
+  @onUnload: terminate()

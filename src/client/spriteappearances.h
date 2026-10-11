@@ -134,6 +134,14 @@ public:
     ImagePtr getSpriteImage(int id, bool& isLoading);
     void saveSpriteToFile(int id, const std::string& file);
 
+#ifdef FRAMEWORK_EDITOR
+    std::string createWorkCopy(int version);
+    void saveSpriteToWorkCopy(int id, const ImagePtr& image, int version);
+    int importSpriteFromFile(int id, const std::string& fileName, int version);
+    void releaseSpriteSheetsExcept(int id);
+    void releaseDecodedSpriteSheets();
+#endif
+
 private:
     uint32_t m_spritesCount{ 0 };
     std::vector<SpriteSheetPtr> m_sheets;

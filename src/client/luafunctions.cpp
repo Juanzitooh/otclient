@@ -58,6 +58,9 @@
 #include "uiminimap.h"
 #include "uiprogressrect.h"
 #include "uisprite.h"
+#ifdef FRAMEWORK_EDITOR
+#include "uispriteeditorcanvas.h"
+#endif
 #include "paperdoll.h"
 #include "paperdollmanager.h"
 #ifdef FRAMEWORK_SOUND
@@ -141,6 +144,15 @@ void Client::registerLuaFunctions()
     g_lua.registerSingletonClass("g_spriteAppearances");
     g_lua.bindSingletonFunction("g_spriteAppearances", "saveSpriteToFile", &SpriteAppearances::saveSpriteToFile, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "saveSheetToFileBySprite", &SpriteAppearances::saveSheetToFileBySprite, &g_spriteAppearances);
+#ifdef FRAMEWORK_EDITOR
+    g_lua.bindSingletonFunction("g_spriteAppearances", "createWorkCopy", &SpriteAppearances::createWorkCopy, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "importSpriteFromFile", &SpriteAppearances::importSpriteFromFile, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "releaseDecodedSpriteSheets", &SpriteAppearances::releaseDecodedSpriteSheets, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_things", "invalidateTextureCache", &ThingTypeManager::invalidateTextureCache, &g_things);
+    g_lua.bindSingletonFunction("g_things", "getAppearanceEditorData", &ThingTypeManager::getAppearanceEditorData, &g_things);
+    g_lua.bindSingletonFunction("g_things", "saveAppearanceEditorData", &ThingTypeManager::saveAppearanceEditorData, &g_things);
+    g_lua.bindSingletonFunction("g_things", "createAppearanceFromSprite", &ThingTypeManager::createAppearanceFromSprite, &g_things);
+#endif
 
     g_lua.bindGlobalFunction("setDrawViewportEdge", [](const bool force) {
         if (const auto& mapWidget = g_client.getMapWidget())
@@ -1163,6 +1175,18 @@ void Client::registerLuaFunctions()
     g_lua.bindClassMemberFunction<UISprite>("getSpriteId", &UISprite::getSpriteId);
     g_lua.bindClassMemberFunction<UISprite>("setSpriteColor", &UISprite::setSpriteColor);
     g_lua.bindClassMemberFunction<UISprite>("hasSprite", &UISprite::hasSprite);
+
+#ifdef FRAMEWORK_EDITOR
+    g_lua.registerClass<UISpriteEditorCanvas, UIWidget>();
+    g_lua.bindClassStaticFunction<UISpriteEditorCanvas>("create", [] { return std::make_shared<UISpriteEditorCanvas>(); });
+    g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("setSpriteId", &UISpriteEditorCanvas::setSpriteId);
+    g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("getSpriteId", &UISpriteEditorCanvas::getSpriteId);
+    g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("getSpriteWidth", &UISpriteEditorCanvas::getSpriteWidth);
+    g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("getSpriteHeight", &UISpriteEditorCanvas::getSpriteHeight);
+    g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("zoomIn", &UISpriteEditorCanvas::zoomIn);
+    g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("zoomOut", &UISpriteEditorCanvas::zoomOut);
+    g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("getZoom", &UISpriteEditorCanvas::getZoom);
+#endif
 
     g_lua.registerClass<UICreature, UIWidget>();
     g_lua.bindClassStaticFunction<UICreature>("create", [] { return std::make_shared<UICreature>(); });
