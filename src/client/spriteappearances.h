@@ -136,6 +136,7 @@ public:
 
 #ifdef FRAMEWORK_EDITOR
     std::string createWorkCopy(int version);
+    std::string exportWorkCopy(int version, const std::string& destination);
     void saveSpriteToWorkCopy(int id, const ImagePtr& image, int version);
     int importSpriteFromFile(int id, const std::string& fileName, int version);
     void releaseSpriteSheetsExcept(int id);

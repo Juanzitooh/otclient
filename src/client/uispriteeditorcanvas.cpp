@@ -186,9 +186,7 @@ void UISpriteEditorCanvas::updateRenderRect()
 
     const Rect viewRect = getPaddingRect();
     if (!m_hasUserZoom && viewRect.width() > 0 && viewRect.height() > 0) {
-        const int fitX = viewRect.width() / m_image->getWidth();
-        const int fitY = viewRect.height() / m_image->getHeight();
-        m_zoom = std::max(1, std::min(12, std::min(fitX, fitY)));
+        m_zoom = 1;
     }
 
     const Size renderSize(m_image->getWidth() * m_zoom, m_image->getHeight() * m_zoom);

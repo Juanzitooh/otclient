@@ -822,6 +822,85 @@ std::string SpriteAppearances::createWorkCopy(const int version)
     return workRoot.generic_string();
 }
 
+std::string SpriteAppearances::exportWorkCopy(const int version, const std::string& destination)
+{
+    namespace fs = std::filesystem;
+    if (destination.empty())
+        throw stdext::exception("an export destination folder is required");
+
+    const fs::path requestedRoot(destination);
+    if (!requestedRoot.is_absolute())
+        throw stdext::exception("the export root must be an absolute path");
+
+    const auto catalog = getEditorCatalogPath(version);
+    const auto sourcePackage = fs::weakly_canonical(catalog.parent_path());
+    validateAssetDirectory(sourcePackage);
+
+    std::error_code error;
+    if (fs::exists(requestedRoot, error) && !fs::is_directory(requestedRoot, error))
+        throw stdext::exception("the export root must be a directory");
+    if (error)
+        throw stdext::exception("unable to validate the export root: {}", error.message());
+
+    const auto normalizedRoot = fs::weakly_canonical(requestedRoot, error);
+    if (error)
+        throw stdext::exception("unable to resolve the export root: {}", error.message());
+
+    const auto requestedDestination = normalizedRoot / "data" / "things" / std::to_string(version);
+    const auto normalizedDestination = fs::weakly_canonical(requestedDestination, error);
+    if (error)
+        throw stdext::exception("unable to resolve the asset package destination: {}", error.message());
+
+    const auto destinationStatus = fs::symlink_status(requestedDestination, error);
+    if (!error && fs::exists(destinationStatus))
+        throw stdext::exception("the asset package already exists at the export root; it will not be overwritten");
+    if (error != std::errc::no_such_file_or_directory && error)
+        throw stdext::exception("unable to validate the asset package destination: {}", error.message());
+
+    for (const auto& searchRoot : g_resources.getSearchPaths()) {
+        error.clear();
+        const auto candidatePackage = fs::path(searchRoot) / "data" / "things" / std::to_string(version);
+        if (!fs::is_directory(candidatePackage, error) || error)
+            continue;
+
+        const auto normalizedPackage = fs::weakly_canonical(candidatePackage, error);
+        if (error)
+            throw stdext::exception("unable to validate an installed asset folder: {}", error.message());
+        if (normalizedDestination == normalizedPackage ||
+            isPathWithin(normalizedPackage, normalizedDestination) ||
+            isPathWithin(normalizedDestination, normalizedPackage))
+            throw stdext::exception("the export root overlaps an installed or active asset package");
+    }
+
+    auto temporaryPackage = requestedDestination;
+    temporaryPackage += ".sprite-editor.tmp";
+    error.clear();
+    const auto temporaryStatus = fs::symlink_status(temporaryPackage, error);
+    if (!error && fs::exists(temporaryStatus))
+        throw stdext::exception("an export temporary folder already exists; remove it before retrying");
+    if (error != std::errc::no_such_file_or_directory && error)
+        throw stdext::exception("unable to validate the export temporary folder: {}", error.message());
+
+    fs::create_directories(requestedDestination.parent_path(), error);
+    if (error)
+        throw stdext::exception("unable to create the destination asset folders: {}", error.message());
+
+    try {
+        copyAssetDirectory(sourcePackage, temporaryPackage);
+        const auto exportedCatalog = temporaryPackage / "catalog-content.json";
+        if (!fs::is_regular_file(exportedCatalog) ||
+            fs::file_size(catalog) != fs::file_size(exportedCatalog))
+            throw stdext::exception("export verification failed for the asset catalog");
+        validateAssetDirectory(temporaryPackage);
+        fs::rename(temporaryPackage, requestedDestination);
+    } catch (...) {
+        fs::remove_all(temporaryPackage, error);
+        throw;
+    }
+
+    return normalizedDestination.generic_string();
+}
+
 void SpriteAppearances::saveSpriteToWorkCopy(const int id, const ImagePtr& image, const int version)
 {
     if (version < 1500 || version >= 1600 || id <= 0 || !image || image->getBpp() != 4)

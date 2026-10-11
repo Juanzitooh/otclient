@@ -117,7 +117,7 @@ std::filesystem::path getAppearanceEditorFile(const std::string& catalogPath, co
     const auto resolvedCatalog = fs::canonical(catalog, error);
     if (error)
         throw stdext::exception("unable to resolve the appearance catalog: {}", error.message());
-    const auto activeCatalog = fs::canonical(catalogPath, error);
+    const auto activeCatalog = fs::canonical(g_resources.getRealPath(catalogPath), error);
     if (error || resolvedCatalog != activeCatalog)
         throw stdext::exception("appearance editing is allowed only for the active work copy");
 

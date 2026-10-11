@@ -1,20 +1,27 @@
 local window
-local appearanceWindow
 local topMenuButton
 local canvas
 local mountedRoots = {}
 local activeVersion
 local activeAssetPath
+local activeWorkRoot
 local selectedAppearanceCategory = 0
 local selectedAppearanceId
 local selectedSpriteId
+local appearanceEntries = {}
+local filteredAppearanceEntries = {}
+local appearanceRows = {}
 local appearanceOriginal
 local appearanceChanges = { bools = {}, values = {}, strings = {} }
 local appearanceValueWidgets = {}
 local appearanceStringWidgets = {}
 local buildingAppearanceProperties = false
+local currentPage = 'editor'
+local currentPropertiesTab = 'flags'
 local gameStartCallback
 local gameEndCallback
+
+local APPEARANCE_ROW_HEIGHT = 52
 
 local categories = {
    { name = 'Objects', data = 0 },
@@ -23,9 +30,18 @@ local categories = {
    { name = 'Missiles', data = 3 },
 }
 
+local selectAppearance
+local renderAppearanceRows
+
 local function setStatus(message)
    if window then
       window:recursiveGetChildById('statusLabel'):setText(message)
+   end
+end
+
+local function setAppearanceStatus(message)
+   if window then
+      window:recursiveGetChildById('appearanceStatus'):setText(message)
    end
 end
 
@@ -77,89 +93,29 @@ local function selectedOption(comboBox)
    return option and option.data
 end
 
-local function selectSprite(id)
-   if not canvas or not activeVersion then
-      return false
-   end
-   if not canvas:setSpriteId(id) then
-      setStatus(tr('Sprite %d is not available in this 15.x work copy.', id))
-      return false
-   end
-
-   selectedSpriteId = id
-   window:recursiveGetChildById('spriteIdEdit'):setText(tostring(id))
-   window:recursiveGetChildById('spriteInfoLabel'):setText(
-      string.format('ID %d | %d x %d', id, canvas:getSpriteWidth(), canvas:getSpriteHeight()))
-   window:recursiveGetChildById('zoomLabel'):setText(string.format('%dx', canvas:getZoom()))
-   setStatus(tr('Previewing sprite %d.', id))
-   return true
-end
-
-local function addSpriteRows(list, thing)
-   list:destroyChildren()
-   if not thing or thing:getId() ~= selectedAppearanceId then
-      local row = g_ui.createWidget('AppearanceSpriteButton', list)
-      row:setText(tr('No sprites found'))
-      row:setEnabled(false)
-      return
-   end
-
-   local seen = {}
-   for _, spriteId in ipairs(thing:getSprites()) do
-      if not seen[spriteId] then
-         seen[spriteId] = true
-         local row = g_ui.createWidget('AppearanceSpriteButton', list)
-         row:setWidth(175)
-         row:setText(tostring(spriteId))
-         row.onClick = function()
-            selectSprite(spriteId)
-         end
-      end
-   end
-   if not next(seen) then
-      local row = g_ui.createWidget('AppearanceSpriteButton', list)
-      row:setText(tr('No sprites found'))
-      row:setEnabled(false)
-   end
-end
-
-local function refreshSelectedAppearance()
-   if not window or not activeVersion or not selectedAppearanceId then
-      return
-   end
-   local thing = g_things.getThingType(selectedAppearanceId, selectedAppearanceCategory)
-   if not thing or thing:getId() ~= selectedAppearanceId then
-      setStatus(tr('Appearance %d is not available.', selectedAppearanceId))
-      return
-   end
-
-   window:recursiveGetChildById('appearanceInfoLabel'):setText(
-      string.format('%s | ID %d', thing:getName() ~= '' and thing:getName() or tr('Unnamed appearance'), selectedAppearanceId))
-   addSpriteRows(window:recursiveGetChildById('assetSpriteList'), thing)
-   local sprites = thing:getSprites()
-   if #sprites > 0 then
-      selectSprite(sprites[1])
-   else
-      selectedSpriteId = nil
-      window:recursiveGetChildById('spriteInfoLabel'):setText(tr('This appearance has no linked sprites.'))
-   end
-end
-
 local function updateAppearanceSaveButton()
-   if appearanceWindow then
-      appearanceWindow:recursiveGetChildById('saveAppearanceButton'):setEnabled(hasAppearanceChanges())
+   if window then
+      window:recursiveGetChildById('saveAppearanceButton'):setEnabled(hasAppearanceChanges())
    end
 end
 
-local function setAppearanceStatus(message)
-   if appearanceWindow then
-      appearanceWindow:recursiveGetChildById('appearanceStatus'):setText(message)
+local function setPropertiesTab(tab)
+   if not window then
+      return
    end
+   currentPropertiesTab = tab == 'values' and 'values' or 'flags'
+   local flagsVisible = currentPropertiesTab == 'flags'
+   window:recursiveGetChildById('appearanceFlagsList'):setVisible(flagsVisible)
+   window:recursiveGetChildById('appearanceFlagsScroll'):setVisible(flagsVisible)
+   window:recursiveGetChildById('appearanceValuesList'):setVisible(not flagsVisible)
+   window:recursiveGetChildById('appearanceValuesScroll'):setVisible(not flagsVisible)
+   window:recursiveGetChildById('flagsTabButton'):setBackgroundColor(flagsVisible and '#603bb0' or '#363636')
+   window:recursiveGetChildById('valuesTabButton'):setBackgroundColor(not flagsVisible and '#603bb0' or '#363636')
 end
 
-local function buildAppearanceProperties(data, thing)
-   local flagsList = appearanceWindow:recursiveGetChildById('appearanceFlagsList')
-   local valuesList = appearanceWindow:recursiveGetChildById('appearanceValuesList')
+local function buildAppearanceProperties(data)
+   local flagsList = window:recursiveGetChildById('appearanceFlagsList')
+   local valuesList = window:recursiveGetChildById('appearanceValuesList')
    flagsList:destroyChildren()
    valuesList:destroyChildren()
    appearanceValueWidgets = {}
@@ -168,8 +124,8 @@ local function buildAppearanceProperties(data, thing)
    appearanceOriginal = data
    buildingAppearanceProperties = true
 
-   local nameEdit = appearanceWindow:recursiveGetChildById('appearanceName')
-   local descriptionEdit = appearanceWindow:recursiveGetChildById('appearanceDescription')
+   local nameEdit = window:recursiveGetChildById('appearanceName')
+   local descriptionEdit = window:recursiveGetChildById('appearanceDescription')
    nameEdit:setText(data.name or '')
    descriptionEdit:setText(data.description or '')
    appearanceStringWidgets.name = nameEdit
@@ -191,7 +147,7 @@ local function buildAppearanceProperties(data, thing)
 
    for _, key in ipairs(sortedKeys(data.bools)) do
       local checkbox = g_ui.createWidget('AppearanceFlagCheckBox', flagsList)
-      checkbox:setWidth(230)
+      checkbox:setWidth(285)
       checkbox:setText(propertyLabel(key))
       checkbox:setChecked(data.bools[key])
       checkbox.onCheckChange = function(widget)
@@ -229,27 +185,236 @@ local function buildAppearanceProperties(data, thing)
       end
    end
 
-   if appearanceWindow then
-      local spriteList = appearanceWindow:recursiveGetChildById('appearanceSpriteList')
-      spriteList:destroyChildren()
-      if thing and thing:getId() == selectedAppearanceId then
-         local seen = {}
-         for _, spriteId in ipairs(thing:getSprites()) do
-            if not seen[spriteId] then
-               seen[spriteId] = true
-               local row = g_ui.createWidget('AppearanceSpriteButton', spriteList)
-               row:setWidth(125)
-               row:setText(tostring(spriteId))
-               row.onClick = function()
-                  selectSprite(spriteId)
-               end
-            end
+   buildingAppearanceProperties = false
+   updateAppearanceSaveButton()
+   setPropertiesTab(currentPropertiesTab)
+end
+
+local function clearAppearanceProperties()
+   buildingAppearanceProperties = true
+   window:recursiveGetChildById('appearanceInfoLabel'):setText(tr('Select an appearance from the list.'))
+   window:recursiveGetChildById('appearanceName'):setText('')
+   window:recursiveGetChildById('appearanceDescription'):setText('')
+   window:recursiveGetChildById('appearanceFlagsList'):destroyChildren()
+   window:recursiveGetChildById('appearanceValuesList'):destroyChildren()
+   window:recursiveGetChildById('spriteInfoLabel'):setText(tr('Select an appearance to preview its sprite.'))
+   appearanceOriginal = nil
+   appearanceValueWidgets = {}
+   appearanceStringWidgets = {}
+   clearAppearanceChanges()
+   buildingAppearanceProperties = false
+   updateAppearanceSaveButton()
+end
+
+local function selectSprite(id)
+   if not canvas or not activeVersion then
+      return false
+   end
+   if not canvas:setSpriteId(id) then
+      setStatus(tr('Sprite %d is not available in this 15.x work copy.', id))
+      return false
+   end
+
+   selectedSpriteId = id
+   window:recursiveGetChildById('spriteInfoLabel'):setText(
+      string.format('ID %d | %d x %d | %dx', id, canvas:getSpriteWidth(), canvas:getSpriteHeight(), canvas:getZoom()))
+   window:recursiveGetChildById('selectedSpriteLabel'):setText(
+      tr('Selected sprite ID: %d', id))
+   setStatus(tr('Previewing sprite %d.', id))
+   return true
+end
+
+local function refreshSelectedAppearance()
+   if not window or not activeVersion or not selectedAppearanceId then
+      return
+   end
+   local thing = g_things.getThingType(selectedAppearanceId, selectedAppearanceCategory)
+   if not thing or thing:getId() ~= selectedAppearanceId then
+      setStatus(tr('Appearance %d is not available.', selectedAppearanceId))
+      return
+   end
+
+   local name = thing:getName()
+   window:recursiveGetChildById('appearanceInfoLabel'):setText(
+      string.format('%s | ID %d', name ~= '' and name or tr('Unnamed appearance'), selectedAppearanceId))
+   local sprites = thing:getSprites()
+   if #sprites > 0 then
+      selectSprite(sprites[1])
+   else
+      selectedSpriteId = nil
+      window:recursiveGetChildById('spriteInfoLabel'):setText(tr('This appearance has no linked sprites.'))
+      window:recursiveGetChildById('selectedSpriteLabel'):setText(tr('This appearance has no linked sprites.'))
+   end
+end
+
+local function getThingEntries(category)
+   local entries = {}
+   for _, thing in pairs(g_things.getThingTypes(category)) do
+      local id = thing:getId()
+      if id and id > 0 then
+         local sprites = thing:getSprites()
+         local name = thing:getName()
+         table.insert(entries, {
+            id = id,
+            category = category,
+            name = name ~= '' and name or tr('Unnamed appearance'),
+            spriteId = sprites and sprites[1] or nil,
+         })
+      end
+   end
+   table.sort(entries, function(a, b) return a.id < b.id end)
+   return entries
+end
+
+renderAppearanceRows = function(scrollY)
+   if not window or not activeVersion then
+      return
+   end
+   local list = window:recursiveGetChildById('appearanceList')
+   local content = window:recursiveGetChildById('appearanceListContent')
+   content:setHeight(math.max(1, #filteredAppearanceEntries * APPEARANCE_ROW_HEIGHT))
+   local firstIndex = math.floor(math.max(0, scrollY or 0) / APPEARANCE_ROW_HEIGHT) + 1
+   local viewportHeight = math.max(list:getHeight(), 400)
+   local poolSize = math.ceil(viewportHeight / APPEARANCE_ROW_HEIGHT) + 2
+   while #appearanceRows < poolSize do
+      local row = g_ui.createWidget('AppearanceResultRow', content)
+      table.insert(appearanceRows, row)
+   end
+
+   for slot, row in ipairs(appearanceRows) do
+      local index = firstIndex + slot - 1
+      local entry = filteredAppearanceEntries[index]
+      row:setVisible(entry ~= nil)
+      if entry then
+         row:setMarginTop((index - 1) * APPEARANCE_ROW_HEIGHT)
+         row:recursiveGetChildById('appearanceName'):setText(entry.name)
+         row:recursiveGetChildById('appearanceId'):setText(
+            entry.spriteId and tr('ID %d · Sprite %d', entry.id, entry.spriteId) or tr('ID %d · No sprite', entry.id))
+         local thumbnail = row:recursiveGetChildById('thumbnail')
+         if entry.spriteId then
+            thumbnail:setSpriteId(entry.spriteId)
+         else
+            thumbnail:clearSprite()
+         end
+         local selected = entry.id == selectedAppearanceId and entry.category == selectedAppearanceCategory
+         row:setBackgroundColor(selected and '#514276' or '#363636')
+         row.onClick = function()
+            selectAppearance(entry.category, entry.id)
          end
       end
    end
 
-   buildingAppearanceProperties = false
-   updateAppearanceSaveButton()
+   if g_spriteAppearances.releaseDecodedSpriteSheets then
+      g_spriteAppearances.releaseDecodedSpriteSheets()
+   end
+end
+
+local function applyAppearanceFilter()
+   if not window then
+      return
+   end
+   local search = window:recursiveGetChildById('appearanceSearch'):getText():lower()
+   filteredAppearanceEntries = {}
+   for _, entry in ipairs(appearanceEntries) do
+      local idText = tostring(entry.id)
+      local spriteText = entry.spriteId and tostring(entry.spriteId) or ''
+      if search == '' or entry.name:lower():find(search, 1, true) or
+            idText:find(search, 1, true) or spriteText:find(search, 1, true) then
+         table.insert(filteredAppearanceEntries, entry)
+      end
+   end
+   local countLabel = window:recursiveGetChildById('appearanceResultsLabel')
+   countLabel:setText(activeVersion and tr('%d appearances', #filteredAppearanceEntries) or
+      tr('Open a work copy to browse appearances.'))
+   local list = window:recursiveGetChildById('appearanceList')
+   list:setVirtualOffset({ x = 0, y = 0 })
+   renderAppearanceRows(0)
+   list:updateScrollBars()
+end
+
+local function refreshAppearanceCatalog(category)
+   if not window or not activeVersion then
+      appearanceEntries = {}
+      filteredAppearanceEntries = {}
+      if window then
+         window:recursiveGetChildById('appearanceResultsLabel'):setText(tr('Open a work copy to browse appearances.'))
+      end
+      return
+   end
+   appearanceEntries = getThingEntries(category)
+   applyAppearanceFilter()
+end
+
+local function loadAppearanceRecord(category, id, forceDiscard, forceReload)
+   if not window or not activeVersion or g_game.isOnline() then
+      setStatus(tr('Open a 15.x work copy before editing appearances.'))
+      return false
+   end
+   if selectedAppearanceCategory == category and selectedAppearanceId == id and appearanceOriginal and not forceReload then
+      refreshSelectedAppearance()
+      return true
+   end
+   if hasAppearanceChanges() and not forceDiscard then
+      displayGeneralBox(tr('Discard appearance edits?'), tr('Selecting another appearance discards unsaved property changes.'), {
+         { text = tr('Discard'), callback = function() clearAppearanceChanges() loadAppearanceRecord(category, id, true) end },
+         { text = tr('Cancel'), callback = function() end },
+      })
+      return false
+   end
+
+   local ok, encoded = pcall(g_things.getAppearanceEditorData, activeVersion, category, id)
+   if not ok then
+      setStatus(tostring(encoded))
+      return false
+   end
+   local decoded, data = pcall(json.decode, encoded)
+   if not decoded or type(data) ~= 'table' or type(data.bools) ~= 'table' or type(data.values) ~= 'table' then
+      setStatus(tr('Appearance properties could not be read.'))
+      return false
+   end
+   local thing = g_things.getThingType(id, category)
+   if not thing or thing:getId() ~= id then
+      setStatus(tr('Appearance %d is not loaded by the client.', id))
+      return false
+   end
+
+   selectedAppearanceCategory = category
+   selectedAppearanceId = id
+   window:recursiveGetChildById('appearanceCategory'):setCurrentOptionByData(category, true)
+   buildAppearanceProperties(data)
+   refreshSelectedAppearance()
+   setStatus(tr('Appearance %d loaded.', id))
+   renderAppearanceRows(window:recursiveGetChildById('appearanceList'):getVirtualOffset().y)
+   return true
+end
+
+selectAppearance = function(category, id, forceDiscard)
+   loadAppearanceRecord(category, id, forceDiscard)
+end
+
+local function changeAppearanceCategory(category, forceDiscard)
+   if not category then
+      return
+   end
+   if hasAppearanceChanges() and not forceDiscard then
+      window:recursiveGetChildById('appearanceCategory'):setCurrentOptionByData(selectedAppearanceCategory, true)
+      displayGeneralBox(tr('Discard appearance edits?'), tr('Changing category discards unsaved property changes.'), {
+         { text = tr('Discard'), callback = function() clearAppearanceChanges() changeAppearanceCategory(category, true) end },
+         { text = tr('Cancel'), callback = function() end },
+      })
+      return
+   end
+   selectedAppearanceCategory = category
+   selectedAppearanceId = nil
+   appearanceOriginal = nil
+   clearAppearanceChanges()
+   refreshAppearanceCatalog(category)
+   if filteredAppearanceEntries[1] then
+      loadAppearanceRecord(category, filteredAppearanceEntries[1].id, true)
+   else
+      clearAppearanceProperties()
+      setStatus(tr('No appearances in this category.'))
+   end
 end
 
 local function reloadAssets()
@@ -263,23 +428,62 @@ local function reloadAssets()
    return true
 end
 
+local function setActivePage(page)
+   if not window then
+      return
+   end
+   currentPage = page
+   window:recursiveGetChildById('propertiesPanel'):setVisible(page == 'editor')
+   window:recursiveGetChildById('importPanel'):setVisible(page == 'import')
+   window:recursiveGetChildById('exportPanel'):setVisible(page == 'export')
+   window:recursiveGetChildById('editorPageButton'):setBackgroundColor(page == 'editor' and '#603bb0' or '#363636')
+   window:recursiveGetChildById('importPageButton'):setBackgroundColor(page == 'import' and '#603bb0' or '#363636')
+   window:recursiveGetChildById('exportPageButton'):setBackgroundColor(page == 'export' and '#603bb0' or '#363636')
+   if page == 'import' and selectedSpriteId then
+      window:recursiveGetChildById('selectedSpriteLabel'):setText(tr('Selected sprite ID: %d', selectedSpriteId))
+   elseif page == 'export' then
+      window:recursiveGetChildById('activeWorkCopyLabel'):setText(activeWorkRoot or tr('No work copy is open.'))
+   end
+end
+
 local function createWindow()
    if window then
       window:destroy()
    end
-   window = g_ui.displayUI('/game_sprite_editor/sprite_editor.otui')
+   window = g_ui.displayUI('sprite_editor')
    if not window then
       displayErrorBox(tr('Assets Editor'), tr('Could not create the editor window. Check the client log for UI errors.'))
       return false
    end
 
    canvas = window:recursiveGetChildById('canvas')
+   if not canvas then
+      window:destroy()
+      window = nil
+      displayErrorBox(tr('Assets Editor'), tr('The editor canvas could not be initialized.'))
+      return false
+   end
    canvas.onStateChange = function()
-      if canvas then
-         window:recursiveGetChildById('zoomLabel'):setText(string.format('%dx', canvas:getZoom()))
+      if canvas and window then
+         window:recursiveGetChildById('spriteInfoLabel'):setText(
+            string.format('ID %d | %d x %d | %dx', selectedSpriteId or 0, canvas:getSpriteWidth(), canvas:getSpriteHeight(), canvas:getZoom()))
       end
    end
-   addCategories(window:recursiveGetChildById('appearanceCategory'))
+
+   local categoryBox = window:recursiveGetChildById('appearanceCategory')
+   addCategories(categoryBox)
+   categoryBox:setCurrentOptionByData(selectedAppearanceCategory, true)
+   categoryBox.onOptionChange = function(_, _, category)
+      changeAppearanceCategory(category)
+   end
+   local searchEdit = window:recursiveGetChildById('appearanceSearch')
+   searchEdit.onTextChange = function()
+      applyAppearanceFilter()
+   end
+   local list = window:recursiveGetChildById('appearanceList')
+   list.onScrollChange = function(_, offset)
+      renderAppearanceRows(offset.y)
+   end
 
    local versionBox = window:recursiveGetChildById('versionComboBox')
    for _, version in ipairs(getVersions()) do
@@ -288,22 +492,32 @@ local function createWindow()
    if activeVersion then
       versionBox:setCurrentOptionByData(activeVersion, true)
    end
+
+   setActivePage(currentPage)
+   setPropertiesTab(currentPropertiesTab)
    window:show()
    window:raise()
    window:focus()
+   if activeVersion then
+      refreshAppearanceCatalog(selectedAppearanceCategory)
+      if filteredAppearanceEntries[1] then
+         loadAppearanceRecord(selectedAppearanceCategory, filteredAppearanceEntries[1].id, true)
+      end
+   else
+      clearAppearanceProperties()
+   end
    return true
 end
 
 local function destroyWindow()
-   if appearanceWindow then
-      appearanceWindow:destroy()
-      appearanceWindow = nil
-   end
    if window then
       window:destroy()
       window = nil
       canvas = nil
    end
+   appearanceRows = {}
+   appearanceEntries = {}
+   filteredAppearanceEntries = {}
    selectedAppearanceId = nil
    selectedSpriteId = nil
    appearanceOriginal = nil
@@ -344,6 +558,8 @@ local function loadAssets(version)
 
    activeVersion = version
    activeAssetPath = assetPath
+   activeWorkRoot = workRoot
+   selectedAppearanceCategory = 0
    return true
 end
 
@@ -372,6 +588,7 @@ function terminate()
    end
    activeVersion = nil
    activeAssetPath = nil
+   activeWorkRoot = nil
    gameStartCallback = nil
    gameEndCallback = nil
 end
@@ -411,70 +628,35 @@ function openWorkCopyVersion(version)
    destroyWindow()
    activeVersion = nil
    activeAssetPath = nil
+   activeWorkRoot = nil
    if not loadAssets(version) then
       createWindow()
       return
    end
+   currentPage = 'editor'
    createWindow()
    window:recursiveGetChildById('versionComboBox'):setCurrentOptionByData(version, true)
    setStatus(tr('Work copy loaded for client %d.', version))
 end
 
-function loadAppearanceFromMain(forceDiscard)
-   if not window or not activeVersion or g_game.isOnline() then
-      setStatus(tr('Open a 15.x work copy before loading appearances.'))
-      return
-   end
-   if hasAppearanceChanges() and not forceDiscard then
-      displayGeneralBox(tr('Discard appearance edits?'), tr('Loading another appearance discards unsaved property changes.'), {
-         { text = tr('Discard'), callback = function() clearAppearanceChanges() loadAppearanceFromMain(true) end },
-         { text = tr('Cancel'), callback = function() end },
-      })
-      return
-   end
-   local category = selectedOption(window:recursiveGetChildById('appearanceCategory'))
-   local id = tonumber(window:recursiveGetChildById('appearanceIdEdit'):getText())
-   if not category or not id or id < 1 or id % 1 ~= 0 then
-      setStatus(tr('Select a category and enter a positive appearance ID.'))
-      return
-   end
-   local ok, data = pcall(g_things.getAppearanceEditorData, activeVersion, category, id)
-   if not ok then
-      setStatus(tostring(data))
-      return
-   end
-   local decoded, appearanceData = pcall(json.decode, data)
-   if not decoded or type(appearanceData) ~= 'table' then
-      setStatus(tr('Appearance data could not be read.'))
-      return
-   end
-   selectedAppearanceCategory = category
-   selectedAppearanceId = id
-   local thing = g_things.getThingType(id, category)
-   if not thing or thing:getId() ~= id then
-      setStatus(tr('Appearance %d was read from the work copy but is not loaded by the client.', id))
-      return
-   end
-   refreshSelectedAppearance()
-   setStatus(tr('Appearance %d loaded.', id))
-   if appearanceWindow then
-      appearanceWindow:recursiveGetChildById('appearanceCategory'):setCurrentOptionByData(category, true)
-      appearanceWindow:recursiveGetChildById('appearanceId'):setText(tostring(id))
-      loadAppearance(true)
-   end
+function applyAppearanceSearch()
+   applyAppearanceFilter()
 end
 
-function loadSpriteId()
-   if not window or not activeVersion then
-      setStatus(tr('Open a work copy before previewing a sprite.'))
-      return
-   end
-   local id = tonumber(window:recursiveGetChildById('spriteIdEdit'):getText())
-   if not id or id < 1 or id % 1 ~= 0 then
-      setStatus(tr('Enter a positive sprite ID.'))
-      return
-   end
-   selectSprite(id)
+function showEditorPage()
+   setActivePage('editor')
+end
+
+function showImportPage()
+   setActivePage('import')
+end
+
+function showExportPage()
+   setActivePage('export')
+end
+
+function showPropertiesTab(tab)
+   setPropertiesTab(tab)
 end
 
 function zoomIn()
@@ -497,10 +679,10 @@ function replaceSprite(forceDiscard)
       setStatus(tr('Open a 15.x work copy before importing a sprite.'))
       return
    end
-   local id = tonumber(window:recursiveGetChildById('spriteIdEdit'):getText())
+   local id = selectedSpriteId
    local path = window:recursiveGetChildById('imagePathEdit'):getText()
-   if not id or id < 1 or id % 1 ~= 0 or path == '' then
-      setStatus(tr('Choose a sprite ID and enter an absolute PNG path.'))
+   if not id or path == '' then
+      setStatus(tr('Select a sprite and enter an absolute PNG path.'))
       return
    end
    local ok, result = pcall(g_spriteAppearances.importSpriteFromFile, id, path, activeVersion)
@@ -512,8 +694,9 @@ function replaceSprite(forceDiscard)
       displayErrorBox(tr('Assets Editor'), tr('The sprite was written, but the work copy could not be reloaded.'))
       return
    end
+   refreshAppearanceCatalog(selectedAppearanceCategory)
+   loadAppearanceRecord(selectedAppearanceCategory, selectedAppearanceId, true, true)
    selectSprite(result)
-   refreshSelectedAppearance()
    setStatus(tr('Sprite %d replaced from the prepared PNG.', result))
 end
 
@@ -560,78 +743,17 @@ function createAppearance(forceDiscard)
       return
    end
 
-   window:recursiveGetChildById('appearanceIdEdit'):setText(tostring(appearanceId))
    window:recursiveGetChildById('newAppearanceName'):setText('')
    window:recursiveGetChildById('newAppearanceDescription'):setText('')
-   loadAppearanceFromMain(true)
+   refreshAppearanceCatalog(category)
+   loadAppearanceRecord(category, appearanceId, true)
    selectSprite(spriteId)
+   showEditorPage()
    setStatus(tr('Created appearance %d with sprite %d.', appearanceId, spriteId))
 end
 
-function openAppearanceEditor()
-   if not window or not activeVersion or not selectedAppearanceId or g_game.isOnline() then
-      setStatus(tr('Load an appearance from a 15.x work copy before editing its properties.'))
-      return
-   end
-   if appearanceWindow then
-      appearanceWindow:raise()
-      appearanceWindow:focus()
-      return
-   end
-   appearanceWindow = g_ui.displayUI('/game_sprite_editor/appearance_editor.otui')
-   if not appearanceWindow then
-      displayErrorBox(tr('Assets Editor'), tr('Could not create the appearance properties window.'))
-      return
-   end
-   addCategories(appearanceWindow:recursiveGetChildById('appearanceCategory'))
-   appearanceWindow:recursiveGetChildById('appearanceCategory'):setCurrentOptionByData(selectedAppearanceCategory, true)
-   appearanceWindow:recursiveGetChildById('appearanceId'):setText(tostring(selectedAppearanceId))
-   appearanceWindow:show()
-   appearanceWindow:raise()
-   appearanceWindow:focus()
-   loadAppearance(true)
-end
-
-function loadAppearance(forceDiscard)
-   if not appearanceWindow or not activeVersion then
-      return
-   end
-   if hasAppearanceChanges() and not forceDiscard then
-      displayGeneralBox(tr('Discard appearance edits?'), tr('Loading another appearance discards the unsaved property changes.'), {
-         { text = tr('Discard'), callback = function() clearAppearanceChanges() loadAppearance(true) end },
-         { text = tr('Cancel'), callback = function() end },
-      })
-      return
-   end
-   local category = selectedOption(appearanceWindow:recursiveGetChildById('appearanceCategory'))
-   local id = tonumber(appearanceWindow:recursiveGetChildById('appearanceId'):getText())
-   if not category or not id or id < 1 or id % 1 ~= 0 then
-      setAppearanceStatus(tr('Select a category and enter a positive appearance ID.'))
-      return
-   end
-   local ok, encoded = pcall(g_things.getAppearanceEditorData, activeVersion, category, id)
-   if not ok then
-      setAppearanceStatus(tostring(encoded))
-      return
-   end
-   local decoded, data = pcall(json.decode, encoded)
-   if not decoded or type(data) ~= 'table' or type(data.bools) ~= 'table' or type(data.values) ~= 'table' then
-      setAppearanceStatus(tr('Appearance properties could not be read.'))
-      return
-   end
-   selectedAppearanceCategory = category
-   selectedAppearanceId = id
-   window:recursiveGetChildById('appearanceCategory'):setCurrentOptionByData(category, true)
-   window:recursiveGetChildById('appearanceIdEdit'):setText(tostring(id))
-   local thing = g_things.getThingType(id, category)
-   if not thing or thing:getId() ~= id then thing = nil end
-   buildAppearanceProperties(data, thing)
-   setAppearanceStatus(tr('Appearance %d loaded.', id))
-   refreshSelectedAppearance()
-end
-
 function saveAppearanceProperties()
-   if not appearanceWindow or not appearanceOriginal or not activeVersion or g_game.isOnline() then
+   if not appearanceOriginal or not activeVersion or g_game.isOnline() then
       return
    end
    for key, edit in pairs(appearanceValueWidgets) do
@@ -659,9 +781,14 @@ function saveAppearanceProperties()
       return
    end
 
-   local changesJson = json.encode(appearanceChanges)
+   local updates = {}
+   for section, values in pairs(appearanceChanges) do
+      if next(values) then
+         updates[section] = values
+      end
+   end
    local ok, err = pcall(g_things.saveAppearanceEditorData,
-      activeVersion, selectedAppearanceCategory, selectedAppearanceId, changesJson)
+      activeVersion, selectedAppearanceCategory, selectedAppearanceId, json.encode(updates))
    if not ok then
       setAppearanceStatus(tostring(err))
       return
@@ -670,25 +797,39 @@ function saveAppearanceProperties()
       displayErrorBox(tr('Assets Editor'), tr('Properties were saved, but the work copy could not be reloaded.'))
       return
    end
+   refreshAppearanceCatalog(selectedAppearanceCategory)
+   loadAppearanceRecord(selectedAppearanceCategory, selectedAppearanceId, true, true)
    setAppearanceStatus(tr('Appearance %d saved to the work copy.', selectedAppearanceId))
-   loadAppearance(true)
 end
 
-function closeAppearanceEditor(forceDiscard)
-   if not appearanceWindow then
-      return
-   end
-   if hasAppearanceChanges() and not forceDiscard then
-      displayGeneralBox(tr('Discard appearance edits?'), tr('Closing this window discards unsaved property changes.'), {
-         { text = tr('Discard'), callback = function() closeAppearanceEditor(true) end },
+function exportWorkCopy(forceContinue)
+   if hasAppearanceChanges() and not forceContinue then
+      displayGeneralBox(tr('Unsaved appearance properties'), tr('Save or discard the pending changes before exporting the work copy.'), {
+         { text = tr('Save and export'), callback = function()
+            saveAppearanceProperties()
+            if not hasAppearanceChanges() then exportWorkCopy(true) end
+         end },
+         { text = tr('Discard and export'), callback = function() clearAppearanceChanges() exportWorkCopy(true) end },
          { text = tr('Cancel'), callback = function() end },
       })
       return
    end
-   appearanceWindow:destroy()
-   appearanceWindow = nil
-   appearanceOriginal = nil
-   clearAppearanceChanges()
+   if not activeVersion or g_game.isOnline() then
+      window:recursiveGetChildById('exportStatus'):setText(tr('Open a 15.x work copy before exporting.'))
+      return
+   end
+   local destination = window:recursiveGetChildById('exportPathEdit'):getText()
+   if destination == '' then
+      window:recursiveGetChildById('exportStatus'):setText(tr('Enter an absolute destination folder.'))
+      return
+   end
+   local ok, result = pcall(g_spriteAppearances.exportWorkCopy, activeVersion, destination)
+   if not ok then
+      window:recursiveGetChildById('exportStatus'):setText(tostring(result))
+      return
+   end
+   window:recursiveGetChildById('exportStatus'):setText(tr('Asset package exported to %s.', result))
+   setStatus(tr('Exported the client %d work package.', activeVersion))
 end
 
 function reloadPackage()
@@ -710,11 +851,9 @@ function reloadPackageNow()
       displayErrorBox(tr('Assets Editor'), tr('Could not reload the selected work copy.'))
       return
    end
-   refreshSelectedAppearance()
-   if appearanceWindow and selectedAppearanceId then
-      appearanceWindow:recursiveGetChildById('appearanceCategory'):setCurrentOptionByData(selectedAppearanceCategory, true)
-      appearanceWindow:recursiveGetChildById('appearanceId'):setText(tostring(selectedAppearanceId))
-      loadAppearance(true)
+   refreshAppearanceCatalog(selectedAppearanceCategory)
+   if selectedAppearanceId then
+      loadAppearanceRecord(selectedAppearanceCategory, selectedAppearanceId, true, true)
    end
    setStatus(tr('Work copy reloaded from disk.'))
 end
