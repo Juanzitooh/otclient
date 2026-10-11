@@ -1,7 +1,61 @@
+AppearanceResultRow < Button
+  height: 52
+  text: ''
+  anchors.left: parent.left
+  anchors.right: parent.right
+  anchors.top: parent.top
+
+  UISprite
+    id: thumbnail
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 4
+    size: 40 40
+
+  Label
+    id: appearanceName
+    anchors.left: thumbnail.right
+    anchors.right: parent.right
+    anchors.top: parent.top
+    margin-left: 7
+    margin-top: 8
+    text-wrap: false
+
+  Label
+    id: appearanceId
+    anchors.left: thumbnail.right
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    margin-left: 7
+    margin-bottom: 5
+    text-wrap: false
+
+AppearanceFlagCheckBox < CheckBox
+  height: 21
+  text-wrap: false
+
+AppearanceValueRow < Panel
+  height: 24
+
+  Label
+    id: propertyLabel
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    width: 145
+    text-wrap: false
+
+  TextEdit
+    id: propertyValue
+    anchors.left: propertyLabel.right
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 5
+    height: 20
+
 SpriteEditorWindow < MainWindow
   id: spriteEditorWindow
   !text: tr('Offline Assets Editor')
-  size: 1160 700
+  size: 1160 600
   @onEscape: modules.game_sprite_editor.requestClose()
 
   Label
@@ -37,13 +91,50 @@ SpriteEditorWindow < MainWindow
     text-wrap: true
 
   Panel
+    id: pageNavigation
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: assetsLabel.bottom
+    margin-top: 8
+    height: 28
+
+    Button
+      id: editorPageButton
+      !text: tr('Browse and edit')
+      anchors.left: parent.left
+      anchors.top: parent.top
+      width: 150
+      height: 26
+      @onClick: modules.game_sprite_editor.showEditorPage()
+
+    Button
+      id: importPageButton
+      !text: tr('Import and create')
+      anchors.left: editorPageButton.right
+      anchors.top: parent.top
+      margin-left: 4
+      width: 150
+      height: 26
+      @onClick: modules.game_sprite_editor.showImportPage()
+
+    Button
+      id: exportPageButton
+      !text: tr('Export work copy')
+      anchors.left: importPageButton.right
+      anchors.top: parent.top
+      margin-left: 4
+      width: 140
+      height: 26
+      @onClick: modules.game_sprite_editor.showExportPage()
+
+  Panel
     id: appearancesPanel
     anchors.left: parent.left
-    anchors.top: assetsLabel.bottom
-    anchors.bottom: closeButton.top
-    margin-top: 12
+    anchors.top: pageNavigation.bottom
+    anchors.bottom: reloadButton.top
+    margin-top: 8
     margin-bottom: 8
-    width: 220
+    width: 230
 
     Label
       !text: tr('Appearance category')
@@ -58,85 +149,56 @@ SpriteEditorWindow < MainWindow
       margin-top: 4
       height: 22
 
-    Label
-      !text: tr('Appearance ID')
-      anchors.left: parent.left
-      anchors.top: appearanceCategory.bottom
-      margin-top: 9
-
     TextEdit
-      id: appearanceIdEdit
-      anchors.left: parent.left
-      anchors.top: prev.bottom
-      margin-top: 4
-      width: 110
-      height: 22
-      @onEnter: modules.game_sprite_editor.loadAppearanceFromMain()
-
-    Button
-      !text: tr('Load')
-      anchors.left: appearanceIdEdit.right
-      anchors.verticalCenter: appearanceIdEdit.verticalCenter
-      margin-left: 6
-      width: 70
-      @onClick: modules.game_sprite_editor.loadAppearanceFromMain()
-
-    Label
-      id: appearanceInfoLabel
-      text: tr('No appearance loaded')
+      id: appearanceSearch
       anchors.left: parent.left
       anchors.right: parent.right
-      anchors.top: appearanceIdEdit.bottom
-      margin-top: 5
-      text-wrap: true
+      anchors.top: appearanceCategory.bottom
+      margin-top: 7
+      height: 23
+      !placeholder: tr('Search by name or ID')
+      @onEnter: modules.game_sprite_editor.applyAppearanceSearch()
 
     Label
-      id: spriteListHeader
-      !text: tr('Linked sprites')
+      id: appearanceResultsLabel
+      !text: tr('Open a work copy to browse appearances.')
       anchors.left: parent.left
       anchors.right: parent.right
-      anchors.top: appearanceInfoLabel.bottom
-      margin-top: 10
-      height: 22
-      background-color: #603bb0
-      color: #ffffff
-      text-offset: 5 3
+      anchors.top: appearanceSearch.bottom
+      margin-top: 6
+      text-wrap: false
 
     UIScrollArea
-      id: assetSpriteList
+      id: appearanceList
       anchors.left: parent.left
-      anchors.right: assetSpriteScroll.left
-      anchors.top: spriteListHeader.bottom
-      anchors.bottom: appearancePropertiesButton.top
-      margin-top: 4
-      margin-bottom: 8
-      vertical-scrollbar: assetSpriteScroll
-      layout: verticalBox
-      padding: 2
+      anchors.right: parent.right
+      anchors.top: appearanceResultsLabel.bottom
+      anchors.bottom: parent.bottom
+      margin-top: 5
+      margin-right: 12
+      vertical-scrollbar: appearanceListScroll
       auto-focus: none
 
-    VerticalScrollBar
-      id: assetSpriteScroll
-      anchors.top: assetSpriteList.top
-      anchors.bottom: assetSpriteList.bottom
-      anchors.right: parent.right
-      step: 24
-      pixels-scroll: true
+      Panel
+        id: appearanceListContent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 1
 
-    Button
-      id: appearancePropertiesButton
-      !text: tr('Appearance properties')
-      anchors.left: parent.left
+    VerticalScrollBar
+      id: appearanceListScroll
+      anchors.top: appearanceList.top
+      anchors.bottom: appearanceList.bottom
       anchors.right: parent.right
-      anchors.bottom: parent.bottom
-      height: 25
-      @onClick: modules.game_sprite_editor.openAppearanceEditor()
+      step: 52
+      pixels-scroll: true
 
   Panel
     id: editorCanvasFrame
     anchors.top: appearancesPanel.top
     anchors.left: appearancesPanel.right
-    anchors.right: importPanel.left
+    anchors.right: rightPanel.left
     anchors.bottom: appearancesPanel.bottom
     margin-left: 12
     margin-right: 12
@@ -150,7 +212,7 @@ SpriteEditorWindow < MainWindow
 
   Label
     id: spriteInfoLabel
-    text: tr('No sprite selected')
+    !text: tr('Select an appearance to preview its sprite.')
     anchors.left: editorCanvasFrame.left
     anchors.right: editorCanvasFrame.right
     anchors.top: editorCanvasFrame.top
@@ -159,7 +221,7 @@ SpriteEditorWindow < MainWindow
 
   Label
     id: previewHintLabel
-    !text: tr('Preview only | Wheel: zoom | Middle-drag: pan | Transparent pixels use the checkerboard.')
+    !text: tr('Preview only | Starts at 1x | Wheel: zoom | Middle-drag: pan | Transparent pixels use the checkerboard.')
     anchors.left: editorCanvasFrame.left
     anchors.right: editorCanvasFrame.right
     anchors.bottom: editorCanvasFrame.bottom
@@ -167,157 +229,318 @@ SpriteEditorWindow < MainWindow
     text-wrap: true
 
   Panel
-    id: importPanel
+    id: rightPanel
     anchors.top: appearancesPanel.top
     anchors.right: parent.right
     anchors.bottom: appearancesPanel.bottom
-    width: 300
+    width: 320
 
-    Label
-      !text: tr('Import prepared PNG')
-      anchors.left: parent.left
-      anchors.top: parent.top
-      height: 22
-      background-color: #603bb0
-      color: #ffffff
-      text-offset: 5 3
+    Panel
+      id: propertiesPanel
+      anchors.fill: parent
 
-    Label
-      !text: tr('Sprite ID to replace')
-      anchors.left: parent.left
-      anchors.top: prev.bottom
-      margin-top: 8
+      Label
+        id: appearanceInfoLabel
+        !text: tr('Select an appearance from the list.')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 23
+        background-color: #603bb0
+        color: #ffffff
+        text-offset: 5 3
+        text-wrap: false
 
-    TextEdit
-      id: spriteIdEdit
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.top: prev.bottom
-      margin-top: 4
-      height: 22
-      @onEnter: modules.game_sprite_editor.loadSpriteId()
+      Label
+        !text: tr('Name')
+        anchors.left: parent.left
+        anchors.top: appearanceInfoLabel.bottom
+        margin-top: 7
 
-    Button
-      !text: tr('Preview selected sprite')
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.top: spriteIdEdit.bottom
-      margin-top: 5
-      height: 24
-      @onClick: modules.game_sprite_editor.loadSpriteId()
+      TextEdit
+        id: appearanceName
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: prev.bottom
+        margin-top: 3
+        height: 22
 
-    Label
-      !text: tr('Absolute path to PNG')
-      anchors.left: parent.left
-      anchors.top: prev.bottom
-      margin-top: 9
+      Label
+        !text: tr('Description')
+        anchors.left: parent.left
+        anchors.top: appearanceName.bottom
+        margin-top: 5
 
-    TextEdit
-      id: imagePathEdit
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.top: prev.bottom
-      margin-top: 4
-      height: 22
+      TextEdit
+        id: appearanceDescription
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: prev.bottom
+        margin-top: 3
+        height: 22
 
-    Button
-      id: replaceSpriteButton
-      !text: tr('Replace selected sprite')
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.top: imagePathEdit.bottom
-      margin-top: 5
-      height: 24
-      @onClick: modules.game_sprite_editor.replaceSprite()
+      Button
+        id: flagsTabButton
+        !text: tr('Flags')
+        anchors.left: parent.left
+        anchors.top: appearanceDescription.bottom
+        margin-top: 8
+        width: 145
+        height: 24
+        @onClick: modules.game_sprite_editor.showPropertiesTab('flags')
 
-    Label
-      !text: tr('Create a new appearance')
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.top: replaceSpriteButton.bottom
-      margin-top: 18
-      height: 22
-      background-color: #603bb0
-      color: #ffffff
-      text-offset: 5 3
+      Button
+        id: valuesTabButton
+        !text: tr('Values')
+        anchors.left: flagsTabButton.right
+        anchors.right: parent.right
+        anchors.top: flagsTabButton.top
+        margin-left: 4
+        height: 24
+        @onClick: modules.game_sprite_editor.showPropertiesTab('values')
 
-    Label
-      !text: tr('Name')
-      anchors.left: parent.left
-      anchors.top: prev.bottom
-      margin-top: 8
+      UIScrollArea
+        id: appearanceFlagsList
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: flagsTabButton.bottom
+        anchors.bottom: appearanceStatus.top
+        margin-top: 4
+        margin-right: 12
+        margin-bottom: 5
+        vertical-scrollbar: appearanceFlagsScroll
+        layout: verticalBox
+        padding: 3
+        auto-focus: none
 
-    TextEdit
-      id: newAppearanceName
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.top: prev.bottom
-      margin-top: 4
-      height: 22
+      VerticalScrollBar
+        id: appearanceFlagsScroll
+        anchors.top: appearanceFlagsList.top
+        anchors.bottom: appearanceFlagsList.bottom
+        anchors.right: parent.right
+        step: 21
+        pixels-scroll: true
 
-    Label
-      !text: tr('Description')
-      anchors.left: parent.left
-      anchors.top: newAppearanceName.bottom
-      margin-top: 7
+      UIScrollArea
+        id: appearanceValuesList
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: flagsTabButton.bottom
+        anchors.bottom: appearanceStatus.top
+        margin-top: 4
+        margin-right: 12
+        margin-bottom: 5
+        vertical-scrollbar: appearanceValuesScroll
+        layout: verticalBox
+        padding: 3
+        auto-focus: none
+        visible: false
 
-    TextEdit
-      id: newAppearanceDescription
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.top: prev.bottom
-      margin-top: 4
-      height: 22
+      VerticalScrollBar
+        id: appearanceValuesScroll
+        anchors.top: appearanceValuesList.top
+        anchors.bottom: appearanceValuesList.bottom
+        anchors.right: parent.right
+        step: 24
+        pixels-scroll: true
+        visible: false
 
-    Button
-      id: createAppearanceButton
-      !text: tr('Create from prepared PNG')
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.top: newAppearanceDescription.bottom
-      margin-top: 7
-      height: 25
-      @onClick: modules.game_sprite_editor.createAppearance()
+      Label
+        id: appearanceStatus
+        !text: tr('Changes are saved to the work copy.')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: saveAppearanceButton.top
+        margin-bottom: 5
+        height: 28
+        text-wrap: true
 
-    Label
-      !text: tr('New entries use one 32 x 32 sprite. Existing sprites must match their current dimensions.')
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.top: createAppearanceButton.bottom
-      margin-top: 5
-      text-wrap: true
+      Button
+        id: saveAppearanceButton
+        !text: tr('Save appearance')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 26
+        enabled: false
+        @onClick: modules.game_sprite_editor.saveAppearanceProperties()
 
-    Label
-      !text: tr('Zoom')
-      anchors.left: parent.left
-      anchors.bottom: zoomOutButton.top
-      margin-bottom: 5
+    Panel
+      id: importPanel
+      anchors.fill: parent
+      visible: false
 
-    Button
-      id: zoomOutButton
-      text: '-'
-      anchors.left: parent.left
-      anchors.bottom: parent.bottom
-      width: 40
-      height: 24
-      @onClick: modules.game_sprite_editor.zoomOut()
+      Label
+        !text: tr('Import prepared PNG')
+        anchors.left: parent.left
+        anchors.top: parent.top
+        height: 23
+        background-color: #603bb0
+        color: #ffffff
+        text-offset: 5 3
 
-    Label
-      id: zoomLabel
-      text: 1x
-      anchors.left: zoomOutButton.right
-      anchors.right: zoomInButton.left
-      anchors.verticalCenter: zoomOutButton.verticalCenter
-      text-align: center
+      Label
+        id: selectedSpriteLabel
+        !text: tr('Select a sprite in the editor first.')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: prev.bottom
+        margin-top: 7
+        text-wrap: true
 
-    Button
-      id: zoomInButton
-      text: '+'
-      anchors.right: parent.right
-      anchors.bottom: parent.bottom
-      width: 40
-      height: 24
-      @onClick: modules.game_sprite_editor.zoomIn()
+      Label
+        !text: tr('Absolute path to PNG')
+        anchors.left: parent.left
+        anchors.top: selectedSpriteLabel.bottom
+        margin-top: 8
+
+      TextEdit
+        id: imagePathEdit
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: prev.bottom
+        margin-top: 4
+        height: 22
+        !placeholder: tr('Absolute PNG file path')
+
+      Button
+        id: replaceSpriteButton
+        !text: tr('Replace selected sprite')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: imagePathEdit.bottom
+        margin-top: 6
+        height: 25
+        @onClick: modules.game_sprite_editor.replaceSprite()
+
+      Label
+        !text: tr('Create a new appearance')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: replaceSpriteButton.bottom
+        margin-top: 18
+        height: 23
+        background-color: #603bb0
+        color: #ffffff
+        text-offset: 5 3
+
+      Label
+        !text: tr('Name')
+        anchors.left: parent.left
+        anchors.top: prev.bottom
+        margin-top: 8
+
+      TextEdit
+        id: newAppearanceName
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: prev.bottom
+        margin-top: 4
+        height: 22
+
+      Label
+        !text: tr('Description')
+        anchors.left: parent.left
+        anchors.top: newAppearanceName.bottom
+        margin-top: 7
+
+      TextEdit
+        id: newAppearanceDescription
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: prev.bottom
+        margin-top: 4
+        height: 22
+
+      Button
+        id: createAppearanceButton
+        !text: tr('Create appearance from PNG')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: newAppearanceDescription.bottom
+        margin-top: 7
+        height: 26
+        @onClick: modules.game_sprite_editor.createAppearance()
+
+      Label
+        !text: tr('New entries use one 32 x 32 sprite. Existing sprites must match their current dimensions.')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: createAppearanceButton.bottom
+        margin-top: 6
+        text-wrap: true
+
+    Panel
+      id: exportPanel
+      anchors.fill: parent
+      visible: false
+
+      Label
+        !text: tr('Export the edited client assets')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 23
+        background-color: #603bb0
+        color: #ffffff
+        text-offset: 5 3
+
+      Label
+        !text: tr('Export copies the work package to data/things/<version> under your chosen client folder. Existing packages are never overwritten.')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: prev.bottom
+        margin-top: 8
+        text-wrap: true
+
+      Label
+        !text: tr('Current work copy')
+        anchors.left: parent.left
+        anchors.top: prev.bottom
+        margin-top: 12
+
+      Label
+        id: activeWorkCopyLabel
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: prev.bottom
+        margin-top: 3
+        height: 48
+        text-wrap: true
+
+      Label
+        !text: tr('OTClient folder to receive the package')
+        anchors.left: parent.left
+        anchors.top: activeWorkCopyLabel.bottom
+        margin-top: 8
+
+      TextEdit
+        id: exportPathEdit
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: prev.bottom
+        margin-top: 4
+        height: 22
+        !placeholder: tr('For example: /home/user/otclient')
+
+      Button
+        id: exportButton
+        !text: tr('Export work package')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: exportPathEdit.bottom
+        margin-top: 7
+        height: 26
+        @onClick: modules.game_sprite_editor.exportWorkCopy()
+
+      Label
+        id: exportStatus
+        !text: tr('Choose a new destination folder. Existing folders are not overwritten.')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: exportButton.bottom
+        margin-top: 8
+        text-wrap: true
 
   Button
     id: reloadButton
@@ -336,3 +559,5 @@ SpriteEditorWindow < MainWindow
     width: 80
     height: 25
     @onClick: modules.game_sprite_editor.requestClose()
+
+SpriteEditorWindow

@@ -146,6 +146,7 @@ void Client::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_spriteAppearances", "saveSheetToFileBySprite", &SpriteAppearances::saveSheetToFileBySprite, &g_spriteAppearances);
 #ifdef FRAMEWORK_EDITOR
     g_lua.bindSingletonFunction("g_spriteAppearances", "createWorkCopy", &SpriteAppearances::createWorkCopy, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "exportWorkCopy", &SpriteAppearances::exportWorkCopy, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "importSpriteFromFile", &SpriteAppearances::importSpriteFromFile, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "releaseDecodedSpriteSheets", &SpriteAppearances::releaseDecodedSpriteSheets, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_things", "invalidateTextureCache", &ThingTypeManager::invalidateTextureCache, &g_things);
