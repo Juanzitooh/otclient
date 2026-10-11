@@ -185,11 +185,11 @@ void ThingType::applyAppearanceFlags(const appearances::AppearanceFlags& flags)
         m_flags |= ThingFlagAttrGroundBorder;
     }
 
-    if (flags.has_bottom()) {
+    if (flags.has_bottom() && flags.bottom()) {
         m_flags |= ThingFlagAttrOnBottom;
     }
 
-    if (flags.has_top()) {
+    if (flags.has_top() && flags.top()) {
         m_flags |= ThingFlagAttrOnTop;
     }
 

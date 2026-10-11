@@ -1,0 +1,226 @@
+AppearanceFlagCheckBox < CheckBox
+  height: 21
+  text-wrap: false
+
+AppearanceValueRow < Panel
+  height: 24
+
+  Label
+    id: propertyLabel
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    width: 145
+    text-wrap: false
+
+  TextEdit
+    id: propertyValue
+    anchors.left: propertyLabel.right
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 5
+    height: 20
+
+AppearanceSpriteButton < Button
+  height: 24
+  text-align: left
+
+AppearancePaneHeader < Label
+  height: 22
+  background-color: #603bb0
+  color: #ffffff
+  text-offset: 5 3
+
+AppearanceEditorWindow < MainWindow
+  id: appearanceEditorWindow
+  !text: tr('Appearance Properties')
+  size: 740 660
+  @onEscape: modules.game_sprite_editor.closeAppearanceEditor()
+
+  Label
+    !text: tr('Category')
+    anchors.left: parent.left
+    anchors.top: parent.top
+
+  ComboBox
+    id: appearanceCategory
+    anchors.left: prev.right
+    anchors.verticalCenter: prev.verticalCenter
+    margin-left: 6
+    width: 130
+    height: 22
+
+  Label
+    !text: tr('Appearance ID')
+    anchors.left: appearanceCategory.right
+    anchors.verticalCenter: appearanceCategory.verticalCenter
+    margin-left: 12
+
+  TextEdit
+    id: appearanceId
+    anchors.left: prev.right
+    anchors.verticalCenter: prev.verticalCenter
+    margin-left: 6
+    width: 100
+    height: 22
+    @onEnter: modules.game_sprite_editor.loadAppearance()
+
+  Button
+    !text: tr('Load')
+    anchors.left: appearanceId.right
+    anchors.verticalCenter: appearanceId.verticalCenter
+    margin-left: 6
+    width: 60
+    @onClick: modules.game_sprite_editor.loadAppearance()
+
+  Label
+    id: appearanceStatus
+    text: tr('Choose an appearance ID and load its properties.')
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: appearanceCategory.bottom
+    margin-top: 7
+    text-wrap: true
+
+  Label
+    !text: tr('Name')
+    anchors.left: parent.left
+    anchors.top: appearanceStatus.bottom
+    margin-top: 7
+
+  TextEdit
+    id: appearanceName
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: prev.bottom
+    margin-top: 3
+    height: 22
+
+  Label
+    !text: tr('Description')
+    anchors.left: parent.left
+    anchors.top: appearanceName.bottom
+    margin-top: 5
+
+  TextEdit
+    id: appearanceDescription
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: prev.bottom
+    margin-top: 3
+    height: 22
+
+  AppearancePaneHeader
+    !text: tr('Sprites')
+    anchors.left: parent.left
+    anchors.top: appearanceDescription.bottom
+    margin-top: 9
+    width: 142
+
+  AppearancePaneHeader
+    !text: tr('Appearance flags')
+    anchors.left: spriteListPanel.right
+    anchors.top: appearanceDescription.bottom
+    margin-left: 10
+    margin-top: 9
+    width: 250
+
+  AppearancePaneHeader
+    !text: tr('Values')
+    anchors.left: flagsPanel.right
+    anchors.right: parent.right
+    anchors.top: appearanceDescription.bottom
+    margin-left: 10
+    margin-top: 9
+
+  Panel
+    id: spriteListPanel
+    anchors.left: parent.left
+    anchors.top: prev.bottom
+    anchors.bottom: saveAppearanceButton.top
+    margin-top: 5
+    margin-bottom: 8
+    width: 142
+
+    UIScrollArea
+      id: appearanceSpriteList
+      anchors.fill: parent
+      vertical-scrollbar: appearanceSpriteScroll
+      layout: verticalBox
+      padding: 2
+      auto-focus: none
+
+    VerticalScrollBar
+      id: appearanceSpriteScroll
+      anchors.top: appearanceSpriteList.top
+      anchors.bottom: appearanceSpriteList.bottom
+      anchors.left: appearanceSpriteList.right
+      step: 24
+      pixels-scroll: true
+
+  Panel
+    id: flagsPanel
+    anchors.left: spriteListPanel.right
+    anchors.top: spriteListPanel.top
+    anchors.bottom: spriteListPanel.bottom
+    margin-left: 10
+    width: 250
+
+    UIScrollArea
+      id: appearanceFlagsList
+      anchors.fill: parent
+      vertical-scrollbar: appearanceFlagsScroll
+      layout: verticalBox
+      padding: 3
+      auto-focus: none
+
+    VerticalScrollBar
+      id: appearanceFlagsScroll
+      anchors.top: appearanceFlagsList.top
+      anchors.bottom: appearanceFlagsList.bottom
+      anchors.left: appearanceFlagsList.right
+      step: 21
+      pixels-scroll: true
+
+  Panel
+    id: valuesPanel
+    anchors.left: flagsPanel.right
+    anchors.top: spriteListPanel.top
+    anchors.right: parent.right
+    anchors.bottom: spriteListPanel.bottom
+    margin-left: 10
+
+    UIScrollArea
+      id: appearanceValuesList
+      anchors.fill: parent
+      vertical-scrollbar: appearanceValuesScroll
+      layout: verticalBox
+      padding: 3
+      auto-focus: none
+
+    VerticalScrollBar
+      id: appearanceValuesScroll
+      anchors.top: appearanceValuesList.top
+      anchors.bottom: appearanceValuesList.bottom
+      anchors.left: appearanceValuesList.right
+      step: 24
+      pixels-scroll: true
+
+  Button
+    id: saveAppearanceButton
+    !text: tr('Save appearance properties')
+    anchors.left: parent.left
+    anchors.bottom: parent.bottom
+    width: 210
+    height: 25
+    enabled: false
+    @onClick: modules.game_sprite_editor.saveAppearanceProperties()
+
+  Button
+    !text: tr('Close')
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    width: 80
+    height: 25
+    @onClick: modules.game_sprite_editor.closeAppearanceEditor()
+
+AppearanceEditorWindow
