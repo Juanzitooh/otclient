@@ -235,6 +235,7 @@ SpriteEditorWindow < MainWindow
     anchors.right: editorCanvasFrame.right
     anchors.top: editorCanvasFrame.top
     margin: 8
+    text-align: center
     text-wrap: true
 
   Label
@@ -246,6 +247,7 @@ SpriteEditorWindow < MainWindow
     margin-left: 8
     margin-right: 8
     margin-bottom: 8
+    text-align: center
     text-wrap: true
 
   Panel
@@ -524,11 +526,23 @@ SpriteEditorWindow < MainWindow
       margin-top: 6
       height: 74
 
+      Label
+        id: previewTimelineLabel
+        !text: tr('Frames')
+        anchors.left: parent.left
+        anchors.top: parent.top
+        width: 50
+        height: 22
+        text-align: center
+        text-wrap: false
+        color: #dfdfdf
+
       UIScrollArea
         id: previewTimeline
-        anchors.left: parent.left
+        anchors.left: previewTimelineLabel.right
         anchors.right: parent.right
         anchors.top: parent.top
+        margin-left: 6
         height: 22
         horizontal-scrollbar: previewTimelineScroll
         auto-focus: none
@@ -543,7 +557,7 @@ SpriteEditorWindow < MainWindow
 
       HorizontalScrollBar
         id: previewTimelineScroll
-        anchors.left: parent.left
+        anchors.left: previewTimeline.left
         anchors.right: parent.right
         anchors.top: previewTimeline.bottom
         margin-top: 2
@@ -555,8 +569,8 @@ SpriteEditorWindow < MainWindow
         id: previewAnimationFrameRow
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.top: previewTimelineScroll.bottom
-        margin-top: 3
+        anchors.bottom: parent.bottom
+        margin-bottom: 11
         height: 28
 
         Panel
@@ -601,11 +615,11 @@ SpriteEditorWindow < MainWindow
 
         Panel
           id: previewDurationGroup
-          anchors.left: previewFrameSelectionGroup.right
+          anchors.left: parent.left
           anchors.right: parent.right
           anchors.top: parent.top
           anchors.bottom: parent.bottom
-          margin-left: 6
+          margin-left: 0
           visible: false
 
           Panel
@@ -726,6 +740,7 @@ SpriteEditorWindow < MainWindow
           anchors.right: parent.right
           anchors.top: parent.top
           height: 30
+          text-align: center
           text-wrap: true
 
         Panel

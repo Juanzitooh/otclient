@@ -40,6 +40,12 @@ local APPEARANCE_ROW_HEIGHT = 52
 local PREVIEW_CONTROLS_BOTTOM_MARGIN = 14
 local PREVIEW_CANVAS_BOTTOM_MARGIN = 4
 local PREVIEW_HINT_BOTTOM_MARGIN = 8
+local MAX_PREVIEW_TIMELINE_FRAMES = 20
+local PREVIEW_TIMELINE_HEIGHT = 74
+local PREVIEW_TIMELINE_ONLY_HEIGHT = 36
+local PREVIEW_FRAME_COUNTER_HEIGHT = 32
+local PREVIEW_FRAME_SELECTION_WIDTH = 164
+local PREVIEW_DURATION_GROUP_GAP = 6
 
 local PREVIEW_DIRECTIONS = {
    { index = 0, id = 'previewNorth', name = 'North' },
@@ -238,6 +244,37 @@ local function setPreviewControlsVisible(visible, panelHeight)
    canvas:setMarginBottom(visible and panelHeight + PREVIEW_CONTROLS_BOTTOM_MARGIN or PREVIEW_CANVAS_BOTTOM_MARGIN)
    window:recursiveGetChildById('previewHintLabel'):setMarginBottom(
       visible and panelHeight + PREVIEW_CONTROLS_BOTTOM_MARGIN or PREVIEW_HINT_BOTTOM_MARGIN)
+end
+
+local function updatePreviewTimelineLayout(phaseCount, hasFrameControls, hasAnimation)
+   local hasMultipleFrames = phaseCount > 1
+   local showFrameButtons = hasFrameControls and hasMultipleFrames and
+      phaseCount <= MAX_PREVIEW_TIMELINE_FRAMES
+   local showNumericFrameSelector = hasFrameControls and phaseCount > MAX_PREVIEW_TIMELINE_FRAMES
+   local showAnimationFrameRow = showNumericFrameSelector or hasAnimation
+   local timelinePanel = window:recursiveGetChildById('previewTimelinePanel')
+   local timelineLabel = window:recursiveGetChildById('previewTimelineLabel')
+   local timeline = window:recursiveGetChildById('previewTimeline')
+   local timelineScroll = window:recursiveGetChildById('previewTimelineScroll')
+   local frameRow = window:recursiveGetChildById('previewAnimationFrameRow')
+   local frameSelectionGroup = window:recursiveGetChildById('previewFrameSelectionGroup')
+   local durationGroup = window:recursiveGetChildById('previewDurationGroup')
+
+   timelinePanel:setVisible(hasFrameControls)
+   local panelHeight = showFrameButtons and
+      (showAnimationFrameRow and PREVIEW_TIMELINE_HEIGHT or PREVIEW_TIMELINE_ONLY_HEIGHT) or
+      (showAnimationFrameRow and PREVIEW_FRAME_COUNTER_HEIGHT or 0)
+   timelinePanel:setHeight(panelHeight)
+   timelineLabel:setVisible(showFrameButtons)
+   timeline:setVisible(showFrameButtons)
+   timelineScroll:setVisible(showFrameButtons and phaseCount * 30 > timeline:getWidth())
+   frameRow:setVisible(showAnimationFrameRow)
+   frameRow:setMarginBottom(showFrameButtons and showAnimationFrameRow and 11 or 0)
+   frameSelectionGroup:setVisible(showNumericFrameSelector)
+   durationGroup:setVisible(hasAnimation)
+   durationGroup:setMarginLeft(showNumericFrameSelector and
+      PREVIEW_FRAME_SELECTION_WIDTH + PREVIEW_DURATION_GROUP_GAP or 0)
+   return showFrameButtons, showNumericFrameSelector, panelHeight
 end
 
 local function setPropertiesTab(tab)
@@ -566,14 +603,17 @@ local function updatePreviewPatternControls()
    local patternZBox = window:recursiveGetChildById('previewPatternZ')
    local directionPad = window:recursiveGetChildById('previewDirectionPad')
    local settings = window:recursiveGetChildById('previewSettings')
-   local timelinePanel = window:recursiveGetChildById('previewTimelinePanel')
    local phaseLabel = window:recursiveGetChildById('previewPhaseLabel')
 
    directionPad:setVisible(useDirectionPad)
    settings:setMarginLeft(useDirectionPad and 166 or 8)
    local hasAnimation = group.animation and group.animation.enabled and group.animation.phases and
       #group.animation.phases > 0 or false
-   timelinePanel:setVisible((group.phaseCount or 1) > 1 or hasAnimation)
+   local phaseCount = math.max(1, group.phaseCount or 1)
+   local hasMultipleFrames = phaseCount > 1
+   local hasFrameControls = hasMultipleFrames or hasAnimation
+   local _, showNumericFrameSelector, framePanelHeight =
+      updatePreviewTimelineLayout(phaseCount, hasFrameControls, hasAnimation)
 
    groupBox:setVisible(#previewFrameGroups > 1 and not previewHasMovementToggle)
    movingCheck:setVisible(previewHasMovementToggle)
@@ -632,12 +672,10 @@ local function updatePreviewPatternControls()
    end
    setComboOptions(groupBox, groupOptions, previewFrameGroupIndex)
 
-   local phaseCount = math.max(1, group.phaseCount or 1)
-   local hasMultipleFrames = phaseCount > 1
-   phaseLabel:setVisible(hasMultipleFrames or hasAnimation)
+   phaseLabel:setVisible(showNumericFrameSelector)
    previewPhase = math.min(previewPhase, phaseCount - 1)
    local phaseStepper = window:recursiveGetChildById('previewPhaseStepper')
-   phaseStepper:setVisible(hasMultipleFrames or hasAnimation)
+   phaseStepper:setVisible(showNumericFrameSelector)
    local onValueChange = phaseStepper.onValueChange
    phaseStepper.onValueChange = nil
    phaseStepper:setMinimum(1)
@@ -647,15 +685,11 @@ local function updatePreviewPatternControls()
    phaseStepper:setValue(previewPhase + 1, true)
    phaseStepper.onValueChange = onValueChange
    local phaseCountLabel = window:recursiveGetChildById('previewPhaseCount')
-   phaseCountLabel:setVisible(hasMultipleFrames or hasAnimation)
+   phaseCountLabel:setVisible(showNumericFrameSelector)
    phaseCountLabel:setText(tr('of %d', phaseCount))
-   local timeline = window:recursiveGetChildById('previewTimeline')
-   local timelineScroll = window:recursiveGetChildById('previewTimelineScroll')
-   timelineScroll:setVisible(hasMultipleFrames and phaseCount * 30 > timeline:getWidth())
-   local hasTimeline = hasMultipleFrames or hasAnimation
    local topAreaHeight = math.max(useDirectionPad and 68 or 0, settingsHeight)
-   local panelHeight = 8 + topAreaHeight + (hasTimeline and 74 or 0) + 8
-   setPreviewControlsVisible(useDirectionPad or hasTopSettings or hasTimeline, panelHeight)
+   local panelHeight = 8 + topAreaHeight + (hasFrameControls and 6 or 0) + framePanelHeight + 8
+   setPreviewControlsVisible(useDirectionPad or hasTopSettings or hasFrameControls, panelHeight)
    updateSpriteReplacementTarget()
 end
 
@@ -885,9 +919,7 @@ updateAnimationEditor = function()
    local phaseCount = group and math.max(1, group.phaseCount or 1) or 1
    local isAnimated = enabled and group.animation.phases and #group.animation.phases > 0 or false
    local settingsRow = window:recursiveGetChildById('previewAnimationSettingsRow')
-   local timelinePanel = window:recursiveGetChildById('previewTimelinePanel')
    local timeline = window:recursiveGetChildById('previewTimeline')
-   local timelineScroll = window:recursiveGetChildById('previewTimelineScroll')
    local phaseStepper = window:recursiveGetChildById('previewPhaseStepper')
    local phaseCountLabel = window:recursiveGetChildById('previewPhaseCount')
    local minLabel = window:recursiveGetChildById('animationDurationMinLabel')
@@ -898,16 +930,17 @@ updateAnimationEditor = function()
    local durationGroup = window:recursiveGetChildById('previewDurationGroup')
    local hasMultipleFrames = phaseCount > 1
    local hasFrameControls = hasMultipleFrames or isAnimated
+   local showFrameButtons, showNumericFrameSelector =
+      updatePreviewTimelineLayout(phaseCount, hasFrameControls, isAnimated)
 
-   timelinePanel:setVisible(hasFrameControls)
-   frameSelectionGroup:setVisible(hasFrameControls)
+   frameSelectionGroup:setVisible(showNumericFrameSelector)
    durationGroup:setVisible(isAnimated)
    phaseStepper:setMinimum(1)
    phaseStepper:setMaximum(phaseCount)
    phaseStepper:setStep(1)
    phaseStepper:setMouseScroll(true)
-   phaseStepper:setVisible(hasFrameControls)
-   phaseCountLabel:setVisible(hasFrameControls)
+   phaseStepper:setVisible(showNumericFrameSelector)
+   phaseCountLabel:setVisible(showNumericFrameSelector)
    phaseCountLabel:setText(tr('of %d', phaseCount))
    minLabel:setVisible(isAnimated)
    minEdit:setVisible(isAnimated)
@@ -1037,31 +1070,33 @@ updateAnimationEditor = function()
       maxEdit:setText('')
    end
 
-   for phaseIndex = 0, phaseCount - 1 do
-      local currentPhaseIndex = phaseIndex
-      local frameButton = g_ui.createWidget('AppearanceTimelineFrame', frameList)
-      frameButton:setText(tostring(currentPhaseIndex + 1))
-      frameButton:setTooltip(tr('Frame %d', currentPhaseIndex + 1))
-      frameButton:setOn(currentPhaseIndex == previewPhase)
-      frameButton:setColor(currentPhaseIndex == previewPhase and '#d9c7ff' or '#dfdfdf')
-      frameButton.onClick = function()
-         if not collectAnimationWidgetChanges() then
-            return
-         end
-         previewPhase = currentPhaseIndex
-         updateAnimationEditor()
-         refreshAppearancePreview()
-      end
-      if currentPhaseIndex == previewPhase then
-         addEvent(function()
-            if timeline and frameButton then
-               timeline:ensureChildVisible(frameButton)
+   if showFrameButtons then
+      for phaseIndex = 0, phaseCount - 1 do
+         local currentPhaseIndex = phaseIndex
+         local frameButton = g_ui.createWidget('AppearanceTimelineFrame', frameList)
+         frameButton:setText(tostring(currentPhaseIndex + 1))
+         frameButton:setTooltip(tr('Frame %d', currentPhaseIndex + 1))
+         frameButton:setOn(currentPhaseIndex == previewPhase)
+         frameButton:setColor(currentPhaseIndex == previewPhase and '#d9c7ff' or '#dfdfdf')
+         frameButton.onClick = function()
+            if not collectAnimationWidgetChanges() then
+               return
             end
-         end)
+            previewPhase = currentPhaseIndex
+            updateAnimationEditor()
+            refreshAppearancePreview()
+         end
+
+         if currentPhaseIndex == previewPhase then
+            addEvent(function()
+               if timeline and frameButton then
+                  timeline:ensureChildVisible(frameButton)
+               end
+            end)
+         end
       end
    end
-   frameList:setWidth(math.max(1, phaseCount * 30 - 2))
-   timelineScroll:setVisible(phaseCount * 30 > timeline:getWidth())
+   frameList:setWidth(showFrameButtons and math.max(1, phaseCount * 30 - 2) or 1)
    buildingAppearanceProperties = wasBuildingProperties
 end
 
