@@ -18,6 +18,7 @@ local appearanceStringWidgets = {}
 local animationWidgets = {}
 local buildingAppearanceProperties = false
 local currentPage = 'editor'
+local suggestedExportRoot
 local currentPropertiesTab = 'flags'
 local previewFrameGroups = {}
 local previewFrameGroupIndex = 1
@@ -73,6 +74,16 @@ local function setAppearanceStatus(message)
    end
 end
 
+local function getUserFacingError(error)
+   local message = tostring(error)
+   local stackTraceStart = message:find('\nstack traceback:', 1, true)
+   if stackTraceStart then
+      message = message:sub(1, stackTraceStart - 1)
+   end
+   message = message:gsub('^C%+%+ call failed: ', '')
+   return message
+end
+
 local function getVersions()
    local versions = {}
    for _, entry in ipairs(g_resources.listDirectoryFiles('/data/things/')) do
@@ -86,6 +97,19 @@ local function getVersions()
    return versions
 end
 
+local function formatClientVersion(version)
+   return string.format('%d.%02d', math.floor(version / 100), version % 100)
+end
+
+local function getSuggestedExportRoot(version)
+   local writeRoot = g_resources.getWriteDir()
+   if not writeRoot or writeRoot == '' then
+      return ''
+   end
+   writeRoot = writeRoot:gsub('[\\/]+$', '')
+   return string.format('%s/sprite-editor/exports/otclient-%s', writeRoot, formatClientVersion(version))
+end
+
 local function addCategories(comboBox)
    for _, category in ipairs(categories) do
       comboBox:addOption(tr(category.name), category.data)
@@ -93,10 +117,54 @@ local function addCategories(comboBox)
 end
 
 local function hasAppearanceChanges()
-   return next(appearanceChanges.bools) ~= nil or
-      next(appearanceChanges.values) ~= nil or
-      next(appearanceChanges.strings) ~= nil or
-      next(appearanceChanges.animation.groups) ~= nil
+   if next(appearanceChanges.bools) ~= nil or
+         next(appearanceChanges.values) ~= nil or
+         next(appearanceChanges.strings) ~= nil or
+         next(appearanceChanges.animation.groups) ~= nil then
+      return true
+   end
+
+   if not appearanceOriginal then
+      return false
+   end
+
+   for key, edit in pairs(appearanceStringWidgets) do
+      if edit:getText() ~= (appearanceOriginal[key] or '') then
+         return true
+      end
+   end
+
+   for key, edit in pairs(appearanceValueWidgets) do
+      local value = tonumber(edit:getText())
+      if value == nil or value ~= appearanceOriginal.values[key] then
+         return true
+      end
+   end
+
+   local groupIndex = animationWidgets.groupIndex
+   local group = groupIndex ~= nil and appearanceOriginal.frameGroups[groupIndex + 1] or nil
+   if group and group.animation and group.animation.enabled then
+      for field, edit in pairs(animationWidgets.fields or {}) do
+         local value = tonumber(edit:getText())
+         if value == nil or value ~= group.animation[field] then
+            return true
+         end
+      end
+
+      for phaseIndex, fields in pairs(animationWidgets.phases or {}) do
+         local phase = group.animation.phases[phaseIndex + 1]
+         if phase then
+            for field, edit in pairs(fields) do
+               local value = tonumber(edit:getText())
+               if value == nil or value ~= phase[field] then
+                  return true
+               end
+            end
+         end
+      end
+   end
+
+   return false
 end
 
 local function clearAppearanceChanges()
@@ -124,7 +192,15 @@ end
 
 local function updateAppearanceSaveButton()
    if window then
-      window:recursiveGetChildById('saveAppearanceButton'):setEnabled(hasAppearanceChanges())
+      local hasChanges = hasAppearanceChanges()
+      local saveButton = window:recursiveGetChildById('saveAppearanceButton')
+      saveButton:setVisible(hasChanges)
+      saveButton:setHeight(hasChanges and 26 or 0)
+      saveButton:setEnabled(hasChanges)
+      if appearanceOriginal then
+         setAppearanceStatus(hasChanges and tr('Unsaved edits. Save to the working copy.') or
+            tr('Saved in the working copy.'))
+      end
    end
 end
 
@@ -157,7 +233,7 @@ local function updateSpriteReplacementTarget()
 
    local size = string.format('%d x %d', canvas:getSpriteWidth(), canvas:getSpriteHeight())
    local targetLabel = window:recursiveGetChildById('selectedSpriteLabel')
-   targetLabel:setText(tr('Sprite %d | %s', selectedSpriteId, selectedSpriteContext or tr('current frame')))
+   targetLabel:setText(tr('Sprite ID %d | %s', selectedSpriteId, selectedSpriteContext or tr('current frame')))
    targetLabel:setTooltip(tr('This PNG replaces sprite %d wherever that ID is shared. Use a %s PNG.',
       selectedSpriteId, size))
 end
@@ -294,6 +370,7 @@ end
 local function clearAppearanceProperties()
    buildingAppearanceProperties = true
    window:recursiveGetChildById('appearanceInfoLabel'):setText(tr('Select an appearance from the list.'))
+   setAppearanceStatus(tr('Open a work copy and select an appearance to edit.'))
    selectedAppearanceId = nil
    appearanceOriginal = nil
    window:recursiveGetChildById('appearanceName'):setText('')
@@ -320,6 +397,30 @@ local function clearAppearanceProperties()
    updateAppearanceSaveButton()
 end
 
+local function resetAppearanceDraft()
+   if appearanceOriginal then
+      buildAppearanceProperties(appearanceOriginal)
+   else
+      clearAppearanceChanges()
+   end
+end
+
+local function confirmUnsavedChanges(message, continueAction)
+   displayGeneralBox(tr('Unsaved changes'), message, {
+      { text = tr('Save and continue'), callback = function()
+         saveAppearanceProperties()
+         if not hasAppearanceChanges() then
+            continueAction()
+         end
+      end },
+      { text = tr('Discard edits'), callback = function()
+         resetAppearanceDraft()
+         continueAction()
+      end },
+      { text = tr('Cancel'), callback = function() end },
+   })
+end
+
 selectSprite = function(id)
    if not canvas or not activeVersion then
       return false
@@ -340,9 +441,9 @@ selectSprite = function(id)
    canvas:setVisible(true)
    selectedSpriteId = id
    window:recursiveGetChildById('spriteInfoLabel'):setText(
-      string.format('ID %d | %d x %d | %dx', id, canvas:getSpriteWidth(), canvas:getSpriteHeight(), canvas:getZoom()))
+      tr('Preview %d x %d | Zoom %dx', canvas:getSpriteWidth(), canvas:getSpriteHeight(), canvas:getZoom()))
    updateSpriteReplacementTarget()
-   setStatus(tr('Previewing sprite %d.', id))
+   setStatus(tr('Sprite preview updated.'))
    return true
 end
 
@@ -585,7 +686,7 @@ local function refreshAppearancePreview()
          table.insert(details, tr('Frame %d/%d', previewPhase + 1, math.max(1, group.phaseCount or 1)))
          selectedSpriteContext = table.concat(details, ' | ')
          updateSpriteReplacementTarget()
-         setStatus(tr('Preview: %s | Sprite ID %d', selectedSpriteContext, spriteId))
+         setStatus(tr('Preview: %s', selectedSpriteContext))
       end
       return selected
    end
@@ -886,12 +987,10 @@ local function refreshSelectedAppearance()
       return
    end
 
-   local name = thing:getName()
    local category = categories[selectedAppearanceCategory + 1]
    local categoryName = category and tr(category.singular) or tr('Appearance')
    window:recursiveGetChildById('appearanceInfoLabel'):setText(
-      string.format('%s | ID %d | %s', categoryName, selectedAppearanceId,
-         name ~= '' and name or tr('Unnamed appearance')))
+      tr('%s properties', categoryName))
    if #previewFrameGroups > 0 then
       refreshAppearancePreview()
    else
@@ -916,17 +1015,46 @@ local function getThingEntries(category)
       if id and id > 0 then
          local sprites = thing:getSprites()
          local name = thing:getName()
-         local spriteId = sprites and sprites[1] or nil
+         local spriteIds = {}
+         local seenSpriteIds = {}
+         local spriteId
+         for _, linkedSpriteId in ipairs(sprites or {}) do
+            if linkedSpriteId > 0 then
+               spriteId = spriteId or linkedSpriteId
+               if not seenSpriteIds[linkedSpriteId] then
+                  table.insert(spriteIds, linkedSpriteId)
+                  seenSpriteIds[linkedSpriteId] = true
+               end
+            end
+         end
+         table.sort(spriteIds)
          table.insert(entries, {
             id = id,
             category = category,
-            name = name ~= '' and name or tr('Unnamed appearance'),
-            spriteId = spriteId and spriteId > 0 and spriteId or nil,
+            name = name ~= '' and name or nil,
+            spriteId = spriteId,
+            spriteIds = spriteIds,
          })
       end
    end
    table.sort(entries, function(a, b) return a.id < b.id end)
    return entries
+end
+
+local function getAppearanceTooltip(entry)
+   local lines = {}
+   if entry.name then
+      table.insert(lines, entry.name)
+   end
+
+   if #entry.spriteIds == 1 then
+      table.insert(lines, tr('Sprite ID: %d', entry.spriteIds[1]))
+   elseif #entry.spriteIds > 1 then
+      table.insert(lines, tr('Sprite ID span: %d-%d (%d linked)', entry.spriteIds[1], entry.spriteIds[#entry.spriteIds], #entry.spriteIds))
+   else
+      table.insert(lines, tr('No linked sprites'))
+   end
+   return table.concat(lines, '\n')
 end
 
 renderAppearanceRows = function(scrollY)
@@ -950,9 +1078,8 @@ renderAppearanceRows = function(scrollY)
       row:setVisible(entry ~= nil)
       if entry then
          row:setMarginTop((index - 1) * APPEARANCE_ROW_HEIGHT)
-         row:recursiveGetChildById('appearanceResultName'):setText(entry.name)
-         row:recursiveGetChildById('appearanceId'):setText(
-            entry.spriteId and tr('ID %d | Sprite %d', entry.id, entry.spriteId) or tr('ID %d | No sprite', entry.id))
+         row:recursiveGetChildById('appearanceId'):setText(tr('ID %d', entry.id))
+         row:setTooltip(getAppearanceTooltip(entry))
          local thumbnail = row:recursiveGetChildById('thumbnail')
          thumbnail:setVisible(entry.spriteId ~= nil)
          if entry.spriteId then
@@ -979,9 +1106,16 @@ local function applyAppearanceFilter()
    filteredAppearanceEntries = {}
    for _, entry in ipairs(appearanceEntries) do
       local idText = tostring(entry.id)
-      local spriteText = entry.spriteId and tostring(entry.spriteId) or ''
-      if search == '' or entry.name:lower():find(search, 1, true) or
-            idText:find(search, 1, true) or spriteText:find(search, 1, true) then
+      local nameText = entry.name and entry.name:lower() or ''
+      local spriteMatch = false
+      for _, spriteId in ipairs(entry.spriteIds) do
+         if tostring(spriteId):find(search, 1, true) then
+            spriteMatch = true
+            break
+         end
+      end
+      if search == '' or nameText:find(search, 1, true) or
+            idText:find(search, 1, true) or spriteMatch then
          table.insert(filteredAppearanceEntries, entry)
       end
    end
@@ -1017,16 +1151,15 @@ local function loadAppearanceRecord(category, id, forceDiscard, forceReload)
       return true
    end
    if hasAppearanceChanges() and not forceDiscard then
-      displayGeneralBox(tr('Discard appearance edits?'), tr('Selecting another appearance discards unsaved property changes.'), {
-         { text = tr('Discard'), callback = function() clearAppearanceChanges() loadAppearanceRecord(category, id, true) end },
-         { text = tr('Cancel'), callback = function() end },
-      })
+      confirmUnsavedChanges(tr('Save changes before selecting another appearance?'), function()
+         loadAppearanceRecord(category, id, true)
+      end)
       return false
    end
 
    local ok, encoded = pcall(g_things.getAppearanceEditorData, activeVersion, category, id)
    if not ok then
-      setStatus(tostring(encoded))
+      setStatus(getUserFacingError(encoded))
       return false
    end
    local decoded, data = pcall(json.decode, encoded)
@@ -1052,7 +1185,8 @@ local function loadAppearanceRecord(category, id, forceDiscard, forceReload)
    buildAppearanceProperties(data)
    refreshSelectedAppearance()
    if not selectedSpriteId then
-      setStatus(tr('Appearance %d loaded.', id))
+      local categoryInfo = categories[category + 1]
+      setStatus(tr('%s loaded.', categoryInfo and tr(categoryInfo.singular) or tr('Appearance')))
    end
    renderAppearanceRows(window:recursiveGetChildById('appearanceList'):getVirtualOffset().y)
    return true
@@ -1068,10 +1202,9 @@ local function changeAppearanceCategory(category, forceDiscard)
    end
    if hasAppearanceChanges() and not forceDiscard then
       window:recursiveGetChildById('appearanceCategory'):setCurrentOptionByData(selectedAppearanceCategory, true)
-      displayGeneralBox(tr('Discard appearance edits?'), tr('Changing category discards unsaved property changes.'), {
-         { text = tr('Discard'), callback = function() clearAppearanceChanges() changeAppearanceCategory(category, true) end },
-         { text = tr('Cancel'), callback = function() end },
-      })
+      confirmUnsavedChanges(tr('Save changes before switching categories?'), function()
+         changeAppearanceCategory(category, true)
+      end)
       return
    end
    selectedAppearanceCategory = category
@@ -1102,6 +1235,30 @@ local function reloadAssets()
    return true
 end
 
+local function updateExportControls()
+   if not window then
+      return
+   end
+
+   local pathEdit = window:recursiveGetChildById('exportPathEdit')
+   local exportButton = window:recursiveGetChildById('exportButton')
+   if activeVersion then
+      local currentPath = pathEdit:getText()
+      if currentPath == '' or currentPath == suggestedExportRoot then
+         suggestedExportRoot = getSuggestedExportRoot(activeVersion)
+         pathEdit:setText(suggestedExportRoot)
+      end
+   else
+      suggestedExportRoot = nil
+   end
+
+   local enabled = activeVersion ~= nil and not g_game.isOnline() and pathEdit:getText() ~= ''
+   exportButton:setEnabled(enabled)
+   window:recursiveGetChildById('importPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
+   window:recursiveGetChildById('exportPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
+   window:recursiveGetChildById('reloadButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
+end
+
 local function setActivePage(page)
    if not window then
       return
@@ -1114,8 +1271,13 @@ local function setActivePage(page)
    window:recursiveGetChildById('importPageButton'):setBackgroundColor(page == 'import' and '#603bb0' or '#363636')
    window:recursiveGetChildById('exportPageButton'):setBackgroundColor(page == 'export' and '#603bb0' or '#363636')
    updateSpriteReplacementTarget()
+   updateExportControls()
    if page == 'export' then
-      window:recursiveGetChildById('activeWorkCopyLabel'):setText(activeWorkRoot or tr('No work copy is open.'))
+      local packagePath = activeWorkRoot and activeVersion and
+         string.format('%s/data/things/%d', activeWorkRoot, activeVersion)
+      local copyLabel = window:recursiveGetChildById('activeWorkCopyLabel')
+      copyLabel:setText(packagePath or tr('No work copy is open.'))
+      copyLabel:setTooltip(packagePath or '')
    end
 end
 
@@ -1139,7 +1301,7 @@ local function createWindow()
    canvas.onStateChange = function()
       if canvas and window then
          window:recursiveGetChildById('spriteInfoLabel'):setText(
-            string.format('ID %d | %d x %d | %dx', selectedSpriteId or 0, canvas:getSpriteWidth(), canvas:getSpriteHeight(), canvas:getZoom()))
+            tr('Preview %d x %d | Zoom %dx', canvas:getSpriteWidth(), canvas:getSpriteHeight(), canvas:getZoom()))
       end
    end
 
@@ -1160,10 +1322,16 @@ local function createWindow()
 
    local versionBox = window:recursiveGetChildById('versionComboBox')
    for _, version in ipairs(getVersions()) do
-      versionBox:addOption(tostring(version), version)
+      versionBox:addOption(formatClientVersion(version), version)
    end
    if activeVersion then
       versionBox:setCurrentOptionByData(activeVersion, true)
+   end
+   window:recursiveGetChildById('exportPathEdit').onTextChange = function(widget)
+      local destination = widget:getText()
+      local exportButton = window:recursiveGetChildById('exportButton')
+      local enabled = activeVersion ~= nil and not g_game.isOnline() and destination ~= ''
+      exportButton:setEnabled(enabled)
    end
 
    setActivePage(currentPage)
@@ -1210,7 +1378,7 @@ local function loadAssets(version)
    end
    local ok, workRoot = pcall(g_spriteAppearances.createWorkCopy, version)
    if not ok then
-      displayErrorBox(tr('Assets Editor'), tostring(workRoot))
+      displayErrorBox(tr('Assets Editor'), getUserFacingError(workRoot))
       return false
    end
 
@@ -1291,10 +1459,9 @@ function openWorkCopy()
       return
    end
    if hasAppearanceChanges() then
-      displayGeneralBox(tr('Unsaved appearance properties'), tr('Save or discard the property changes before opening another work copy.'), {
-         { text = tr('Discard'), callback = function() clearAppearanceChanges() openWorkCopyVersion(version) end },
-         { text = tr('Cancel'), callback = function() end },
-      })
+      confirmUnsavedChanges(tr('Save changes before opening another working copy?'), function()
+         openWorkCopyVersion(version)
+      end)
       return
    end
    openWorkCopyVersion(version)
@@ -1312,7 +1479,7 @@ function openWorkCopyVersion(version)
    currentPage = 'editor'
    createWindow()
    window:recursiveGetChildById('versionComboBox'):setCurrentOptionByData(version, true)
-   setStatus(tr('Work copy loaded for client %d.', version))
+   setStatus(tr('Working copy ready for client %s.', formatClientVersion(version)))
 end
 
 function applyAppearanceSearch()
@@ -1344,8 +1511,8 @@ function quickReplacePreviewSprite()
    end
    setActivePage('editor')
    window:recursiveGetChildById('previewSpritePathEdit'):focus()
-   setStatus(tr('Enter a %s PNG for sprite %d. Shared sprite IDs change everywhere.',
-      string.format('%d x %d', canvas:getSpriteWidth(), canvas:getSpriteHeight()), selectedSpriteId))
+   setStatus(tr('Enter a %s PNG in the field. Shared sprite IDs change everywhere.',
+      string.format('%d x %d', canvas:getSpriteWidth(), canvas:getSpriteHeight())))
 end
 
 function showExportPage()
@@ -1366,10 +1533,9 @@ end
 
 function replaceSprite(forceDiscard)
    if hasAppearanceChanges() and not forceDiscard then
-      displayGeneralBox(tr('Discard appearance edits?'), tr('Importing a sprite reloads the work copy and discards unsaved properties.'), {
-         { text = tr('Discard'), callback = function() clearAppearanceChanges() replaceSprite(true) end },
-         { text = tr('Cancel'), callback = function() end },
-      })
+      confirmUnsavedChanges(tr('Save changes before replacing this sprite?'), function()
+         replaceSprite(true)
+      end)
       return
    end
    if not activeVersion or g_game.isOnline() then
@@ -1385,7 +1551,7 @@ function replaceSprite(forceDiscard)
    local previewSelection = capturePreviewSelection()
    local ok, result = pcall(g_spriteAppearances.importSpriteFromFile, id, path, activeVersion)
    if not ok then
-      local errorMessage = tostring(result)
+      local errorMessage = getUserFacingError(result)
       if errorMessage:find('prepared PNG dimensions must match the selected sprite', 1, true) then
          errorMessage = tr('This sprite needs a %d x %d PNG. The work copy was not changed.',
             canvas:getSpriteWidth(), canvas:getSpriteHeight())
@@ -1404,15 +1570,14 @@ function replaceSprite(forceDiscard)
    end
    restorePreviewSelection(previewSelection)
    setActivePage('editor')
-   setStatus(tr('Sprite %d replaced; preview restored: %s.', result, selectedSpriteContext or tr('current selection')))
+   setStatus(tr('Sprite PNG replaced in the working copy; preview restored.'))
 end
 
 function createAppearance(forceDiscard)
    if hasAppearanceChanges() and not forceDiscard then
-      displayGeneralBox(tr('Discard appearance edits?'), tr('Creating an appearance reloads the work copy and discards unsaved properties.'), {
-         { text = tr('Discard'), callback = function() clearAppearanceChanges() createAppearance(true) end },
-         { text = tr('Cancel'), callback = function() end },
-      })
+      confirmUnsavedChanges(tr('Save changes before creating an appearance?'), function()
+         createAppearance(true)
+      end)
       return
    end
    if not activeVersion or g_game.isOnline() then
@@ -1430,7 +1595,7 @@ function createAppearance(forceDiscard)
 
    local imported, spriteId = pcall(g_spriteAppearances.importSpriteFromFile, 0, path, activeVersion)
    if not imported then
-      setStatus(tostring(spriteId))
+      setStatus(getUserFacingError(spriteId))
       return
    end
    if not reloadAssets() then
@@ -1442,7 +1607,8 @@ function createAppearance(forceDiscard)
       activeVersion, category, spriteId, name, description)
    if not created then
       reloadAssets()
-      setStatus(tr('Sprite %d was imported, but the appearance could not be created: %s', spriteId, tostring(appearanceId)))
+      setStatus(tr('Sprite %d was imported, but the appearance could not be created: %s', spriteId,
+         getUserFacingError(appearanceId)))
       return
    end
    if not reloadAssets() then
@@ -1456,7 +1622,7 @@ function createAppearance(forceDiscard)
    loadAppearanceRecord(category, appearanceId, true)
    selectSprite(spriteId)
    showEditorPage()
-   setStatus(tr('Created appearance %d with sprite %d.', appearanceId, spriteId))
+   setStatus(tr('New appearance created in the working copy.'))
 end
 
 local function collectAnimationWidgetChanges()
@@ -1535,14 +1701,16 @@ function saveAppearanceProperties()
 
    local updates = {}
    for section, values in pairs(appearanceChanges) do
-      if next(values) then
+      local hasSectionChanges = section == 'animation' and next(values.groups) ~= nil or
+         section ~= 'animation' and next(values) ~= nil
+      if hasSectionChanges then
          updates[section] = values
       end
    end
    local ok, err = pcall(g_things.saveAppearanceEditorData,
       activeVersion, selectedAppearanceCategory, selectedAppearanceId, json.encode(updates))
    if not ok then
-      setAppearanceStatus(tostring(err))
+      setAppearanceStatus(getUserFacingError(err))
       return
    end
    if not reloadAssets() then
@@ -1551,19 +1719,14 @@ function saveAppearanceProperties()
    end
    refreshAppearanceCatalog(selectedAppearanceCategory)
    loadAppearanceRecord(selectedAppearanceCategory, selectedAppearanceId, true, true)
-   setAppearanceStatus(tr('Appearance %d saved to the work copy.', selectedAppearanceId))
+   setAppearanceStatus(tr('Saved in the working copy.'))
 end
 
 function exportWorkCopy(forceContinue)
    if hasAppearanceChanges() and not forceContinue then
-      displayGeneralBox(tr('Unsaved appearance properties'), tr('Save or discard the pending changes before exporting the work copy.'), {
-         { text = tr('Save and export'), callback = function()
-            saveAppearanceProperties()
-            if not hasAppearanceChanges() then exportWorkCopy(true) end
-         end },
-         { text = tr('Discard and export'), callback = function() clearAppearanceChanges() exportWorkCopy(true) end },
-         { text = tr('Cancel'), callback = function() end },
-      })
+      confirmUnsavedChanges(tr('Save changes to the working copy before exporting?'), function()
+         exportWorkCopy(true)
+      end)
       return
    end
    if not activeVersion or g_game.isOnline() then
@@ -1577,11 +1740,11 @@ function exportWorkCopy(forceContinue)
    end
    local ok, result = pcall(g_spriteAppearances.exportWorkCopy, activeVersion, destination)
    if not ok then
-      window:recursiveGetChildById('exportStatus'):setText(tostring(result))
+      window:recursiveGetChildById('exportStatus'):setText(getUserFacingError(result))
       return
    end
    window:recursiveGetChildById('exportStatus'):setText(tr('Asset package exported to %s.', result))
-   setStatus(tr('Exported the client %d work package.', activeVersion))
+   setStatus(tr('Exported client %s to a separate asset package.', formatClientVersion(activeVersion)))
 end
 
 function reloadPackage()
@@ -1589,10 +1752,9 @@ function reloadPackage()
       return
    end
    if hasAppearanceChanges() then
-      displayGeneralBox(tr('Discard appearance edits?'), tr('Reloading the work copy discards unsaved property changes.'), {
-         { text = tr('Discard'), callback = function() clearAppearanceChanges() reloadPackageNow() end },
-         { text = tr('Cancel'), callback = function() end },
-      })
+      confirmUnsavedChanges(tr('Save changes before reloading the working copy?'), function()
+         reloadPackageNow()
+      end)
       return
    end
    reloadPackageNow()
@@ -1615,10 +1777,9 @@ function requestClose(forceDiscard)
       return
    end
    if hasAppearanceChanges() and not forceDiscard then
-      displayGeneralBox(tr('Discard appearance edits?'), tr('Closing the editor discards unsaved property changes.'), {
-         { text = tr('Discard'), callback = function() requestClose(true) end },
-         { text = tr('Cancel'), callback = function() end },
-      })
+      confirmUnsavedChanges(tr('Save changes to the working copy before closing?'), function()
+         requestClose(true)
+      end)
       return
    end
    destroyWindow()
