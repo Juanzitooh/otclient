@@ -352,6 +352,48 @@ std::string ThingTypeManager::getAppearanceEditorData(const int version, const i
     collectAppearanceFields(appearance->flags(), "", result["bools"], result["values"]);
     result["name"] = appearance->name();
     result["description"] = appearance->description();
+    result["frameGroups"] = nlohmann::json::array();
+    for (int index = 0; index < appearance->frame_group_size(); ++index) {
+        const auto& frameGroup = appearance->frame_group(index);
+        const auto& spriteInfo = frameGroup.sprite_info();
+        const auto& animation = spriteInfo.animation();
+        const uint32_t layers = std::max<uint32_t>(1, spriteInfo.layers());
+        const uint32_t patternWidth = std::max<uint32_t>(1, spriteInfo.pattern_width());
+        const uint32_t patternHeight = std::max<uint32_t>(1, spriteInfo.pattern_height());
+        const uint32_t patternDepth = std::max<uint32_t>(1, spriteInfo.pattern_depth());
+        const uint32_t spritesPerPhase = layers * patternWidth * patternHeight * patternDepth;
+        const uint32_t spritePhases = std::max<uint32_t>(1, spriteInfo.sprite_id_size() / spritesPerPhase);
+
+        nlohmann::json group = {
+            { "index", index },
+            { "type", frameGroup.has_fixed_frame_group() ? frameGroup.fixed_frame_group() : -1 },
+            { "id", frameGroup.has_id() ? frameGroup.id() : -1 },
+            { "layers", layers },
+            { "patternWidth", patternWidth },
+            { "patternHeight", patternHeight },
+            { "patternDepth", patternDepth },
+            { "phaseCount", animation.sprite_phase_size() > 0 ? animation.sprite_phase_size() : spritePhases },
+            { "sprites", nlohmann::json::array() },
+            { "animation", {
+                { "enabled", spriteInfo.has_animation() },
+                { "defaultStartPhase", animation.default_start_phase() },
+                { "randomStartPhase", animation.random_start_phase() },
+                { "synchronized", animation.synchronized() },
+                { "loopType", animation.loop_type() },
+                { "loopCount", animation.loop_count() },
+                { "phases", nlohmann::json::array() }
+            } }
+        };
+        for (const auto spriteId : spriteInfo.sprite_id())
+            group["sprites"].push_back(spriteId);
+        for (const auto& phase : animation.sprite_phase()) {
+            group["animation"]["phases"].push_back({
+                { "durationMin", phase.duration_min() },
+                { "durationMax", phase.duration_max() }
+            });
+        }
+        result["frameGroups"].push_back(std::move(group));
+    }
     return result.dump();
 #else
     throw stdext::exception("protobuf support is required to edit appearances");
@@ -404,6 +446,105 @@ bool ThingTypeManager::saveAppearanceEditorData(const int version, const int cat
             throw stdext::exception("appearance changes section '{}' must be an object", section);
         for (auto field = it->begin(); field != it->end(); ++field)
             setAppearanceScalar(*flags, field.key(), field.value());
+    }
+
+    const auto animationChanges = updates.find("animation");
+    if (animationChanges != updates.end()) {
+        if (!animationChanges->is_object())
+            throw stdext::exception("appearance changes section 'animation' must be an object");
+        const auto groups = animationChanges->find("groups");
+        if (groups != animationChanges->end()) {
+            if (!groups->is_object())
+                throw stdext::exception("appearance animation groups must be an object");
+            for (auto groupChange = groups->begin(); groupChange != groups->end(); ++groupChange) {
+                size_t parsedLength = 0;
+                const int groupIndex = std::stoi(groupChange.key(), &parsedLength);
+                if (parsedLength != groupChange.key().size() || groupIndex < 0 || groupIndex >= appearance->frame_group_size())
+                    throw stdext::exception("invalid appearance animation frame group");
+                if (!groupChange->is_object())
+                    throw stdext::exception("appearance animation group changes must be an object");
+
+                auto* spriteInfo = appearance->mutable_frame_group(groupIndex)->mutable_sprite_info();
+                if (!spriteInfo->has_animation())
+                    throw stdext::exception("appearance frame group has no animation data");
+                auto* animation = spriteInfo->mutable_animation();
+                const auto setUint32 = [&](const char* field, const auto& setter) {
+                    const auto value = groupChange->find(field);
+                    if (value == groupChange->end())
+                        return;
+                    if ((!value->is_number_unsigned() && !value->is_number_integer()) ||
+                        (value->is_number_integer() && value->get<int64_t>() < 0) ||
+                        value->get<uint64_t>() > std::numeric_limits<uint32_t>::max())
+                        throw stdext::exception("animation field '{}' must be a 32-bit unsigned integer", field);
+                    setter(value->get<uint32_t>());
+                };
+                const auto setBool = [&](const char* field, const auto& setter) {
+                    const auto value = groupChange->find(field);
+                    if (value == groupChange->end())
+                        return;
+                    if (!value->is_boolean())
+                        throw stdext::exception("animation field '{}' must be boolean", field);
+                    setter(value->get<bool>());
+                };
+
+                setUint32("defaultStartPhase", [&](const uint32_t value) { animation->set_default_start_phase(value); });
+                setUint32("loopCount", [&](const uint32_t value) { animation->set_loop_count(value); });
+                setBool("randomStartPhase", [&](const bool value) { animation->set_random_start_phase(value); });
+                setBool("synchronized", [&](const bool value) { animation->set_synchronized(value); });
+                const uint64_t spritesPerPhase =
+                    static_cast<uint64_t>(std::max<uint32_t>(1, spriteInfo->layers())) *
+                    std::max<uint32_t>(1, spriteInfo->pattern_width()) *
+                    std::max<uint32_t>(1, spriteInfo->pattern_height()) *
+                    std::max<uint32_t>(1, spriteInfo->pattern_depth());
+                const uint64_t phaseCount = animation->sprite_phase_size() > 0
+                    ? animation->sprite_phase_size()
+                    : std::max<uint64_t>(1, spriteInfo->sprite_id_size() / spritesPerPhase);
+                if (animation->default_start_phase() >= phaseCount)
+                    throw stdext::exception("default animation phase is outside the frame group");
+
+                const auto loopType = groupChange->find("loopType");
+                if (loopType != groupChange->end()) {
+                    if (!loopType->is_number_integer())
+                        throw stdext::exception("animation loop type must be an integer");
+                    const int value = loopType->get<int>();
+                    if (value != -1 && value != 0 && value != 1)
+                        throw stdext::exception("unknown appearance animation loop type");
+                    animation->set_loop_type(static_cast<appearances::ANIMATION_LOOP_TYPE>(value));
+                }
+
+                const auto phaseChanges = groupChange->find("phases");
+                if (phaseChanges != groupChange->end()) {
+                    if (!phaseChanges->is_object())
+                        throw stdext::exception("appearance animation phases must be an object");
+                    for (auto phaseChange = phaseChanges->begin(); phaseChange != phaseChanges->end(); ++phaseChange) {
+                        size_t parsedLength = 0;
+                        const int phaseIndex = std::stoi(phaseChange.key(), &parsedLength);
+                        if (parsedLength != phaseChange.key().size() || phaseIndex < 0 || phaseIndex >= animation->sprite_phase_size())
+                            throw stdext::exception("invalid appearance animation phase");
+                        if (!phaseChange->is_object())
+                            throw stdext::exception("appearance animation phase changes must be an object");
+
+                        auto* phase = animation->mutable_sprite_phase(phaseIndex);
+                        const auto setDuration = [&](const char* field, const auto& setter, const uint32_t current) {
+                            const auto value = phaseChange->find(field);
+                            if (value == phaseChange->end())
+                                return current;
+                            if ((!value->is_number_unsigned() && !value->is_number_integer()) ||
+                                (value->is_number_integer() && value->get<int64_t>() < 0) ||
+                                value->get<uint64_t>() > std::numeric_limits<uint32_t>::max())
+                                throw stdext::exception("animation duration '{}' must be a 32-bit unsigned integer", field);
+                            const auto duration = value->get<uint32_t>();
+                            setter(duration);
+                            return duration;
+                        };
+                        const uint32_t durationMin = setDuration("durationMin", [&](const uint32_t value) { phase->set_duration_min(value); }, phase->duration_min());
+                        const uint32_t durationMax = setDuration("durationMax", [&](const uint32_t value) { phase->set_duration_max(value); }, phase->duration_max());
+                        if (durationMin > durationMax)
+                            throw stdext::exception("minimum animation duration cannot exceed maximum duration");
+                    }
+                }
+            }
+        }
     }
 
     writeAppearancesFile(path, library);
