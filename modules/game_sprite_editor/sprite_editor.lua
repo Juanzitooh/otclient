@@ -37,6 +37,9 @@ local gameStartCallback
 local gameEndCallback
 
 local APPEARANCE_ROW_HEIGHT = 52
+local PREVIEW_CONTROLS_BOTTOM_MARGIN = 88
+local PREVIEW_CANVAS_BOTTOM_MARGIN = 4
+local PREVIEW_HINT_BOTTOM_MARGIN = 8
 
 local PREVIEW_DIRECTIONS = {
    { index = 0, id = 'previewNorth', name = 'North' },
@@ -223,8 +226,6 @@ local function updateSpriteReplacementTarget()
    targetPanel:setVisible(currentPage == 'editor' and canReplace)
    targetPanel:setHeight(canReplace and 58 or 0)
    targetPanel:setMarginTop(canReplace and 6 or 0)
-   window:recursiveGetChildById('replacePreviewSpriteButton'):setVisible(canReplace)
-   window:recursiveGetChildById('replacePreviewSpriteButton'):setEnabled(canReplace)
    window:recursiveGetChildById('replaceAppearanceSpriteButton'):setEnabled(canReplace)
    if not hasTarget then
       window:recursiveGetChildById('selectedSpriteLabel'):setText(tr('Select a linked sprite to replace its PNG.'))
@@ -236,6 +237,14 @@ local function updateSpriteReplacementTarget()
    targetLabel:setText(tr('Sprite ID %d | %s', selectedSpriteId, selectedSpriteContext or tr('current frame')))
    targetLabel:setTooltip(tr('This PNG replaces sprite %d wherever that ID is shared. Use a %s PNG.',
       selectedSpriteId, size))
+end
+
+local function setPreviewControlsVisible(visible)
+   local controls = window:recursiveGetChildById('previewControls')
+   controls:setVisible(visible)
+   canvas:setMarginBottom(visible and PREVIEW_CONTROLS_BOTTOM_MARGIN or PREVIEW_CANVAS_BOTTOM_MARGIN)
+   window:recursiveGetChildById('previewHintLabel'):setMarginBottom(
+      visible and PREVIEW_CONTROLS_BOTTOM_MARGIN or PREVIEW_HINT_BOTTOM_MARGIN)
 end
 
 local function setPropertiesTab(tab)
@@ -552,7 +561,7 @@ local function updatePreviewPatternControls()
    end
    local group = currentPreviewGroup()
    if not group then
-      window:recursiveGetChildById('previewControls'):setVisible(false)
+      setPreviewControlsVisible(false)
       return
    end
 
@@ -779,8 +788,7 @@ configurePreviewControls = function(frameGroups)
       return
    end
 
-   local controls = window:recursiveGetChildById('previewControls')
-   controls:setVisible(#previewFrameGroups > 0)
+   setPreviewControlsVisible(#previewFrameGroups > 0)
    if #previewFrameGroups == 0 then
       return
    end
@@ -832,7 +840,7 @@ configurePreviewControls = function(frameGroups)
       hasChoice = hasChoice or group.patternWidth > 1 or group.patternHeight > 1 or
          group.patternDepth > 1 or group.layers > 1 or group.phaseCount > 1
    end
-   controls:setVisible(hasChoice or activeVersion ~= nil)
+   setPreviewControlsVisible(hasChoice)
    updateAnimationEditor()
    refreshAppearancePreview()
 end
@@ -1504,16 +1512,6 @@ function selectPreviewDirection(directionIndex)
    refreshAppearancePreview()
 end
 
-function quickReplacePreviewSprite()
-   if not selectedSpriteId then
-      setStatus(tr('Select a linked sprite before replacing it.'))
-      return
-   end
-   setActivePage('editor')
-   window:recursiveGetChildById('previewSpritePathEdit'):focus()
-   setStatus(tr('Enter a %s PNG in the field. Shared sprite IDs change everywhere.',
-      string.format('%d x %d', canvas:getSpriteWidth(), canvas:getSpriteHeight())))
-end
 
 function showExportPage()
    setActivePage('export')
