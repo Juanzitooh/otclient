@@ -139,11 +139,15 @@ public:
     std::string exportWorkCopy(int version, const std::string& destination);
     void saveSpriteToWorkCopy(int id, const ImagePtr& image, int version);
     int importSpriteFromFile(int id, const std::string& fileName, int version);
+    int importSpriteForAppearance(int referenceSpriteId, const std::string& fileName, int version);
     void releaseSpriteSheetsExcept(int id);
     void releaseDecodedSpriteSheets();
 #endif
 
 private:
+#ifdef FRAMEWORK_EDITOR
+    int importNewSpriteFromFile(const std::string& fileName, int version, SpriteLayout spriteLayout);
+#endif
     uint32_t m_spritesCount{ 0 };
     std::vector<SpriteSheetPtr> m_sheets;
     std::string m_path;

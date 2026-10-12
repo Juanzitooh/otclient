@@ -90,6 +90,8 @@ public:
     void invalidateTextureCache();
     std::string getAppearanceEditorData(int version, int category, int id);
     bool saveAppearanceEditorData(int version, int category, int id, const std::string& changes);
+    bool replaceAppearanceSprite(int version, int category, int appearanceId,
+                                 int frameGroupIndex, int spriteIndex, int spriteId);
     int createAppearanceFromSprite(int version, int category, int spriteId, const std::string& name, const std::string& description);
 #endif
 
