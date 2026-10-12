@@ -502,7 +502,7 @@ local function setAnimationChange(groupIndex, field, value, phaseIndex)
    if next(changeContainer) == nil and phaseIndex ~= nil then
       groupChanges.phases[tostring(phaseIndex)] = nil
    end
-   if next(groupChanges.phases) == nil then
+   if groupChanges.phases and next(groupChanges.phases) == nil then
       groupChanges.phases = nil
    end
    if next(groupChanges) == nil then
