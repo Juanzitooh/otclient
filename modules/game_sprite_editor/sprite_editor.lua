@@ -37,7 +37,7 @@ local gameStartCallback
 local gameEndCallback
 
 local APPEARANCE_ROW_HEIGHT = 52
-local PREVIEW_CONTROLS_BOTTOM_MARGIN = 88
+local PREVIEW_CONTROLS_BOTTOM_MARGIN = 14
 local PREVIEW_CANVAS_BOTTOM_MARGIN = 4
 local PREVIEW_HINT_BOTTOM_MARGIN = 8
 
@@ -64,6 +64,7 @@ local selectSprite
 local renderAppearanceRows
 local configurePreviewControls
 local updateAnimationEditor
+local collectAnimationWidgetChanges
 
 local function setStatus(message)
    if window then
@@ -239,12 +240,13 @@ local function updateSpriteReplacementTarget()
       selectedSpriteId, size))
 end
 
-local function setPreviewControlsVisible(visible)
+local function setPreviewControlsVisible(visible, panelHeight)
    local controls = window:recursiveGetChildById('previewControls')
    controls:setVisible(visible)
-   canvas:setMarginBottom(visible and PREVIEW_CONTROLS_BOTTOM_MARGIN or PREVIEW_CANVAS_BOTTOM_MARGIN)
+   controls:setHeight(visible and panelHeight or 0)
+   canvas:setMarginBottom(visible and panelHeight + PREVIEW_CONTROLS_BOTTOM_MARGIN or PREVIEW_CANVAS_BOTTOM_MARGIN)
    window:recursiveGetChildById('previewHintLabel'):setMarginBottom(
-      visible and PREVIEW_CONTROLS_BOTTOM_MARGIN or PREVIEW_HINT_BOTTOM_MARGIN)
+      visible and panelHeight + PREVIEW_CONTROLS_BOTTOM_MARGIN or PREVIEW_HINT_BOTTOM_MARGIN)
 end
 
 local function setPropertiesTab(tab)
@@ -253,46 +255,36 @@ local function setPropertiesTab(tab)
    end
    local flagsAvailable = appearanceOriginal ~= nil and next(appearanceOriginal.bools or {}) ~= nil
    local valuesAvailable = appearanceOriginal ~= nil and next(appearanceOriginal.values or {}) ~= nil
-   local animationAvailable = appearanceOriginal ~= nil and hasEditableAnimation(appearanceOriginal)
    window:recursiveGetChildById('flagsTabButton'):setVisible(flagsAvailable)
    window:recursiveGetChildById('valuesTabButton'):setVisible(valuesAvailable)
-   window:recursiveGetChildById('animationTabButton'):setVisible(animationAvailable)
    local tabBar = window:recursiveGetChildById('propertiesTabBar')
-   local hasTabs = flagsAvailable or valuesAvailable or animationAvailable
+   local hasTabs = flagsAvailable or valuesAvailable
    tabBar:setVisible(hasTabs)
    tabBar:setHeight(hasTabs and 24 or 0)
    window:recursiveGetChildById('noPropertyOptionsLabel'):setVisible(
-      appearanceOriginal ~= nil and not flagsAvailable and not valuesAvailable and not animationAvailable)
+      appearanceOriginal ~= nil and not flagsAvailable and not valuesAvailable)
    window:recursiveGetChildById('noPropertyOptionsLabel'):setText(
       tr('No additional editable properties for this appearance.'))
 
    if tab == 'values' and valuesAvailable then
       currentPropertiesTab = 'values'
-   elseif tab == 'animation' and animationAvailable then
-      currentPropertiesTab = 'animation'
    elseif tab == 'flags' and flagsAvailable then
       currentPropertiesTab = 'flags'
    elseif flagsAvailable then
       currentPropertiesTab = 'flags'
    elseif valuesAvailable then
       currentPropertiesTab = 'values'
-   elseif animationAvailable then
-      currentPropertiesTab = 'animation'
    else
       currentPropertiesTab = 'flags'
    end
    local flagsVisible = currentPropertiesTab == 'flags'
    local valuesVisible = currentPropertiesTab == 'values'
-   local animationVisible = currentPropertiesTab == 'animation'
    window:recursiveGetChildById('appearanceFlagsList'):setVisible(flagsVisible and flagsAvailable)
    window:recursiveGetChildById('appearanceFlagsScroll'):setVisible(flagsVisible and flagsAvailable)
    window:recursiveGetChildById('appearanceValuesList'):setVisible(valuesVisible and valuesAvailable)
    window:recursiveGetChildById('appearanceValuesScroll'):setVisible(valuesVisible and valuesAvailable)
-   window:recursiveGetChildById('appearanceAnimationPanel'):setVisible(animationVisible and animationAvailable)
-   window:recursiveGetChildById('appearanceAnimationScroll'):setVisible(animationVisible and animationAvailable)
    window:recursiveGetChildById('flagsTabButton'):setBackgroundColor(flagsVisible and '#603bb0' or '#363636')
    window:recursiveGetChildById('valuesTabButton'):setBackgroundColor(valuesVisible and '#603bb0' or '#363636')
-   window:recursiveGetChildById('animationTabButton'):setBackgroundColor(animationVisible and '#603bb0' or '#363636')
 end
 
 local function buildAppearanceProperties(data)
@@ -386,7 +378,7 @@ local function clearAppearanceProperties()
    window:recursiveGetChildById('appearanceDescription'):setText('')
    window:recursiveGetChildById('appearanceFlagsList'):destroyChildren()
    window:recursiveGetChildById('appearanceValuesList'):destroyChildren()
-   window:recursiveGetChildById('animationFrameDurations'):destroyChildren()
+   window:recursiveGetChildById('previewTimelineFrames'):destroyChildren()
    window:recursiveGetChildById('spriteInfoLabel'):setText(tr('Select an appearance to preview its sprite.'))
    window:recursiveGetChildById('appearanceName'):setEnabled(false)
    window:recursiveGetChildById('appearanceDescription'):setEnabled(false)
@@ -576,15 +568,22 @@ local function updatePreviewPatternControls()
    local patternZBox = window:recursiveGetChildById('previewPatternZ')
    local directionPad = window:recursiveGetChildById('previewDirectionPad')
    local settings = window:recursiveGetChildById('previewSettings')
+   local timelinePanel = window:recursiveGetChildById('previewTimelinePanel')
+   local phaseLabel = window:recursiveGetChildById('previewPhaseLabel')
 
    directionPad:setVisible(useDirectionPad)
-   settings:setMarginLeft(useDirectionPad and 8 or -142)
+   settings:setMarginLeft(useDirectionPad and 166 or 8)
+   local hasAnimation = group.animation and group.animation.enabled and group.animation.phases and
+      #group.animation.phases > 0 or false
+   timelinePanel:setVisible((group.phaseCount or 1) > 1 or hasAnimation)
 
    groupBox:setVisible(#previewFrameGroups > 1 and not previewHasMovementToggle)
    movingCheck:setVisible(previewHasMovementToggle)
    setCheckBoxState(movingCheck, previewMoving)
    mountedCheck:setVisible(isOutfit and group.patternDepth > 1)
    setCheckBoxState(mountedCheck, previewMounted)
+   local animationSettingsRow = window:recursiveGetChildById('previewAnimationSettingsRow')
+   animationSettingsRow:setVisible(hasAnimation)
 
    if useDirectionPad then
       directionBox:setVisible(false)
@@ -598,16 +597,8 @@ local function updatePreviewPatternControls()
             button:setColor(selected and '#d9c7ff' or '#dfdfdf')
          end
       end
-      addonBox:setMarginLeft(190)
-      layerBox:setMarginLeft(286)
-      window:recursiveGetChildById('previewPhaseLabel'):setMarginLeft(0)
    else
       buildPatternOptions(directionBox, isOutfit and tr('Direction') or tr('Pattern X'), group.patternWidth, previewPatternX)
-      local hasGroupSelector = #previewFrameGroups > 1 and not previewHasMovementToggle
-      directionBox:setMarginLeft(hasGroupSelector and 100 or 0)
-      addonBox:setMarginLeft(hasGroupSelector and 200 or 100)
-      layerBox:setMarginLeft(hasGroupSelector and 294 or 194)
-      window:recursiveGetChildById('previewPhaseLabel'):setMarginLeft(group.patternDepth > 1 and 100 or 0)
    end
 
    buildPatternOptions(addonBox, isOutfit and tr('Addon') or tr('Pattern Y'), group.patternHeight, previewPatternY)
@@ -618,6 +609,23 @@ local function updatePreviewPatternControls()
       buildPatternOptions(patternZBox, tr('Pattern Z'), group.patternDepth, previewPatternZ)
    end
 
+   local metaRow = window:recursiveGetChildById('previewMetaRow')
+   local patternRow = window:recursiveGetChildById('previewPatternRow')
+   local controls = window:recursiveGetChildById('previewControls')
+   local hasMetaControls = groupBox:isVisible() or movingCheck:isVisible() or mountedCheck:isVisible()
+   local hasPatternControls = directionBox:isVisible() or addonBox:isVisible() or layerBox:isVisible() or
+      patternZBox:isVisible()
+   local hasTopSettings = hasMetaControls or hasPatternControls or hasAnimation
+   metaRow:setVisible(hasMetaControls)
+   patternRow:setVisible(hasPatternControls)
+   directionPad:setMarginLeft(useDirectionPad and
+      (hasTopSettings and 8 or math.max(8, math.floor((controls:getWidth() - 150) / 2))) or 8)
+
+   local settingsRowCount = (hasMetaControls and 1 or 0) + (hasPatternControls and 1 or 0) +
+      (hasAnimation and 1 or 0)
+   local settingsHeight = settingsRowCount > 0 and settingsRowCount * 22 + (settingsRowCount - 1) * 4 or 1
+   settings:setHeight(settingsHeight)
+
    local groupOptions = {}
    for index, frameGroup in ipairs(previewFrameGroups) do
       table.insert(groupOptions, { label = frameGroupName(frameGroup, index), data = index })
@@ -626,10 +634,10 @@ local function updatePreviewPatternControls()
 
    local phaseCount = math.max(1, group.phaseCount or 1)
    local hasMultipleFrames = phaseCount > 1
-   window:recursiveGetChildById('previewPhaseLabel'):setVisible(hasMultipleFrames)
+   phaseLabel:setVisible(hasMultipleFrames or hasAnimation)
    previewPhase = math.min(previewPhase, phaseCount - 1)
    local phaseStepper = window:recursiveGetChildById('previewPhaseStepper')
-   phaseStepper:setVisible(hasMultipleFrames)
+   phaseStepper:setVisible(hasMultipleFrames or hasAnimation)
    local onValueChange = phaseStepper.onValueChange
    phaseStepper.onValueChange = nil
    phaseStepper:setMinimum(1)
@@ -639,8 +647,15 @@ local function updatePreviewPatternControls()
    phaseStepper:setValue(previewPhase + 1, true)
    phaseStepper.onValueChange = onValueChange
    local phaseCountLabel = window:recursiveGetChildById('previewPhaseCount')
-   phaseCountLabel:setVisible(hasMultipleFrames)
+   phaseCountLabel:setVisible(hasMultipleFrames or hasAnimation)
    phaseCountLabel:setText(tr('of %d', phaseCount))
+   local timeline = window:recursiveGetChildById('previewTimeline')
+   local timelineScroll = window:recursiveGetChildById('previewTimelineScroll')
+   timelineScroll:setVisible(hasMultipleFrames and phaseCount * 30 > timeline:getWidth())
+   local hasTimeline = hasMultipleFrames or hasAnimation
+   local topAreaHeight = math.max(useDirectionPad and 68 or 0, settingsHeight)
+   local panelHeight = 8 + topAreaHeight + (hasTimeline and 74 or 0) + 8
+   setPreviewControlsVisible(useDirectionPad or hasTopSettings or hasTimeline, panelHeight)
    updateSpriteReplacementTarget()
 end
 
@@ -788,7 +803,7 @@ configurePreviewControls = function(frameGroups)
       return
    end
 
-   setPreviewControlsVisible(#previewFrameGroups > 0)
+   setPreviewControlsVisible(false)
    if #previewFrameGroups == 0 then
       return
    end
@@ -796,6 +811,10 @@ configurePreviewControls = function(frameGroups)
    local frameGroupBox = window:recursiveGetChildById('previewFrameGroup')
    frameGroupBox.onOptionChange = function(_, _, frameGroupIndex)
       if frameGroupIndex then
+         if not collectAnimationWidgetChanges() then
+            frameGroupBox:setCurrentOptionByData(previewFrameGroupIndex, true)
+            return
+         end
          previewFrameGroupIndex = frameGroupIndex
          previewPatternX = 0
          previewPatternY = 0
@@ -815,11 +834,24 @@ configurePreviewControls = function(frameGroups)
       end
    end
    window:recursiveGetChildById('previewPhaseStepper').onValueChange = function(_, value)
+      if not collectAnimationWidgetChanges() then
+         local phaseStepper = window:recursiveGetChildById('previewPhaseStepper')
+         local onValueChange = phaseStepper.onValueChange
+         phaseStepper.onValueChange = nil
+         phaseStepper:setValue(previewPhase + 1, true)
+         phaseStepper.onValueChange = onValueChange
+         return
+      end
       previewPhase = (value or 1) - 1
+      updateAnimationEditor()
       refreshAppearancePreview()
    end
    window:recursiveGetChildById('previewMoving').onCheckChange = function(widget)
       if not previewHasMovementToggle then
+         return
+      end
+      if not collectAnimationWidgetChanges() then
+         setCheckBoxState(widget, not widget:isChecked())
          return
       end
       previewMoving = widget:isChecked()
@@ -835,12 +867,6 @@ configurePreviewControls = function(frameGroups)
    end
 
    updatePreviewPatternControls()
-   local hasChoice = #previewFrameGroups > 1
-   for _, group in ipairs(previewFrameGroups) do
-      hasChoice = hasChoice or group.patternWidth > 1 or group.patternHeight > 1 or
-         group.patternDepth > 1 or group.layers > 1 or group.phaseCount > 1
-   end
-   setPreviewControlsVisible(hasChoice)
    updateAnimationEditor()
    refreshAppearancePreview()
 end
@@ -851,138 +877,180 @@ updateAnimationEditor = function()
    end
    local wasBuildingProperties = buildingAppearanceProperties
    buildingAppearanceProperties = true
-   local frameList = window:recursiveGetChildById('animationFrameDurations')
+   local frameList = window:recursiveGetChildById('previewTimelineFrames')
    frameList:destroyChildren()
    animationWidgets = {}
    local group = currentPreviewGroup()
-   local info = window:recursiveGetChildById('animationGroupInfo')
-   local enabled = group and group.animation and group.animation.enabled
-   if not group then
-      info:setText(tr('Select an appearance with animation data.'))
-   elseif not enabled then
-      info:setText(tr('%s has no editable animation metadata.', frameGroupName(group, previewFrameGroupIndex)))
-   else
-      info:setText(tr('%s | %d frames', frameGroupName(group, previewFrameGroupIndex), group.phaseCount))
-   end
+   local enabled = group and group.animation and group.animation.enabled == true or false
+   local phaseCount = group and math.max(1, group.phaseCount or 1) or 1
+   local isAnimated = enabled and group.animation.phases and #group.animation.phases > 0 or false
+   local settingsRow = window:recursiveGetChildById('previewAnimationSettingsRow')
+   local timelinePanel = window:recursiveGetChildById('previewTimelinePanel')
+   local timeline = window:recursiveGetChildById('previewTimeline')
+   local timelineScroll = window:recursiveGetChildById('previewTimelineScroll')
+   local phaseStepper = window:recursiveGetChildById('previewPhaseStepper')
+   local phaseCountLabel = window:recursiveGetChildById('previewPhaseCount')
+   local minLabel = window:recursiveGetChildById('animationDurationMinLabel')
+   local minEdit = window:recursiveGetChildById('animationDurationMin')
+   local maxLabel = window:recursiveGetChildById('animationDurationMaxLabel')
+   local maxEdit = window:recursiveGetChildById('animationDurationMax')
+   local hasMultipleFrames = phaseCount > 1
+   local hasFrameControls = hasMultipleFrames or isAnimated
 
-   local controls = {
-      window:recursiveGetChildById('animationDefaultPhaseRow'),
-      window:recursiveGetChildById('animationRandomStart'),
-      window:recursiveGetChildById('animationSynchronized'),
-      window:recursiveGetChildById('animationLoopTypeRow'),
-      window:recursiveGetChildById('animationLoopCountRow'),
-   }
-   for _, control in ipairs(controls) do
-      control:setEnabled(enabled)
-   end
-   if not enabled then
-      window:recursiveGetChildById('animationLoopType'):clearOptions()
+   timelinePanel:setVisible(hasFrameControls)
+   phaseStepper:setMinimum(1)
+   phaseStepper:setMaximum(phaseCount)
+   phaseStepper:setStep(1)
+   phaseStepper:setMouseScroll(true)
+   phaseStepper:setVisible(hasFrameControls)
+   phaseCountLabel:setVisible(hasFrameControls)
+   phaseCountLabel:setText(tr('of %d', phaseCount))
+   minLabel:setVisible(isAnimated)
+   minEdit:setVisible(isAnimated)
+   maxLabel:setVisible(isAnimated)
+   maxEdit:setVisible(isAnimated)
+   settingsRow:setVisible(isAnimated)
+
+   local onValueChange = phaseStepper.onValueChange
+   phaseStepper.onValueChange = nil
+   phaseStepper:setValue(previewPhase + 1, true)
+   phaseStepper.onValueChange = onValueChange
+
+   if isAnimated then
+      local groupIndex = group.index
+      local groupKey = tostring(groupIndex)
+      local changes = appearanceChanges.animation.groups[groupKey] or {}
+      local animation = group.animation
+      local defaultPhase = window:recursiveGetChildById('animationDefaultPhase')
+      local randomStart = window:recursiveGetChildById('animationRandomStart')
+      local synchronized = window:recursiveGetChildById('animationSynchronized')
+      local loopTypeBox = window:recursiveGetChildById('animationLoopType')
+      local loopCountLabel = window:recursiveGetChildById('animationLoopCountLabel')
+      local loopCount = window:recursiveGetChildById('animationLoopCount')
+      local randomStartValue = changes.randomStartPhase
+      if randomStartValue == nil then
+         randomStartValue = animation.randomStartPhase
+      end
+      local synchronizedValue = changes.synchronized
+      if synchronizedValue == nil then
+         synchronizedValue = animation.synchronized
+      end
+      local defaultPhaseValue = changes.defaultStartPhase
+      if defaultPhaseValue == nil then
+         defaultPhaseValue = animation.defaultStartPhase
+      end
+      defaultPhase:setText(tostring(defaultPhaseValue))
+      randomStart:setChecked(randomStartValue)
+      synchronized:setChecked(synchronizedValue)
+      loopCount:setText(tostring(changes.loopCount ~= nil and changes.loopCount or animation.loopCount))
+      setComboOptions(loopTypeBox, {
+         { label = tr('Ping pong'), data = -1 },
+         { label = tr('Infinite'), data = 0 },
+         { label = tr('Counted'), data = 1 },
+      }, changes.loopType ~= nil and changes.loopType or animation.loopType)
+      local loopType = changes.loopType ~= nil and changes.loopType or animation.loopType
+      loopCountLabel:setVisible(loopType == 1)
+      loopCount:setVisible(loopType == 1)
+
+      animationWidgets.groupIndex = groupIndex
+      animationWidgets.fields = { defaultStartPhase = defaultPhase, loopCount = loopCount }
+
+      defaultPhase.onTextChange = function(widget)
+         if not buildingAppearanceProperties then
+            local value = tonumber(widget:getText())
+            if value and value >= 0 and value % 1 == 0 and value < phaseCount then
+               setAnimationChange(groupIndex, 'defaultStartPhase', value)
+            end
+         end
+      end
+      randomStart.onCheckChange = function(widget)
+         if not buildingAppearanceProperties then
+            setAnimationChange(groupIndex, 'randomStartPhase', widget:isChecked())
+         end
+      end
+      synchronized.onCheckChange = function(widget)
+         if not buildingAppearanceProperties then
+            setAnimationChange(groupIndex, 'synchronized', widget:isChecked())
+         end
+      end
+      loopTypeBox.onOptionChange = function(_, _, value)
+         if not buildingAppearanceProperties and value ~= nil then
+            setAnimationChange(groupIndex, 'loopType', value)
+            loopCountLabel:setVisible(value == 1)
+            loopCount:setVisible(value == 1)
+         end
+      end
+      loopCount.onTextChange = function(widget)
+         if not buildingAppearanceProperties then
+            local value = tonumber(widget:getText())
+            if value and value >= 0 and value % 1 == 0 then
+               setAnimationChange(groupIndex, 'loopCount', value)
+            end
+         end
+      end
+
+      local phase = animation.phases[previewPhase + 1]
+      if phase then
+         local phaseChanges = changes.phases and changes.phases[tostring(previewPhase)] or {}
+         minEdit:setText(tostring(phaseChanges.durationMin ~= nil and phaseChanges.durationMin or phase.durationMin))
+         maxEdit:setText(tostring(phaseChanges.durationMax ~= nil and phaseChanges.durationMax or phase.durationMax))
+         animationWidgets.phaseIndex = previewPhase
+         animationWidgets.phaseFields = { durationMin = minEdit, durationMax = maxEdit }
+         local function updatePhaseDurationChanges()
+            if buildingAppearanceProperties then
+               return
+            end
+            local durationMin = tonumber(minEdit:getText())
+            local durationMax = tonumber(maxEdit:getText())
+            if not durationMin or not durationMax or durationMin < 0 or durationMax < 0 or
+                  durationMin % 1 ~= 0 or durationMax % 1 ~= 0 or durationMin > durationMax then
+               return
+            end
+            setAnimationChange(groupIndex, 'durationMin', durationMin, previewPhase)
+            setAnimationChange(groupIndex, 'durationMax', durationMax, previewPhase)
+         end
+         minEdit.onTextChange = updatePhaseDurationChanges
+         maxEdit.onTextChange = updatePhaseDurationChanges
+      end
+   else
+      local loopTypeBox = window:recursiveGetChildById('animationLoopType')
+      loopTypeBox.onOptionChange = nil
+      loopTypeBox:clearOptions()
+      window:recursiveGetChildById('animationLoopCountLabel'):setVisible(false)
       window:recursiveGetChildById('animationDefaultPhase'):setText('0')
       window:recursiveGetChildById('animationRandomStart'):setChecked(false)
       window:recursiveGetChildById('animationSynchronized'):setChecked(false)
       window:recursiveGetChildById('animationLoopCount'):setText('0')
-      frameList:setHeight(1)
-      buildingAppearanceProperties = wasBuildingProperties
-      return
+      minEdit:setText('')
+      maxEdit:setText('')
    end
 
-   local groupIndex = group.index
-   local groupKey = tostring(groupIndex)
-   local changes = appearanceChanges.animation.groups[groupKey] or {}
-   local animation = group.animation
-   local defaultPhase = window:recursiveGetChildById('animationDefaultPhase')
-   local randomStart = window:recursiveGetChildById('animationRandomStart')
-   local synchronized = window:recursiveGetChildById('animationSynchronized')
-   local loopTypeBox = window:recursiveGetChildById('animationLoopType')
-   local loopCount = window:recursiveGetChildById('animationLoopCount')
-   local randomStartValue = changes.randomStartPhase
-   if randomStartValue == nil then
-      randomStartValue = animation.randomStartPhase
+   for phaseIndex = 0, phaseCount - 1 do
+      local currentPhaseIndex = phaseIndex
+      local frameButton = g_ui.createWidget('AppearanceTimelineFrame', frameList)
+      frameButton:setText(tostring(currentPhaseIndex + 1))
+      frameButton:setTooltip(tr('Frame %d', currentPhaseIndex + 1))
+      frameButton:setOn(currentPhaseIndex == previewPhase)
+      frameButton:setColor(currentPhaseIndex == previewPhase and '#d9c7ff' or '#dfdfdf')
+      frameButton.onClick = function()
+         if not collectAnimationWidgetChanges() then
+            return
+         end
+         previewPhase = currentPhaseIndex
+         updateAnimationEditor()
+         refreshAppearancePreview()
+      end
+      if currentPhaseIndex == previewPhase then
+         addEvent(function()
+            if timeline and frameButton then
+               timeline:ensureChildVisible(frameButton)
+            end
+         end)
+      end
    end
-   local synchronizedValue = changes.synchronized
-   if synchronizedValue == nil then
-      synchronizedValue = animation.synchronized
-   end
-   local defaultPhaseValue = changes.defaultStartPhase
-   if defaultPhaseValue == nil then
-      defaultPhaseValue = animation.defaultStartPhase
-   end
-   defaultPhase:setText(tostring(defaultPhaseValue))
-   randomStart:setChecked(randomStartValue)
-   synchronized:setChecked(synchronizedValue)
-   loopCount:setText(tostring(changes.loopCount ~= nil and changes.loopCount or animation.loopCount))
-   setComboOptions(loopTypeBox, {
-      { label = tr('Ping pong'), data = -1 },
-      { label = tr('Infinite'), data = 0 },
-      { label = tr('Counted'), data = 1 },
-   }, changes.loopType ~= nil and changes.loopType or animation.loopType)
+   frameList:setWidth(math.max(1, phaseCount * 30 - 2))
+   timelineScroll:setVisible(phaseCount * 30 > timeline:getWidth())
    buildingAppearanceProperties = wasBuildingProperties
-
-   defaultPhase.onTextChange = function(widget)
-      if not buildingAppearanceProperties then
-         local value = tonumber(widget:getText())
-         if value and value >= 0 and value % 1 == 0 then
-            setAnimationChange(groupIndex, 'defaultStartPhase', value)
-         end
-      end
-   end
-   randomStart.onCheckChange = function(widget)
-      if not buildingAppearanceProperties then
-         setAnimationChange(groupIndex, 'randomStartPhase', widget:isChecked())
-      end
-   end
-   synchronized.onCheckChange = function(widget)
-      if not buildingAppearanceProperties then
-         setAnimationChange(groupIndex, 'synchronized', widget:isChecked())
-      end
-   end
-   loopTypeBox.onOptionChange = function(_, _, value)
-      if not buildingAppearanceProperties and value ~= nil then
-         setAnimationChange(groupIndex, 'loopType', value)
-      end
-   end
-   loopCount.onTextChange = function(widget)
-      if not buildingAppearanceProperties then
-         local value = tonumber(widget:getText())
-         if value and value >= 0 and value % 1 == 0 then
-            setAnimationChange(groupIndex, 'loopCount', value)
-         end
-      end
-   end
-
-   animationWidgets.groupIndex = groupIndex
-   animationWidgets.fields = { defaultStartPhase = defaultPhase, loopCount = loopCount }
-   for phaseIndex, phase in ipairs(animation.phases) do
-      local row = g_ui.createWidget('AppearanceFrameDurationRow', frameList)
-      row:setWidth(285)
-      row:recursiveGetChildById('phaseLabel'):setText(tr('Frame %d', phaseIndex))
-      local phaseChanges = changes.phases and changes.phases[tostring(phaseIndex - 1)] or {}
-      local minEdit = row:recursiveGetChildById('durationMin')
-      local maxEdit = row:recursiveGetChildById('durationMax')
-      minEdit:setText(tostring(phaseChanges.durationMin ~= nil and phaseChanges.durationMin or phase.durationMin))
-      maxEdit:setText(tostring(phaseChanges.durationMax ~= nil and phaseChanges.durationMax or phase.durationMax))
-      if not animationWidgets.phases then
-         animationWidgets.phases = {}
-      end
-      animationWidgets.phases[phaseIndex - 1] = { durationMin = minEdit, durationMax = maxEdit }
-      minEdit.onTextChange = function(widget)
-         if not buildingAppearanceProperties then
-            local value = tonumber(widget:getText())
-            if value and value >= 0 and value % 1 == 0 then
-               setAnimationChange(groupIndex, 'durationMin', value, phaseIndex - 1)
-            end
-         end
-      end
-      maxEdit.onTextChange = function(widget)
-         if not buildingAppearanceProperties then
-            local value = tonumber(widget:getText())
-            if value and value >= 0 and value % 1 == 0 then
-               setAnimationChange(groupIndex, 'durationMax', value, phaseIndex - 1)
-            end
-         end
-      end
-   end
-   frameList:setHeight(math.max(1, #animation.phases * 27))
 end
 
 local function refreshSelectedAppearance()
@@ -1623,7 +1691,7 @@ function createAppearance(forceDiscard)
    setStatus(tr('New appearance created in the working copy.'))
 end
 
-local function collectAnimationWidgetChanges()
+collectAnimationWidgetChanges = function()
    if not animationWidgets.groupIndex then
       return true
    end
@@ -1646,9 +1714,10 @@ local function collectAnimationWidgetChanges()
       setAnimationChange(animationWidgets.groupIndex, field, value)
    end
 
-   for phaseIndex, fields in pairs(animationWidgets.phases or {}) do
-      local durationMin = tonumber(fields.durationMin:getText())
-      local durationMax = tonumber(fields.durationMax:getText())
+   local phaseFields = animationWidgets.phaseFields
+   if phaseFields then
+      local durationMin = tonumber(phaseFields.durationMin:getText())
+      local durationMax = tonumber(phaseFields.durationMax:getText())
       if not durationMin or not durationMax or durationMin < 0 or durationMax < 0 or
             durationMin % 1 ~= 0 or durationMax % 1 ~= 0 or
             durationMin > 4294967295 or durationMax > 4294967295 then
@@ -1659,8 +1728,8 @@ local function collectAnimationWidgetChanges()
          setAppearanceStatus(tr('Minimum frame duration cannot exceed maximum duration.'))
          return false
       end
-      setAnimationChange(animationWidgets.groupIndex, 'durationMin', durationMin, phaseIndex)
-      setAnimationChange(animationWidgets.groupIndex, 'durationMax', durationMax, phaseIndex)
+      setAnimationChange(animationWidgets.groupIndex, 'durationMin', durationMin, animationWidgets.phaseIndex)
+      setAnimationChange(animationWidgets.groupIndex, 'durationMax', durationMax, animationWidgets.phaseIndex)
    end
    return true
 end
