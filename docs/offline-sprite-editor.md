@@ -24,3 +24,12 @@ The work-copy write APIs and preview widget are compiled only when `FRAMEWORK_ED
 The editor supports modern directory-based asset packages in client versions 15.x only. Existing sprite replacement supports the sprite's current dimensions, up to 384 x 384 pixels. Creating a new appearance currently uses a single 32 x 32 image; animation groups, multi-pattern outfits, repeated NPC sale metadata, and deletion are not edited. Transparent pixels use the modern sheet's magenta/alpha convention. Packages that contain symbolic links or non-regular files are rejected and must resolve to a local directory.
 
 Enter an absolute path to a PNG image. The image is limited to 4 MiB and 384 x 384 pixels. Use the wheel to zoom and middle-drag to pan the preview.
+
+## Planned: edit a sprite in an external image editor
+
+A future action for the selected Sprite ID can export a separate PNG into the
+user's writable sprite-editor directory, open that copy in a configured desktop
+editor, and let the user explicitly apply the saved PNG to the active work copy.
+This keeps the installed package untouched and reuses the existing import
+validation. Editors must accept the image path as a command-line argument;
+[LibreSprite supports positional file inputs](https://github.com/LibreSprite/LibreSprite/blob/master/src/app/app_options.cpp).
