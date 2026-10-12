@@ -27,10 +27,26 @@ local previewPatternZ = 0
 local previewLayer = 0
 local previewPhase = 0
 local previewMounted = false
+local previewMoving = false
+local previewIdleGroupIndex
+local previewMovingGroupIndex
+local previewHasMovementToggle = false
+local selectedSpriteContext
 local gameStartCallback
 local gameEndCallback
 
 local APPEARANCE_ROW_HEIGHT = 52
+
+local PREVIEW_DIRECTIONS = {
+   { index = 0, id = 'previewNorth', name = 'North' },
+   { index = 1, id = 'previewEast', name = 'East' },
+   { index = 2, id = 'previewSouth', name = 'South' },
+   { index = 3, id = 'previewWest', name = 'West' },
+   { index = 4, id = 'previewNorthEast', name = 'North-east' },
+   { index = 5, id = 'previewSouthEast', name = 'South-east' },
+   { index = 6, id = 'previewSouthWest', name = 'South-west' },
+   { index = 7, id = 'previewNorthWest', name = 'North-west' },
+}
 
 local categories = {
    { name = 'Objects', data = 0 },
@@ -219,7 +235,9 @@ local function clearAppearanceProperties()
    window:recursiveGetChildById('animationFrameDurations'):destroyChildren()
    window:recursiveGetChildById('spriteInfoLabel'):setText(tr('Select an appearance to preview its sprite.'))
    selectedSpriteId = nil
+   selectedSpriteContext = nil
    canvas:setVisible(false)
+   window:recursiveGetChildById('replacePreviewSpriteButton'):setEnabled(false)
    appearanceOriginal = nil
    appearanceValueWidgets = {}
    appearanceStringWidgets = {}
@@ -237,6 +255,9 @@ selectSprite = function(id)
    end
    if not canvas:setSpriteId(id) then
       canvas:setVisible(false)
+      selectedSpriteId = nil
+      selectedSpriteContext = nil
+      window:recursiveGetChildById('replacePreviewSpriteButton'):setEnabled(false)
       setStatus(tr('Sprite %d is not available in this 15.x work copy.', id))
       return false
    end
@@ -247,6 +268,7 @@ selectSprite = function(id)
       string.format('ID %d | %d x %d | %dx', id, canvas:getSpriteWidth(), canvas:getSpriteHeight(), canvas:getZoom()))
    window:recursiveGetChildById('selectedSpriteLabel'):setText(
       tr('Selected sprite ID: %d', id))
+   window:recursiveGetChildById('replacePreviewSpriteButton'):setEnabled(true)
    setStatus(tr('Previewing sprite %d.', id))
    return true
 end
@@ -336,6 +358,20 @@ local function buildPatternOptions(comboBox, label, count, selectedIndex)
    comboBox:setVisible(count > 1)
 end
 
+local function setCheckBoxState(checkBox, checked)
+   local onCheckChange = checkBox.onCheckChange
+   checkBox.onCheckChange = nil
+   checkBox:setChecked(checked)
+   checkBox.onCheckChange = onCheckChange
+end
+
+local function directionName(index, width)
+   if (width == 4 or width == 8) and PREVIEW_DIRECTIONS[index + 1] then
+      return tr(PREVIEW_DIRECTIONS[index + 1].name)
+   end
+   return tr('Pattern X %d', index + 1)
+end
+
 local function updatePreviewPatternControls()
    if not window then
       return
@@ -347,38 +383,83 @@ local function updatePreviewPatternControls()
    end
 
    local isOutfit = selectedAppearanceCategory == 1
-   local directionLabel = isOutfit and tr('Direction') or tr('Pattern X')
-   local patternYLabel = isOutfit and tr('Addon') or tr('Pattern Y')
-   buildPatternOptions(window:recursiveGetChildById('previewPatternX'), directionLabel, group.patternWidth, previewPatternX)
-   buildPatternOptions(window:recursiveGetChildById('previewPatternY'), patternYLabel, group.patternHeight, previewPatternY)
-   buildPatternOptions(window:recursiveGetChildById('previewLayer'), tr('Layer'), group.layers, previewLayer)
+   local useDirectionPad = isOutfit and group.patternWidth >= 4
+   local groupBox = window:recursiveGetChildById('previewFrameGroup')
+   local movingCheck = window:recursiveGetChildById('previewMoving')
+   local mountedCheck = window:recursiveGetChildById('previewMounted')
+   local directionBox = window:recursiveGetChildById('previewPatternX')
+   local addonBox = window:recursiveGetChildById('previewPatternY')
+   local layerBox = window:recursiveGetChildById('previewLayer')
+   local patternZBox = window:recursiveGetChildById('previewPatternZ')
+   local directionPad = window:recursiveGetChildById('previewDirectionPad')
+   local settings = window:recursiveGetChildById('previewSettings')
 
-   local patternZ = window:recursiveGetChildById('previewPatternZ')
-   local mounted = window:recursiveGetChildById('previewMounted')
-   if isOutfit and group.patternDepth > 1 then
-      patternZ:setVisible(false)
-      mounted:setVisible(true)
-      mounted:setChecked(previewMounted)
+   directionPad:setVisible(useDirectionPad)
+   settings:setMarginLeft(useDirectionPad and 8 or -142)
+
+   groupBox:setVisible(#previewFrameGroups > 1 and not previewHasMovementToggle)
+   movingCheck:setVisible(previewHasMovementToggle)
+   setCheckBoxState(movingCheck, previewMoving)
+   mountedCheck:setVisible(isOutfit and group.patternDepth > 1)
+   setCheckBoxState(mountedCheck, previewMounted)
+
+   if useDirectionPad then
+      directionBox:setVisible(false)
+      for _, direction in ipairs(PREVIEW_DIRECTIONS) do
+         local button = window:recursiveGetChildById(direction.id)
+         local visible = direction.index < group.patternWidth
+         button:setVisible(visible)
+         if visible then
+            local selected = direction.index == previewPatternX
+            button:setOn(selected)
+            button:setColor(selected and '#d9c7ff' or '#dfdfdf')
+         end
+      end
+      addonBox:setMarginLeft(190)
+      layerBox:setMarginLeft(286)
+      window:recursiveGetChildById('previewPhaseLabel'):setMarginLeft(0)
    else
-      mounted:setVisible(false)
-      buildPatternOptions(patternZ, tr('Pattern Z'), group.patternDepth, previewPatternZ)
+      buildPatternOptions(directionBox, isOutfit and tr('Direction') or tr('Pattern X'), group.patternWidth, previewPatternX)
+      local hasGroupSelector = #previewFrameGroups > 1 and not previewHasMovementToggle
+      directionBox:setMarginLeft(hasGroupSelector and 100 or 0)
+      addonBox:setMarginLeft(hasGroupSelector and 200 or 100)
+      layerBox:setMarginLeft(hasGroupSelector and 294 or 194)
+      window:recursiveGetChildById('previewPhaseLabel'):setMarginLeft(group.patternDepth > 1 and 100 or 0)
+   end
+
+   buildPatternOptions(addonBox, isOutfit and tr('Addon') or tr('Pattern Y'), group.patternHeight, previewPatternY)
+   buildPatternOptions(layerBox, tr('Layer'), group.layers, previewLayer)
+   if isOutfit then
+      patternZBox:setVisible(false)
+   else
+      buildPatternOptions(patternZBox, tr('Pattern Z'), group.patternDepth, previewPatternZ)
    end
 
    local groupOptions = {}
    for index, frameGroup in ipairs(previewFrameGroups) do
       table.insert(groupOptions, { label = frameGroupName(frameGroup, index), data = index })
    end
-   local frameGroupBox = window:recursiveGetChildById('previewFrameGroup')
-   setComboOptions(frameGroupBox, groupOptions, previewFrameGroupIndex)
-   frameGroupBox:setVisible(#groupOptions > 1)
+   setComboOptions(groupBox, groupOptions, previewFrameGroupIndex)
 
-   local phaseOptions = {}
-   for phase = 0, math.max(1, group.phaseCount) - 1 do
-      table.insert(phaseOptions, { label = tr('Frame %d', phase + 1), data = phase })
-   end
-   local phaseBox = window:recursiveGetChildById('previewPhase')
-   setComboOptions(phaseBox, phaseOptions, previewPhase)
-   phaseBox:setVisible(#phaseOptions > 1)
+   local phaseCount = math.max(1, group.phaseCount or 1)
+   local hasMultipleFrames = phaseCount > 1
+   window:recursiveGetChildById('previewPhaseLabel'):setVisible(hasMultipleFrames)
+   previewPhase = math.min(previewPhase, phaseCount - 1)
+   local phaseStepper = window:recursiveGetChildById('previewPhaseStepper')
+   phaseStepper:setVisible(hasMultipleFrames)
+   local onValueChange = phaseStepper.onValueChange
+   phaseStepper.onValueChange = nil
+   phaseStepper:setMinimum(1)
+   phaseStepper:setMaximum(phaseCount)
+   phaseStepper:setStep(1)
+   phaseStepper:setMouseScroll(true)
+   phaseStepper:setValue(previewPhase + 1, true)
+   phaseStepper.onValueChange = onValueChange
+   local phaseCountLabel = window:recursiveGetChildById('previewPhaseCount')
+   phaseCountLabel:setVisible(hasMultipleFrames)
+   phaseCountLabel:setText(tr('of %d', phaseCount))
+   local replacementButton = window:recursiveGetChildById('replacePreviewSpriteButton')
+   replacementButton:setEnabled(selectedSpriteId ~= nil and activeVersion ~= nil)
 end
 
 local function refreshAppearancePreview()
@@ -391,11 +472,14 @@ local function refreshAppearancePreview()
    local addonBox = window:recursiveGetChildById('previewPatternY')
    local layerBox = window:recursiveGetChildById('previewLayer')
    local patternZBox = window:recursiveGetChildById('previewPatternZ')
-   local phaseBox = window:recursiveGetChildById('previewPhase')
-   previewPatternX = selectedOption(directionBox) or 0
+   local phaseStepper = window:recursiveGetChildById('previewPhaseStepper')
+   local useDirectionPad = selectedAppearanceCategory == 1 and group.patternWidth >= 4
+   if not useDirectionPad then
+      previewPatternX = selectedOption(directionBox) or 0
+   end
    previewPatternY = selectedOption(addonBox) or 0
    previewLayer = selectedOption(layerBox) or 0
-   previewPhase = selectedOption(phaseBox) or 0
+   previewPhase = (phaseStepper:getValue() or 1) - 1
    if selectedAppearanceCategory == 1 and group.patternDepth > 1 then
       previewMounted = window:recursiveGetChildById('previewMounted'):isChecked()
       previewPatternZ = previewMounted and group.patternDepth - 1 or 0
@@ -407,26 +491,120 @@ local function refreshAppearancePreview()
       previewPatternY) * group.patternWidth + previewPatternX) * group.layers + previewLayer + 1
    local spriteId = group.sprites[spriteIndex]
    if spriteId and spriteId > 0 then
-      return selectSprite(spriteId)
+      local selected = selectSprite(spriteId)
+      if selected then
+         local details = { frameGroupName(group, previewFrameGroupIndex) }
+         if selectedAppearanceCategory == 1 and group.patternDepth > 1 then
+            table.insert(details, previewMounted and tr('Mounted') or tr('Unmounted'))
+         end
+         if selectedAppearanceCategory == 1 then
+            if useDirectionPad or group.patternWidth > 1 then
+               table.insert(details, directionName(previewPatternX, group.patternWidth))
+            end
+         elseif group.patternWidth > 1 then
+            table.insert(details, tr('Pattern X %d', previewPatternX + 1))
+         end
+         if group.patternHeight > 1 then
+            table.insert(details, tr('%s %d', selectedAppearanceCategory == 1 and tr('Addon') or tr('Pattern Y'), previewPatternY + 1))
+         end
+         if group.layers > 1 then
+            table.insert(details, tr('Layer %d', previewLayer + 1))
+         end
+         table.insert(details, tr('Frame %d/%d', previewPhase + 1, math.max(1, group.phaseCount or 1)))
+         selectedSpriteContext = table.concat(details, ' | ')
+         local spriteSize = string.format('%d x %d', canvas:getSpriteWidth(), canvas:getSpriteHeight())
+         window:recursiveGetChildById('selectedSpriteLabel'):setText(
+            tr('Target: sprite ID %d | %s | %s. Same-size PNG required; shared IDs change everywhere.',
+               spriteId, selectedSpriteContext, spriteSize))
+         setStatus(tr('Preview: %s | Sprite ID %d', selectedSpriteContext, spriteId))
+      end
+      return selected
    end
 
    selectedSpriteId = nil
+   selectedSpriteContext = nil
    canvas:setVisible(false)
    window:recursiveGetChildById('spriteInfoLabel'):setText(tr('No sprite is linked to this frame selection.'))
    window:recursiveGetChildById('selectedSpriteLabel'):setText(tr('No sprite is linked to this frame selection.'))
+   window:recursiveGetChildById('replacePreviewSpriteButton'):setEnabled(false)
    setStatus(tr('No sprite is linked to this frame selection.'))
    return false
+end
+
+local function capturePreviewSelection()
+   local group = currentPreviewGroup()
+   if not group then
+      return nil
+   end
+   return {
+      groupType = group.type,
+      groupId = group.id,
+      groupIndex = previewFrameGroupIndex,
+      patternX = previewPatternX,
+      patternY = previewPatternY,
+      patternZ = previewPatternZ,
+      layer = previewLayer,
+      phase = previewPhase,
+      mounted = previewMounted,
+   }
+end
+
+local function restorePreviewSelection(selection)
+   if not selection then
+      return
+   end
+
+   local matchingIndex
+   for index, group in ipairs(previewFrameGroups) do
+      if group.type == selection.groupType and group.id == selection.groupId then
+         matchingIndex = index
+         break
+      end
+   end
+   previewFrameGroupIndex = matchingIndex or math.min(selection.groupIndex, #previewFrameGroups)
+   local group = currentPreviewGroup()
+   if not group then
+      return
+   end
+
+   previewMoving = previewHasMovementToggle and group.type == 1
+   previewPatternX = math.min(selection.patternX, math.max(0, group.patternWidth - 1))
+   previewPatternY = math.min(selection.patternY, math.max(0, group.patternHeight - 1))
+   previewPatternZ = math.min(selection.patternZ, math.max(0, group.patternDepth - 1))
+   previewLayer = math.min(selection.layer, math.max(0, group.layers - 1))
+   previewPhase = math.min(selection.phase, math.max(0, (group.phaseCount or 1) - 1))
+   previewMounted = selectedAppearanceCategory == 1 and group.patternDepth > 1 and selection.mounted
+
+   updatePreviewPatternControls()
+   updateAnimationEditor()
+   refreshAppearancePreview()
 end
 
 configurePreviewControls = function(frameGroups)
    previewFrameGroups = frameGroups or {}
    previewFrameGroupIndex = math.min(math.max(1, previewFrameGroupIndex), math.max(1, #previewFrameGroups))
+   previewIdleGroupIndex = nil
+   previewMovingGroupIndex = nil
+   for index, group in ipairs(previewFrameGroups) do
+      if group.type == 0 and not previewIdleGroupIndex then
+         previewIdleGroupIndex = index
+      elseif group.type == 1 and not previewMovingGroupIndex then
+         previewMovingGroupIndex = index
+      end
+   end
+   previewHasMovementToggle = selectedAppearanceCategory == 1 and #previewFrameGroups == 2 and
+      previewIdleGroupIndex ~= nil and previewMovingGroupIndex ~= nil
+   previewMoving = false
+   if previewHasMovementToggle then
+      previewFrameGroupIndex = previewIdleGroupIndex
+   end
    previewPatternX = 0
    previewPatternY = 0
    previewPatternZ = 0
    previewLayer = 0
    previewPhase = 0
    previewMounted = false
+   previewMoving = false
    if not window then
       return
    end
@@ -453,11 +631,27 @@ configurePreviewControls = function(frameGroups)
       end
    end
 
-   for _, controlId in ipairs({ 'previewPatternX', 'previewPatternY', 'previewLayer', 'previewPatternZ', 'previewPhase' }) do
+   for _, controlId in ipairs({ 'previewPatternX', 'previewPatternY', 'previewLayer', 'previewPatternZ' }) do
       window:recursiveGetChildById(controlId).onOptionChange = function()
          refreshAppearancePreview()
       end
    end
+   window:recursiveGetChildById('previewPhaseStepper').onValueChange = function(_, value)
+      previewPhase = (value or 1) - 1
+      refreshAppearancePreview()
+   end
+   window:recursiveGetChildById('previewMoving').onCheckChange = function(widget)
+      if not previewHasMovementToggle then
+         return
+      end
+      previewMoving = widget:isChecked()
+      previewFrameGroupIndex = previewMoving and previewMovingGroupIndex or previewIdleGroupIndex
+      previewPhase = 0
+      updatePreviewPatternControls()
+      updateAnimationEditor()
+      refreshAppearancePreview()
+   end
+
    window:recursiveGetChildById('previewMounted').onCheckChange = function()
       refreshAppearancePreview()
    end
@@ -468,7 +662,7 @@ configurePreviewControls = function(frameGroups)
       hasChoice = hasChoice or group.patternWidth > 1 or group.patternHeight > 1 or
          group.patternDepth > 1 or group.layers > 1 or group.phaseCount > 1
    end
-   controls:setVisible(hasChoice)
+   controls:setVisible(hasChoice or activeVersion ~= nil)
    updateAnimationEditor()
    refreshAppearancePreview()
 end
@@ -774,10 +968,15 @@ local function loadAppearanceRecord(category, id, forceDiscard, forceReload)
 
    selectedAppearanceCategory = category
    selectedAppearanceId = id
+   selectedSpriteId = nil
+   selectedSpriteContext = nil
+   window:recursiveGetChildById('replacePreviewSpriteButton'):setEnabled(false)
    window:recursiveGetChildById('appearanceCategory'):setCurrentOptionByData(category, true)
    buildAppearanceProperties(data)
    refreshSelectedAppearance()
-   setStatus(tr('Appearance %d loaded.', id))
+   if not selectedSpriteId then
+      setStatus(tr('Appearance %d loaded.', id))
+   end
    renderAppearanceRows(window:recursiveGetChildById('appearanceList'):getVirtualOffset().y)
    return true
 end
@@ -838,7 +1037,10 @@ local function setActivePage(page)
    window:recursiveGetChildById('importPageButton'):setBackgroundColor(page == 'import' and '#603bb0' or '#363636')
    window:recursiveGetChildById('exportPageButton'):setBackgroundColor(page == 'export' and '#603bb0' or '#363636')
    if page == 'import' and selectedSpriteId then
-      window:recursiveGetChildById('selectedSpriteLabel'):setText(tr('Selected sprite ID: %d', selectedSpriteId))
+      local size = canvas and string.format('%d x %d', canvas:getSpriteWidth(), canvas:getSpriteHeight()) or ''
+      window:recursiveGetChildById('selectedSpriteLabel'):setText(
+         tr('Target: sprite %d | %s | %s. Same-size PNG required; shared IDs change everywhere.',
+            selectedSpriteId, selectedSpriteContext or tr('current preview'), size))
    elseif page == 'export' then
       window:recursiveGetChildById('activeWorkCopyLabel'):setText(activeWorkRoot or tr('No work copy is open.'))
    end
@@ -910,6 +1112,7 @@ end
 local function destroyWindow()
    appearanceValueWidgets = {}
    appearanceStringWidgets = {}
+   animationWidgets = {}
    if window then
       window:destroy()
       window = nil
@@ -1051,6 +1254,26 @@ function showImportPage()
    setActivePage('import')
 end
 
+function selectPreviewDirection(directionIndex)
+   local group = currentPreviewGroup()
+   if not group or selectedAppearanceCategory ~= 1 or directionIndex < 0 or directionIndex >= group.patternWidth then
+      return
+   end
+   previewPatternX = directionIndex
+   updatePreviewPatternControls()
+   refreshAppearancePreview()
+end
+
+function quickReplacePreviewSprite()
+   if not selectedSpriteId then
+      setStatus(tr('Select a linked sprite before replacing it.'))
+      return
+   end
+   setActivePage('import')
+   window:recursiveGetChildById('imagePathEdit'):focus()
+   setStatus(tr('Paste a same-size PNG path for sprite %d.', selectedSpriteId))
+end
+
 function showExportPage()
    setActivePage('export')
 end
@@ -1085,6 +1308,7 @@ function replaceSprite(forceDiscard)
       setStatus(tr('Select a sprite and enter an absolute PNG path.'))
       return
    end
+   local previewSelection = capturePreviewSelection()
    local ok, result = pcall(g_spriteAppearances.importSpriteFromFile, id, path, activeVersion)
    if not ok then
       setStatus(tostring(result))
@@ -1095,9 +1319,13 @@ function replaceSprite(forceDiscard)
       return
    end
    refreshAppearanceCatalog(selectedAppearanceCategory)
-   loadAppearanceRecord(selectedAppearanceCategory, selectedAppearanceId, true, true)
-   selectSprite(result)
-   setStatus(tr('Sprite %d replaced from the prepared PNG.', result))
+   if not loadAppearanceRecord(selectedAppearanceCategory, selectedAppearanceId, true, true) then
+      setStatus(tr('Sprite %d was replaced, but the appearance preview could not be reloaded.', result))
+      return
+   end
+   restorePreviewSelection(previewSelection)
+   setActivePage('editor')
+   setStatus(tr('Sprite %d replaced; preview restored: %s.', result, selectedSpriteContext or tr('current selection')))
 end
 
 function createAppearance(forceDiscard)

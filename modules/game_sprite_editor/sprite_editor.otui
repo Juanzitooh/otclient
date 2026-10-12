@@ -277,65 +277,191 @@ SpriteEditorWindow < MainWindow
     margin-left: 8
     margin-right: 8
     margin-top: 4
-    height: 72
+    height: 74
     background-color: #242424
     visible: false
 
-    ComboBox
-      id: previewFrameGroup
+    Panel
+      id: previewDirectionPad
       anchors.left: parent.left
       anchors.top: parent.top
-      width: 105
+      size: 150 68
+      visible: false
+
+      Button
+        id: previewNorthWest
+        !text: tr('NW')
+        anchors.left: parent.left
+        anchors.top: parent.top
+        size: 48 21
+        @onClick: modules.game_sprite_editor.selectPreviewDirection(7)
+
+      Button
+        id: previewNorth
+        !text: tr('North')
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        size: 48 21
+        @onClick: modules.game_sprite_editor.selectPreviewDirection(0)
+
+      Button
+        id: previewNorthEast
+        !text: tr('NE')
+        anchors.right: parent.right
+        anchors.top: parent.top
+        size: 48 21
+        @onClick: modules.game_sprite_editor.selectPreviewDirection(4)
+
+      Button
+        id: previewWest
+        !text: tr('West')
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        size: 48 21
+        @onClick: modules.game_sprite_editor.selectPreviewDirection(3)
+
+      Label
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        !text: tr('Dir')
+        text-align: center
+        width: 48
+        height: 21
+
+      Button
+        id: previewEast
+        !text: tr('East')
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        size: 48 21
+        @onClick: modules.game_sprite_editor.selectPreviewDirection(1)
+
+      Button
+        id: previewSouthWest
+        !text: tr('SW')
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        size: 48 21
+        @onClick: modules.game_sprite_editor.selectPreviewDirection(6)
+
+      Button
+        id: previewSouth
+        !text: tr('South')
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        size: 48 21
+        @onClick: modules.game_sprite_editor.selectPreviewDirection(2)
+
+      Button
+        id: previewSouthEast
+        !text: tr('SE')
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        size: 48 21
+        @onClick: modules.game_sprite_editor.selectPreviewDirection(5)
+
+    Panel
+      id: previewSettings
+      anchors.left: previewDirectionPad.right
+      anchors.right: parent.right
+      anchors.top: parent.top
+      anchors.bottom: parent.bottom
+      margin-left: 8
+
+    ComboBox
+      id: previewFrameGroup
+      anchors.left: previewSettings.left
+      anchors.top: parent.top
+      width: 94
       height: 21
+
+    CheckBox
+      id: previewMoving
+      !text: tr('Moving')
+      anchors.left: previewSettings.left
+      anchors.top: parent.top
+      width: 90
+      height: 21
+      visible: false
+
+    CheckBox
+      id: previewMounted
+      !text: tr('Mounted')
+      anchors.left: previewSettings.left
+      anchors.top: parent.top
+      margin-left: 96
+      width: 90
+      height: 21
+      visible: false
 
     ComboBox
       id: previewPatternX
-      anchors.left: previewFrameGroup.right
+      anchors.left: previewSettings.left
       anchors.top: parent.top
-      margin-left: 4
-      width: 115
+      width: 94
       height: 21
 
     ComboBox
       id: previewPatternY
-      anchors.left: previewPatternX.right
+      anchors.left: previewSettings.left
       anchors.top: parent.top
-      margin-left: 4
-      width: 90
+      margin-left: 100
+      width: 88
       height: 21
 
     ComboBox
       id: previewLayer
-      anchors.left: previewPatternY.right
+      anchors.left: previewSettings.left
       anchors.top: parent.top
-      margin-left: 4
+      margin-left: 200
       width: 82
       height: 21
 
     ComboBox
       id: previewPatternZ
-      anchors.left: parent.left
+      anchors.left: previewSettings.left
       anchors.top: previewFrameGroup.bottom
-      margin-top: 3
-      width: 105
-      height: 21
+      margin-top: 4
+      width: 90
+      height: 22
 
-    CheckBox
-      id: previewMounted
-      !text: tr('Mounted')
-      anchors.left: previewPatternZ.right
-      anchors.verticalCenter: previewPatternZ.verticalCenter
-      margin-left: 8
-      width: 100
-      visible: false
-
-    ComboBox
-      id: previewPhase
-      anchors.left: parent.left
+    Label
+      id: previewPhaseLabel
+      !text: tr('Frame')
+      anchors.left: previewSettings.left
       anchors.top: previewPatternZ.bottom
-      margin-top: 3
-      width: 115
+      margin-top: 5
+      width: 45
       height: 21
+
+    SpinBox
+      id: previewPhaseStepper
+      anchors.left: previewPhaseLabel.right
+      anchors.verticalCenter: previewPhaseLabel.verticalCenter
+      width: 66
+      height: 22
+      minimum: 1
+      maximum: 1
+      text: 1
+
+    Label
+      id: previewPhaseCount
+      anchors.left: previewPhaseStepper.right
+      anchors.verticalCenter: previewPhaseStepper.verticalCenter
+      margin-left: 4
+      width: 46
+      height: 21
+      text-wrap: false
+
+    Button
+      id: replacePreviewSpriteButton
+      !text: tr('Replace PNG...')
+      anchors.left: previewPhaseCount.right
+      anchors.verticalCenter: previewPhaseCount.verticalCenter
+      margin-left: 5
+      width: 116
+      height: 23
+      @onClick: modules.game_sprite_editor.quickReplacePreviewSprite()
 
   Panel
     id: rightPanel
@@ -605,11 +731,11 @@ SpriteEditorWindow < MainWindow
         anchors.right: parent.right
         anchors.top: prev.bottom
         margin-top: 7
-        height: 30
+        height: 44
         text-wrap: true
 
       Label
-        !text: tr('Absolute path to PNG')
+        !text: tr('PNG file path')
         anchors.left: parent.left
         anchors.top: selectedSpriteLabel.bottom
         margin-top: 8
@@ -621,11 +747,11 @@ SpriteEditorWindow < MainWindow
         anchors.top: prev.bottom
         margin-top: 4
         height: 22
-        !placeholder: tr('Absolute PNG file path')
+        !placeholder: tr('Paste the absolute path to a prepared PNG')
 
       Button
         id: replaceSpriteButton
-        !text: tr('Replace selected sprite')
+        !text: tr('Replace target sprite')
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: imagePathEdit.bottom
