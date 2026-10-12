@@ -398,19 +398,26 @@ local function resetAppearanceDraft()
 end
 
 local function confirmUnsavedChanges(message, continueAction)
-   displayGeneralBox(tr('Unsaved changes'), message, {
-      { text = tr('Save and continue'), callback = function()
-         saveAppearanceProperties()
-         if not hasAppearanceChanges() then
-            continueAction()
-         end
-      end },
+   local messageBox
+   local function saveAndContinue()
+      messageBox:ok()
+      saveAppearanceProperties()
+      if not hasAppearanceChanges() then
+         continueAction()
+      end
+   end
+   local function cancelMessageBox()
+      messageBox:cancel()
+   end
+   messageBox = displayGeneralBox(tr('Unsaved changes'), message, {
+      { text = tr('Save and continue'), callback = saveAndContinue },
       { text = tr('Discard edits'), callback = function()
+         messageBox:ok()
          resetAppearanceDraft()
          continueAction()
       end },
-      { text = tr('Cancel'), callback = function() end },
-   })
+      { text = tr('Cancel'), callback = cancelMessageBox },
+   }, saveAndContinue, cancelMessageBox)
 end
 
 selectSprite = function(id)
@@ -1795,9 +1802,26 @@ end
 
 function exportWorkCopy(forceContinue)
    if hasAppearanceChanges() and not forceContinue then
-      confirmUnsavedChanges(tr('Save changes to the working copy before exporting?'), function()
-         exportWorkCopy(true)
-      end)
+      local messageBox
+      local function saveAndExport()
+         messageBox:ok()
+         saveAppearanceProperties()
+         if not hasAppearanceChanges() then
+            exportWorkCopy(true)
+         end
+      end
+      local function cancelMessageBox()
+         messageBox:cancel()
+      end
+      messageBox = displayGeneralBox(tr('Unsaved appearance properties'), tr('Save or discard the pending changes before exporting the work copy.'), {
+         { text = tr('Save and export'), callback = saveAndExport },
+         { text = tr('Discard and export'), callback = function()
+            messageBox:ok()
+            resetAppearanceDraft()
+            exportWorkCopy(true)
+         end },
+         { text = tr('Cancel'), callback = cancelMessageBox },
+      }, saveAndExport, cancelMessageBox)
       return
    end
    if not activeVersion or g_game.isOnline() then
