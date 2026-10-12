@@ -349,7 +349,8 @@ std::string ThingTypeManager::getAppearanceEditorData(const int version, const i
         throw stdext::exception("appearance {} was not found", id);
 
     nlohmann::json result = { { "bools", nlohmann::json::object() }, { "values", nlohmann::json::object() } };
-    collectAppearanceFields(appearance->flags(), "", result["bools"], result["values"]);
+    if (category == ThingCategoryItem)
+        collectAppearanceFields(appearance->flags(), "", result["bools"], result["values"]);
     result["name"] = appearance->name();
     result["description"] = appearance->description();
     result["frameGroups"] = nlohmann::json::array();
@@ -437,13 +438,19 @@ bool ThingTypeManager::saveAppearanceEditorData(const int version, const int cat
         }
     }
 
-    auto* flags = appearance->mutable_flags();
     for (const auto* section : { "bools", "values" }) {
         const auto it = updates.find(section);
         if (it == updates.end())
             continue;
         if (!it->is_object())
             throw stdext::exception("appearance changes section '{}' must be an object", section);
+        if (category != ThingCategoryItem) {
+            if (!it->empty())
+                throw stdext::exception("appearance flags and values can only be edited for objects");
+            continue;
+        }
+
+        auto* flags = appearance->mutable_flags();
         for (auto field = it->begin(); field != it->end(); ++field)
             setAppearanceScalar(*flags, field.key(), field.value());
     }

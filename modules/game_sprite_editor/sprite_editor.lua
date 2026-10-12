@@ -178,6 +178,8 @@ local function setPropertiesTab(tab)
    tabBar:setHeight(hasTabs and 24 or 0)
    window:recursiveGetChildById('noPropertyOptionsLabel'):setVisible(
       appearanceOriginal ~= nil and not flagsAvailable and not valuesAvailable and not animationAvailable)
+   window:recursiveGetChildById('noPropertyOptionsLabel'):setText(
+      tr('No additional editable properties for this appearance.'))
 
    if tab == 'values' and valuesAvailable then
       currentPropertiesTab = 'values'
