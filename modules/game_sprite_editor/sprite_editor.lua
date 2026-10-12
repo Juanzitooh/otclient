@@ -208,15 +208,6 @@ local function updateAppearanceSaveButton()
    end
 end
 
-local function hasEditableAnimation(data)
-   for _, group in ipairs(data.frameGroups or {}) do
-      if group.animation and group.animation.enabled then
-         return true
-      end
-   end
-   return false
-end
-
 local function updateSpriteReplacementTarget()
    if not window then
       return
@@ -1549,7 +1540,7 @@ function openWorkCopy()
       return
    end
    if hasAppearanceChanges() then
-      confirmUnsavedChanges(tr('Save changes before opening another working copy?'), function()
+      confirmUnsavedChanges(tr('Save changes before opening another work copy?'), function()
          openWorkCopyVersion(version)
       end)
       return
@@ -1593,7 +1584,6 @@ function selectPreviewDirection(directionIndex)
    updatePreviewPatternControls()
    refreshAppearancePreview()
 end
-
 
 function showExportPage()
    setActivePage('export')
@@ -1650,7 +1640,7 @@ function replaceSprite(forceDiscard)
    end
    restorePreviewSelection(previewSelection)
    setActivePage('editor')
-   setStatus(tr('Sprite PNG replaced in the working copy; preview restored.'))
+   setStatus(tr('Sprite %d replaced; preview restored: %s.', result, selectedSpriteContext or tr('current selection')))
 end
 
 function createAppearance(forceDiscard)
@@ -1687,8 +1677,8 @@ function createAppearance(forceDiscard)
       activeVersion, category, spriteId, name, description)
    if not created then
       reloadAssets()
-      setStatus(tr('Sprite %d was imported, but the appearance could not be created: %s', spriteId,
-         getUserFacingError(appearanceId)))
+      setStatus(tr('Sprite %d was imported, but the appearance could not be created: %s',
+         spriteId, getUserFacingError(appearanceId)))
       return
    end
    if not reloadAssets() then
@@ -1702,7 +1692,7 @@ function createAppearance(forceDiscard)
    loadAppearanceRecord(category, appearanceId, true)
    selectSprite(spriteId)
    showEditorPage()
-   setStatus(tr('New appearance created in the working copy.'))
+   setStatus(tr('Created appearance %d with sprite %d.', appearanceId, spriteId))
 end
 
 collectAnimationWidgetChanges = function()
@@ -1800,7 +1790,7 @@ function saveAppearanceProperties()
    end
    refreshAppearanceCatalog(selectedAppearanceCategory)
    loadAppearanceRecord(selectedAppearanceCategory, selectedAppearanceId, true, true)
-   setAppearanceStatus(tr('Saved in the working copy.'))
+   setAppearanceStatus(tr('Appearance %d saved to the work copy.', selectedAppearanceId))
 end
 
 function exportWorkCopy(forceContinue)
@@ -1833,7 +1823,7 @@ function reloadPackage()
       return
    end
    if hasAppearanceChanges() then
-      confirmUnsavedChanges(tr('Save changes before reloading the working copy?'), function()
+      confirmUnsavedChanges(tr('Save changes before reloading the work copy?'), function()
          reloadPackageNow()
       end)
       return
