@@ -5,7 +5,7 @@ AppearanceResultRow < Button
   anchors.right: parent.right
   anchors.top: parent.top
 
-  UISprite
+  UISpriteEditorCanvas
     id: thumbnail
     anchors.left: parent.left
     anchors.verticalCenter: parent.verticalCenter
@@ -13,21 +13,23 @@ AppearanceResultRow < Button
     size: 40 40
 
   Label
-    id: appearanceName
+    id: appearanceResultName
     anchors.left: thumbnail.right
     anchors.right: parent.right
     anchors.top: parent.top
     margin-left: 7
-    margin-top: 8
+    margin-top: 5
+    height: 18
     text-wrap: false
 
   Label
     id: appearanceId
     anchors.left: thumbnail.right
     anchors.right: parent.right
-    anchors.bottom: parent.bottom
+    anchors.top: parent.top
     margin-left: 7
-    margin-bottom: 5
+    margin-top: 27
+    height: 18
     text-wrap: false
 
 AppearanceFlagCheckBox < CheckBox
@@ -50,6 +52,45 @@ AppearanceValueRow < Panel
     anchors.right: parent.right
     anchors.verticalCenter: parent.verticalCenter
     margin-left: 5
+    height: 20
+
+AppearanceFrameDurationRow < Panel
+  height: 27
+
+  Label
+    id: phaseLabel
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    width: 52
+    text-wrap: false
+
+  Label
+    !text: tr('Min')
+    anchors.left: phaseLabel.right
+    anchors.verticalCenter: parent.verticalCenter
+    width: 25
+    text-wrap: false
+
+  TextEdit
+    id: durationMin
+    anchors.left: prev.right
+    anchors.verticalCenter: parent.verticalCenter
+    width: 58
+    height: 20
+
+  Label
+    !text: tr('Max')
+    anchors.left: durationMin.right
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 5
+    width: 27
+    text-wrap: false
+
+  TextEdit
+    id: durationMax
+    anchors.left: prev.right
+    anchors.verticalCenter: parent.verticalCenter
+    width: 58
     height: 20
 
 SpriteEditorWindow < MainWindow
@@ -131,9 +172,9 @@ SpriteEditorWindow < MainWindow
     id: appearancesPanel
     anchors.left: parent.left
     anchors.top: pageNavigation.bottom
-    anchors.bottom: reloadButton.top
+    anchors.bottom: parent.bottom
     margin-top: 8
-    margin-bottom: 8
+    margin-bottom: 33
     width: 230
 
     Label
@@ -161,7 +202,7 @@ SpriteEditorWindow < MainWindow
 
     Label
       id: appearanceResultsLabel
-      !text: tr('Open a work copy to browse appearances.')
+      !text: tr('Open a work copy to browse.')
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: appearanceSearch.bottom
@@ -221,12 +262,80 @@ SpriteEditorWindow < MainWindow
 
   Label
     id: previewHintLabel
-    !text: tr('Preview only | Starts at 1x | Wheel: zoom | Middle-drag: pan | Transparent pixels use the checkerboard.')
+    !text: tr('1x | Wheel: zoom | Middle-drag: pan | Checkerboard: transparency')
     anchors.left: editorCanvasFrame.left
     anchors.right: editorCanvasFrame.right
     anchors.bottom: editorCanvasFrame.bottom
     margin: 8
     text-wrap: true
+
+  Panel
+    id: previewControls
+    anchors.left: editorCanvasFrame.left
+    anchors.right: editorCanvasFrame.right
+    anchors.top: spriteInfoLabel.bottom
+    margin-left: 8
+    margin-right: 8
+    margin-top: 4
+    height: 72
+    background-color: #242424
+    visible: false
+
+    ComboBox
+      id: previewFrameGroup
+      anchors.left: parent.left
+      anchors.top: parent.top
+      width: 105
+      height: 21
+
+    ComboBox
+      id: previewPatternX
+      anchors.left: previewFrameGroup.right
+      anchors.top: parent.top
+      margin-left: 4
+      width: 115
+      height: 21
+
+    ComboBox
+      id: previewPatternY
+      anchors.left: previewPatternX.right
+      anchors.top: parent.top
+      margin-left: 4
+      width: 90
+      height: 21
+
+    ComboBox
+      id: previewLayer
+      anchors.left: previewPatternY.right
+      anchors.top: parent.top
+      margin-left: 4
+      width: 82
+      height: 21
+
+    ComboBox
+      id: previewPatternZ
+      anchors.left: parent.left
+      anchors.top: previewFrameGroup.bottom
+      margin-top: 3
+      width: 105
+      height: 21
+
+    CheckBox
+      id: previewMounted
+      !text: tr('Mounted')
+      anchors.left: previewPatternZ.right
+      anchors.verticalCenter: previewPatternZ.verticalCenter
+      margin-left: 8
+      width: 100
+      visible: false
+
+    ComboBox
+      id: previewPhase
+      anchors.left: parent.left
+      anchors.top: previewPatternZ.bottom
+      margin-top: 3
+      width: 115
+      height: 21
 
   Panel
     id: rightPanel
@@ -285,7 +394,7 @@ SpriteEditorWindow < MainWindow
         anchors.left: parent.left
         anchors.top: appearanceDescription.bottom
         margin-top: 8
-        width: 145
+        width: 100
         height: 24
         @onClick: modules.game_sprite_editor.showPropertiesTab('flags')
 
@@ -293,11 +402,21 @@ SpriteEditorWindow < MainWindow
         id: valuesTabButton
         !text: tr('Values')
         anchors.left: flagsTabButton.right
+        anchors.top: flagsTabButton.top
+        margin-left: 4
+        width: 100
+        height: 24
+        @onClick: modules.game_sprite_editor.showPropertiesTab('values')
+
+      Button
+        id: animationTabButton
+        !text: tr('Animation')
+        anchors.left: valuesTabButton.right
         anchors.right: parent.right
         anchors.top: flagsTabButton.top
         margin-left: 4
         height: 24
-        @onClick: modules.game_sprite_editor.showPropertiesTab('values')
+        @onClick: modules.game_sprite_editor.showPropertiesTab('animation')
 
       UIScrollArea
         id: appearanceFlagsList
@@ -345,6 +464,106 @@ SpriteEditorWindow < MainWindow
         pixels-scroll: true
         visible: false
 
+      UIScrollArea
+        id: appearanceAnimationPanel
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: flagsTabButton.bottom
+        anchors.bottom: appearanceStatus.top
+        margin-top: 4
+        margin-right: 12
+        margin-bottom: 5
+        vertical-scrollbar: appearanceAnimationScroll
+        layout: verticalBox
+        padding: 3
+        auto-focus: none
+        visible: false
+
+        Label
+          id: animationGroupInfo
+          !text: tr('Select a frame group to edit its animation.')
+          height: 33
+          text-wrap: true
+
+        Panel
+          id: animationDefaultPhaseRow
+          height: 25
+
+          Label
+            !text: tr('Default phase')
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: 82
+
+          TextEdit
+            id: animationDefaultPhase
+            anchors.left: prev.right
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            height: 20
+
+        CheckBox
+          id: animationRandomStart
+          !text: tr('Random start phase')
+          height: 22
+
+        CheckBox
+          id: animationSynchronized
+          !text: tr('Synchronized')
+          height: 22
+
+        Panel
+          id: animationLoopTypeRow
+          height: 25
+
+          Label
+            !text: tr('Loop type')
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: 82
+
+          ComboBox
+            id: animationLoopType
+            anchors.left: prev.right
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            height: 22
+
+        Panel
+          id: animationLoopCountRow
+          height: 25
+
+          Label
+            !text: tr('Loop count')
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: 82
+
+          TextEdit
+            id: animationLoopCount
+            anchors.left: prev.right
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            height: 20
+
+        Label
+          !text: tr('Frame durations (milliseconds)')
+          height: 20
+
+        Panel
+          id: animationFrameDurations
+          layout: verticalBox
+          height: 1
+
+      VerticalScrollBar
+        id: appearanceAnimationScroll
+        anchors.top: appearanceAnimationPanel.top
+        anchors.bottom: appearanceAnimationPanel.bottom
+        anchors.right: parent.right
+        step: 27
+        pixels-scroll: true
+        visible: false
+
       Label
         id: appearanceStatus
         !text: tr('Changes are saved to the work copy.')
@@ -386,6 +605,7 @@ SpriteEditorWindow < MainWindow
         anchors.right: parent.right
         anchors.top: prev.bottom
         margin-top: 7
+        height: 30
         text-wrap: true
 
       Label
@@ -468,6 +688,7 @@ SpriteEditorWindow < MainWindow
         anchors.right: parent.right
         anchors.top: createAppearanceButton.bottom
         margin-top: 6
+        height: 38
         text-wrap: true
 
     Panel
@@ -491,6 +712,7 @@ SpriteEditorWindow < MainWindow
         anchors.right: parent.right
         anchors.top: prev.bottom
         margin-top: 8
+        height: 42
         text-wrap: true
 
       Label
@@ -540,6 +762,7 @@ SpriteEditorWindow < MainWindow
         anchors.right: parent.right
         anchors.top: exportButton.bottom
         margin-top: 8
+        height: 46
         text-wrap: true
 
   Button
