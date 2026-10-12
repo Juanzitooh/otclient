@@ -7,9 +7,10 @@ The optional Assets Editor manages modern client assets without logging in. It i
 1. Start the client offline and open **Assets** from the top menu.
 2. Select an installed asset version in the 15.x range and open its work copy.
 3. Load an appearance by category and ID to preview its linked sprites. The appearance properties window edits its name, description, boolean flags, and numeric flag values.
-4. To replace a sprite, enter its ID and the absolute path to a prepared PNG. The image dimensions must match that sprite.
+4. Select a linked frame and choose **Replace**. Use another existing sprite ID to change only this frame's link, or import a PNG to allocate a new sprite ID and link it here. A replacement PNG must match the selected sprite's dimensions.
 5. To create an appearance, choose a category, name, optional description, and PNG path. New entries receive a new sprite ID and use one static 32 x 32 sprite. The editor creates one appearance in the selected category and opens its properties for flag edits.
-6. Use **Reload work copy** to reload the catalog and appearances from disk.
+6. Choose **Edit** to export the selected sprite as a temporary PNG and open it in the configured external editor. Save the PNG there, return to OTClient, and choose **Apply** to update that sprite in the work copy. All appearances sharing the sprite ID use the edited image. **Editor...** stores the executable or launcher path in the user's OTClient settings.
+7. Use **Reload work copy** to reload the catalog and appearances from disk.
 
 The editor copies the selected asset package into `<client write directory>/sprite-editor/data/things/<version>/` and mounts `<client write directory>/sprite-editor` as a resource search path. Runtime assets continue to load through `/data/things/<version>/`. Saves are restricted to this work copy; installed packages are never selected as a write destination.
 
@@ -25,11 +26,4 @@ The editor supports modern directory-based asset packages in client versions 15.
 
 Enter an absolute path to a PNG image. The image is limited to 4 MiB and 384 x 384 pixels. Use the wheel to zoom and middle-drag to pan the preview.
 
-## Planned: edit a sprite in an external image editor
-
-A future action for the selected Sprite ID can export a separate PNG into the
-user's writable sprite-editor directory, open that copy in a configured desktop
-editor, and let the user explicitly apply the saved PNG to the active work copy.
-This keeps the installed package untouched and reuses the existing import
-validation. Editors must accept the image path as a command-line argument;
-[LibreSprite supports positional file inputs](https://github.com/LibreSprite/LibreSprite/blob/master/src/app/app_options.cpp).
+The external editor receives the temporary PNG path as its only argument. Editors must accept a file path as a positional argument; [LibreSprite supports positional file inputs](https://github.com/LibreSprite/LibreSprite/blob/master/src/app/app_options.cpp). The temporary image is validated against the original sprite dimensions before it is written to the work copy.
