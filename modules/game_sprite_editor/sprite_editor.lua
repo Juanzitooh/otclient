@@ -623,7 +623,9 @@ local function updatePreviewPatternControls()
 
    local settingsRowCount = (hasMetaControls and 1 or 0) + (hasPatternControls and 1 or 0) +
       (hasAnimation and 1 or 0)
-   local settingsHeight = settingsRowCount > 0 and settingsRowCount * 22 + (settingsRowCount - 1) * 4 or 1
+   local settingsHeight = settingsRowCount > 0 and
+      (hasMetaControls and 22 or 0) + (hasPatternControls and 22 or 0) + (hasAnimation and 28 or 0) +
+      (settingsRowCount - 1) * 4 or 1
    settings:setHeight(settingsHeight)
 
    local groupOptions = {}
@@ -894,10 +896,14 @@ updateAnimationEditor = function()
    local minEdit = window:recursiveGetChildById('animationDurationMin')
    local maxLabel = window:recursiveGetChildById('animationDurationMaxLabel')
    local maxEdit = window:recursiveGetChildById('animationDurationMax')
+   local frameSelectionGroup = window:recursiveGetChildById('previewFrameSelectionGroup')
+   local durationGroup = window:recursiveGetChildById('previewDurationGroup')
    local hasMultipleFrames = phaseCount > 1
    local hasFrameControls = hasMultipleFrames or isAnimated
 
    timelinePanel:setVisible(hasFrameControls)
+   frameSelectionGroup:setVisible(hasFrameControls)
+   durationGroup:setVisible(isAnimated)
    phaseStepper:setMinimum(1)
    phaseStepper:setMaximum(phaseCount)
    phaseStepper:setStep(1)
@@ -927,6 +933,7 @@ updateAnimationEditor = function()
       local loopTypeBox = window:recursiveGetChildById('animationLoopType')
       local loopCountLabel = window:recursiveGetChildById('animationLoopCountLabel')
       local loopCount = window:recursiveGetChildById('animationLoopCount')
+      local loopCountControls = window:recursiveGetChildById('animationLoopCountControls')
       local randomStartValue = changes.randomStartPhase
       if randomStartValue == nil then
          randomStartValue = animation.randomStartPhase
@@ -951,6 +958,8 @@ updateAnimationEditor = function()
       local loopType = changes.loopType ~= nil and changes.loopType or animation.loopType
       loopCountLabel:setVisible(loopType == 1)
       loopCount:setVisible(loopType == 1)
+      loopCountControls:setVisible(loopType == 1)
+      loopCountControls:setWidth(loopType == 1 and 100 or 0)
 
       animationWidgets.groupIndex = groupIndex
       animationWidgets.fields = { defaultStartPhase = defaultPhase, loopCount = loopCount }
@@ -978,6 +987,8 @@ updateAnimationEditor = function()
             setAnimationChange(groupIndex, 'loopType', value)
             loopCountLabel:setVisible(value == 1)
             loopCount:setVisible(value == 1)
+            loopCountControls:setVisible(value == 1)
+            loopCountControls:setWidth(value == 1 and 100 or 0)
          end
       end
       loopCount.onTextChange = function(widget)
@@ -1016,6 +1027,9 @@ updateAnimationEditor = function()
       local loopTypeBox = window:recursiveGetChildById('animationLoopType')
       loopTypeBox.onOptionChange = nil
       loopTypeBox:clearOptions()
+      local loopCountControls = window:recursiveGetChildById('animationLoopCountControls')
+      loopCountControls:setVisible(false)
+      loopCountControls:setWidth(0)
       window:recursiveGetChildById('animationLoopCountLabel'):setVisible(false)
       window:recursiveGetChildById('animationDefaultPhase'):setText('0')
       window:recursiveGetChildById('animationRandomStart'):setChecked(false)
