@@ -49,10 +49,10 @@ local PREVIEW_DIRECTIONS = {
 }
 
 local categories = {
-   { name = 'Objects', data = 0 },
-   { name = 'Outfits', data = 1 },
-   { name = 'Effects', data = 2 },
-   { name = 'Missiles', data = 3 },
+   { name = 'Objects', singular = 'Object', data = 0 },
+   { name = 'Outfits', singular = 'Outfit', data = 1 },
+   { name = 'Effects', singular = 'Effect', data = 2 },
+   { name = 'Missiles', singular = 'Missile', data = 3 },
 }
 
 local selectAppearance
@@ -128,22 +128,84 @@ local function updateAppearanceSaveButton()
    end
 end
 
+local function hasEditableAnimation(data)
+   for _, group in ipairs(data.frameGroups or {}) do
+      if group.animation and group.animation.enabled then
+         return true
+      end
+   end
+   return false
+end
+
+local function updateSpriteReplacementTarget()
+   if not window then
+      return
+   end
+   local hasTarget = selectedSpriteId ~= nil
+   local canReplace = hasTarget and activeVersion ~= nil and not g_game.isOnline()
+   local targetPanel = window:recursiveGetChildById('spriteReplacementPanel')
+   targetPanel:setVisible(currentPage == 'editor' and canReplace)
+   targetPanel:setHeight(canReplace and 58 or 0)
+   targetPanel:setMarginTop(canReplace and 6 or 0)
+   window:recursiveGetChildById('replacePreviewSpriteButton'):setVisible(canReplace)
+   window:recursiveGetChildById('replacePreviewSpriteButton'):setEnabled(canReplace)
+   window:recursiveGetChildById('replaceAppearanceSpriteButton'):setEnabled(canReplace)
+   if not hasTarget then
+      window:recursiveGetChildById('selectedSpriteLabel'):setText(tr('Select a linked sprite to replace its PNG.'))
+      return
+   end
+
+   local size = string.format('%d x %d', canvas:getSpriteWidth(), canvas:getSpriteHeight())
+   local targetLabel = window:recursiveGetChildById('selectedSpriteLabel')
+   targetLabel:setText(tr('Sprite %d | %s', selectedSpriteId, selectedSpriteContext or tr('current frame')))
+   targetLabel:setTooltip(tr('This PNG replaces sprite %d wherever that ID is shared. Use a %s PNG.',
+      selectedSpriteId, size))
+end
+
 local function setPropertiesTab(tab)
    if not window then
       return
    end
-   currentPropertiesTab = tab == 'values' and 'values' or tab == 'animation' and 'animation' or 'flags'
+   local flagsAvailable = appearanceOriginal ~= nil and next(appearanceOriginal.bools or {}) ~= nil
+   local valuesAvailable = appearanceOriginal ~= nil and next(appearanceOriginal.values or {}) ~= nil
+   local animationAvailable = appearanceOriginal ~= nil and hasEditableAnimation(appearanceOriginal)
+   window:recursiveGetChildById('flagsTabButton'):setVisible(flagsAvailable)
+   window:recursiveGetChildById('valuesTabButton'):setVisible(valuesAvailable)
+   window:recursiveGetChildById('animationTabButton'):setVisible(animationAvailable)
+   local tabBar = window:recursiveGetChildById('propertiesTabBar')
+   local hasTabs = flagsAvailable or valuesAvailable or animationAvailable
+   tabBar:setVisible(hasTabs)
+   tabBar:setHeight(hasTabs and 24 or 0)
+   window:recursiveGetChildById('noPropertyOptionsLabel'):setVisible(
+      appearanceOriginal ~= nil and not flagsAvailable and not valuesAvailable and not animationAvailable)
+
+   if tab == 'values' and valuesAvailable then
+      currentPropertiesTab = 'values'
+   elseif tab == 'animation' and animationAvailable then
+      currentPropertiesTab = 'animation'
+   elseif tab == 'flags' and flagsAvailable then
+      currentPropertiesTab = 'flags'
+   elseif flagsAvailable then
+      currentPropertiesTab = 'flags'
+   elseif valuesAvailable then
+      currentPropertiesTab = 'values'
+   elseif animationAvailable then
+      currentPropertiesTab = 'animation'
+   else
+      currentPropertiesTab = 'flags'
+   end
    local flagsVisible = currentPropertiesTab == 'flags'
    local valuesVisible = currentPropertiesTab == 'values'
-   window:recursiveGetChildById('appearanceFlagsList'):setVisible(flagsVisible)
-   window:recursiveGetChildById('appearanceFlagsScroll'):setVisible(flagsVisible)
-   window:recursiveGetChildById('appearanceValuesList'):setVisible(valuesVisible)
-   window:recursiveGetChildById('appearanceValuesScroll'):setVisible(valuesVisible)
-   window:recursiveGetChildById('appearanceAnimationPanel'):setVisible(currentPropertiesTab == 'animation')
-   window:recursiveGetChildById('appearanceAnimationScroll'):setVisible(currentPropertiesTab == 'animation')
+   local animationVisible = currentPropertiesTab == 'animation'
+   window:recursiveGetChildById('appearanceFlagsList'):setVisible(flagsVisible and flagsAvailable)
+   window:recursiveGetChildById('appearanceFlagsScroll'):setVisible(flagsVisible and flagsAvailable)
+   window:recursiveGetChildById('appearanceValuesList'):setVisible(valuesVisible and valuesAvailable)
+   window:recursiveGetChildById('appearanceValuesScroll'):setVisible(valuesVisible and valuesAvailable)
+   window:recursiveGetChildById('appearanceAnimationPanel'):setVisible(animationVisible and animationAvailable)
+   window:recursiveGetChildById('appearanceAnimationScroll'):setVisible(animationVisible and animationAvailable)
    window:recursiveGetChildById('flagsTabButton'):setBackgroundColor(flagsVisible and '#603bb0' or '#363636')
    window:recursiveGetChildById('valuesTabButton'):setBackgroundColor(valuesVisible and '#603bb0' or '#363636')
-   window:recursiveGetChildById('animationTabButton'):setBackgroundColor(currentPropertiesTab == 'animation' and '#603bb0' or '#363636')
+   window:recursiveGetChildById('animationTabButton'):setBackgroundColor(animationVisible and '#603bb0' or '#363636')
 end
 
 local function buildAppearanceProperties(data)
@@ -159,6 +221,8 @@ local function buildAppearanceProperties(data)
 
    local nameEdit = window:recursiveGetChildById('appearanceName')
    local descriptionEdit = window:recursiveGetChildById('appearanceDescription')
+   nameEdit:setEnabled(true)
+   descriptionEdit:setEnabled(true)
    nameEdit:setText(data.name or '')
    descriptionEdit:setText(data.description or '')
    appearanceStringWidgets.name = nameEdit
@@ -228,17 +292,21 @@ end
 local function clearAppearanceProperties()
    buildingAppearanceProperties = true
    window:recursiveGetChildById('appearanceInfoLabel'):setText(tr('Select an appearance from the list.'))
+   selectedAppearanceId = nil
+   appearanceOriginal = nil
    window:recursiveGetChildById('appearanceName'):setText('')
    window:recursiveGetChildById('appearanceDescription'):setText('')
    window:recursiveGetChildById('appearanceFlagsList'):destroyChildren()
    window:recursiveGetChildById('appearanceValuesList'):destroyChildren()
    window:recursiveGetChildById('animationFrameDurations'):destroyChildren()
    window:recursiveGetChildById('spriteInfoLabel'):setText(tr('Select an appearance to preview its sprite.'))
+   window:recursiveGetChildById('appearanceName'):setEnabled(false)
+   window:recursiveGetChildById('appearanceDescription'):setEnabled(false)
    selectedSpriteId = nil
    selectedSpriteContext = nil
    canvas:setVisible(false)
-   window:recursiveGetChildById('replacePreviewSpriteButton'):setEnabled(false)
-   appearanceOriginal = nil
+   window:recursiveGetChildById('previewSpritePathEdit'):setText('')
+   updateSpriteReplacementTarget()
    appearanceValueWidgets = {}
    appearanceStringWidgets = {}
    animationWidgets = {}
@@ -246,6 +314,7 @@ local function clearAppearanceProperties()
    updateAnimationEditor()
    clearAppearanceChanges()
    buildingAppearanceProperties = false
+   setPropertiesTab(currentPropertiesTab)
    updateAppearanceSaveButton()
 end
 
@@ -257,18 +326,20 @@ selectSprite = function(id)
       canvas:setVisible(false)
       selectedSpriteId = nil
       selectedSpriteContext = nil
-      window:recursiveGetChildById('replacePreviewSpriteButton'):setEnabled(false)
+      window:recursiveGetChildById('previewSpritePathEdit'):setText('')
+      updateSpriteReplacementTarget()
       setStatus(tr('Sprite %d is not available in this 15.x work copy.', id))
       return false
    end
 
+   if selectedSpriteId and selectedSpriteId ~= id then
+      window:recursiveGetChildById('previewSpritePathEdit'):setText('')
+   end
    canvas:setVisible(true)
    selectedSpriteId = id
    window:recursiveGetChildById('spriteInfoLabel'):setText(
       string.format('ID %d | %d x %d | %dx', id, canvas:getSpriteWidth(), canvas:getSpriteHeight(), canvas:getZoom()))
-   window:recursiveGetChildById('selectedSpriteLabel'):setText(
-      tr('Selected sprite ID: %d', id))
-   window:recursiveGetChildById('replacePreviewSpriteButton'):setEnabled(true)
+   updateSpriteReplacementTarget()
    setStatus(tr('Previewing sprite %d.', id))
    return true
 end
@@ -458,8 +529,7 @@ local function updatePreviewPatternControls()
    local phaseCountLabel = window:recursiveGetChildById('previewPhaseCount')
    phaseCountLabel:setVisible(hasMultipleFrames)
    phaseCountLabel:setText(tr('of %d', phaseCount))
-   local replacementButton = window:recursiveGetChildById('replacePreviewSpriteButton')
-   replacementButton:setEnabled(selectedSpriteId ~= nil and activeVersion ~= nil)
+   updateSpriteReplacementTarget()
 end
 
 local function refreshAppearancePreview()
@@ -512,10 +582,7 @@ local function refreshAppearancePreview()
          end
          table.insert(details, tr('Frame %d/%d', previewPhase + 1, math.max(1, group.phaseCount or 1)))
          selectedSpriteContext = table.concat(details, ' | ')
-         local spriteSize = string.format('%d x %d', canvas:getSpriteWidth(), canvas:getSpriteHeight())
-         window:recursiveGetChildById('selectedSpriteLabel'):setText(
-            tr('Target: sprite ID %d | %s | %s. Same-size PNG required; shared IDs change everywhere.',
-               spriteId, selectedSpriteContext, spriteSize))
+         updateSpriteReplacementTarget()
          setStatus(tr('Preview: %s | Sprite ID %d', selectedSpriteContext, spriteId))
       end
       return selected
@@ -525,8 +592,8 @@ local function refreshAppearancePreview()
    selectedSpriteContext = nil
    canvas:setVisible(false)
    window:recursiveGetChildById('spriteInfoLabel'):setText(tr('No sprite is linked to this frame selection.'))
-   window:recursiveGetChildById('selectedSpriteLabel'):setText(tr('No sprite is linked to this frame selection.'))
-   window:recursiveGetChildById('replacePreviewSpriteButton'):setEnabled(false)
+   window:recursiveGetChildById('previewSpritePathEdit'):setText('')
+   updateSpriteReplacementTarget()
    setStatus(tr('No sprite is linked to this frame selection.'))
    return false
 end
@@ -818,8 +885,11 @@ local function refreshSelectedAppearance()
    end
 
    local name = thing:getName()
+   local category = categories[selectedAppearanceCategory + 1]
+   local categoryName = category and tr(category.singular) or tr('Appearance')
    window:recursiveGetChildById('appearanceInfoLabel'):setText(
-      string.format('%s | ID %d', name ~= '' and name or tr('Unnamed appearance'), selectedAppearanceId))
+      string.format('%s | ID %d | %s', categoryName, selectedAppearanceId,
+         name ~= '' and name or tr('Unnamed appearance')))
    if #previewFrameGroups > 0 then
       refreshAppearancePreview()
    else
@@ -828,9 +898,11 @@ local function refreshSelectedAppearance()
          selectSprite(sprites[1])
       else
          selectedSpriteId = nil
+         selectedSpriteContext = nil
          canvas:setVisible(false)
          window:recursiveGetChildById('spriteInfoLabel'):setText(tr('This appearance has no linked sprites.'))
-         window:recursiveGetChildById('selectedSpriteLabel'):setText(tr('This appearance has no linked sprites.'))
+         window:recursiveGetChildById('previewSpritePathEdit'):setText('')
+         updateSpriteReplacementTarget()
       end
    end
 end
@@ -966,11 +1038,14 @@ local function loadAppearanceRecord(category, id, forceDiscard, forceReload)
       return false
    end
 
+   if selectedAppearanceCategory ~= category or selectedAppearanceId ~= id then
+      window:recursiveGetChildById('previewSpritePathEdit'):setText('')
+   end
    selectedAppearanceCategory = category
    selectedAppearanceId = id
    selectedSpriteId = nil
    selectedSpriteContext = nil
-   window:recursiveGetChildById('replacePreviewSpriteButton'):setEnabled(false)
+   updateSpriteReplacementTarget()
    window:recursiveGetChildById('appearanceCategory'):setCurrentOptionByData(category, true)
    buildAppearanceProperties(data)
    refreshSelectedAppearance()
@@ -1036,12 +1111,8 @@ local function setActivePage(page)
    window:recursiveGetChildById('editorPageButton'):setBackgroundColor(page == 'editor' and '#603bb0' or '#363636')
    window:recursiveGetChildById('importPageButton'):setBackgroundColor(page == 'import' and '#603bb0' or '#363636')
    window:recursiveGetChildById('exportPageButton'):setBackgroundColor(page == 'export' and '#603bb0' or '#363636')
-   if page == 'import' and selectedSpriteId then
-      local size = canvas and string.format('%d x %d', canvas:getSpriteWidth(), canvas:getSpriteHeight()) or ''
-      window:recursiveGetChildById('selectedSpriteLabel'):setText(
-         tr('Target: sprite %d | %s | %s. Same-size PNG required; shared IDs change everywhere.',
-            selectedSpriteId, selectedSpriteContext or tr('current preview'), size))
-   elseif page == 'export' then
+   updateSpriteReplacementTarget()
+   if page == 'export' then
       window:recursiveGetChildById('activeWorkCopyLabel'):setText(activeWorkRoot or tr('No work copy is open.'))
    end
 end
@@ -1269,9 +1340,10 @@ function quickReplacePreviewSprite()
       setStatus(tr('Select a linked sprite before replacing it.'))
       return
    end
-   setActivePage('import')
-   window:recursiveGetChildById('imagePathEdit'):focus()
-   setStatus(tr('Paste a same-size PNG path for sprite %d.', selectedSpriteId))
+   setActivePage('editor')
+   window:recursiveGetChildById('previewSpritePathEdit'):focus()
+   setStatus(tr('Enter a %s PNG for sprite %d. Shared sprite IDs change everywhere.',
+      string.format('%d x %d', canvas:getSpriteWidth(), canvas:getSpriteHeight()), selectedSpriteId))
 end
 
 function showExportPage()
@@ -1303,7 +1375,7 @@ function replaceSprite(forceDiscard)
       return
    end
    local id = selectedSpriteId
-   local path = window:recursiveGetChildById('imagePathEdit'):getText()
+   local path = window:recursiveGetChildById('previewSpritePathEdit'):getText()
    if not id or path == '' then
       setStatus(tr('Select a sprite and enter an absolute PNG path.'))
       return
@@ -1348,7 +1420,7 @@ function createAppearance(forceDiscard)
    local category = selectedOption(window:recursiveGetChildById('appearanceCategory'))
    local name = window:recursiveGetChildById('newAppearanceName'):getText()
    local description = window:recursiveGetChildById('newAppearanceDescription'):getText()
-   local path = window:recursiveGetChildById('imagePathEdit'):getText()
+   local path = window:recursiveGetChildById('newAppearancePngPathEdit'):getText()
    if not category or name == '' or path == '' then
       setStatus(tr('Choose a category, enter a name, and provide an absolute PNG path.'))
       return
