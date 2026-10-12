@@ -1311,7 +1311,12 @@ function replaceSprite(forceDiscard)
    local previewSelection = capturePreviewSelection()
    local ok, result = pcall(g_spriteAppearances.importSpriteFromFile, id, path, activeVersion)
    if not ok then
-      setStatus(tostring(result))
+      local errorMessage = tostring(result)
+      if errorMessage:find('prepared PNG dimensions must match the selected sprite', 1, true) then
+         errorMessage = tr('This sprite needs a %d x %d PNG. The work copy was not changed.',
+            canvas:getSpriteWidth(), canvas:getSpriteHeight())
+      end
+      setStatus(errorMessage)
       return
    end
    if not reloadAssets() then
