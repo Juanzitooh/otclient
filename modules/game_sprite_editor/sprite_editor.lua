@@ -35,6 +35,11 @@ local previewHasMovementToggle = false
 local selectedSpriteContext
 local gameStartCallback
 local gameEndCallback
+local pendingSpriteEdit
+local preparedSpritePath = ''
+local settingSpritePath = false
+
+local EXTERNAL_EDITOR_SETTING = 'offline-assets-editor-external-editor'
 
 local APPEARANCE_ROW_HEIGHT = 52
 local PREVIEW_CONTROLS_BOTTOM_MARGIN = 14
@@ -214,6 +219,15 @@ local function updateAppearanceSaveButton()
    end
 end
 
+local function setSpritePath(path)
+   if not window then
+      return
+   end
+   settingSpritePath = true
+   window:recursiveGetChildById('previewSpritePathEdit'):setText(path or '')
+   settingSpritePath = false
+end
+
 local function updateSpriteReplacementTarget()
    if not window then
       return
@@ -222,19 +236,29 @@ local function updateSpriteReplacementTarget()
    local canReplace = hasTarget and activeVersion ~= nil and not g_game.isOnline()
    local targetPanel = window:recursiveGetChildById('spriteReplacementPanel')
    targetPanel:setVisible(currentPage == 'editor' and canReplace)
-   targetPanel:setHeight(canReplace and 58 or 0)
+   targetPanel:setHeight(canReplace and 74 or 0)
    targetPanel:setMarginTop(canReplace and 6 or 0)
    window:recursiveGetChildById('replaceAppearanceSpriteButton'):setEnabled(canReplace)
+   window:recursiveGetChildById('editAppearanceSpriteButton'):setEnabled(canReplace)
+   local applyButton = window:recursiveGetChildById('applyEditedSpriteButton')
+   applyButton:setVisible(pendingSpriteEdit ~= nil)
+   applyButton:setEnabled(pendingSpriteEdit ~= nil and not g_game.isOnline())
+   applyButton:setText(pendingSpriteEdit and tr('Apply %d', pendingSpriteEdit.spriteId) or tr('Apply'))
+   applyButton:setTooltip(pendingSpriteEdit and tr('Apply the edited PNG to sprite %d in the work copy.', pendingSpriteEdit.spriteId) or '')
+   window:recursiveGetChildById('configureSpriteEditorButton'):setEnabled(canReplace)
    if not hasTarget then
       window:recursiveGetChildById('selectedSpriteLabel'):setText(tr('Select a linked sprite to replace its PNG.'))
+      setSpritePath(preparedSpritePath)
       return
    end
 
    local size = string.format('%d x %d', canvas:getSpriteWidth(), canvas:getSpriteHeight())
    local targetLabel = window:recursiveGetChildById('selectedSpriteLabel')
    targetLabel:setText(tr('Sprite ID %d | %s', selectedSpriteId, selectedSpriteContext or tr('current frame')))
-   targetLabel:setTooltip(tr('This PNG replaces sprite %d wherever that ID is shared. Use a %s PNG.',
+   targetLabel:setTooltip(tr('Replace changes only this frame link. Edit changes sprite %d wherever that ID is shared. Use a %s PNG.',
       selectedSpriteId, size))
+   setSpritePath(pendingSpriteEdit and selectedSpriteId == pendingSpriteEdit.spriteId and
+      pendingSpriteEdit.path or preparedSpritePath)
 end
 
 local function setPreviewControlsVisible(visible, panelHeight)
@@ -413,7 +437,7 @@ local function clearAppearanceProperties()
    selectedSpriteId = nil
    selectedSpriteContext = nil
    canvas:setVisible(false)
-   window:recursiveGetChildById('previewSpritePathEdit'):setText('')
+   setSpritePath(preparedSpritePath)
    updateSpriteReplacementTarget()
    appearanceValueWidgets = {}
    appearanceStringWidgets = {}
@@ -465,15 +489,11 @@ selectSprite = function(id)
       canvas:setVisible(false)
       selectedSpriteId = nil
       selectedSpriteContext = nil
-      window:recursiveGetChildById('previewSpritePathEdit'):setText('')
       updateSpriteReplacementTarget()
       setStatus(tr('Sprite %d is not available in this 15.x work copy.', id))
       return false
    end
 
-   if selectedSpriteId and selectedSpriteId ~= id then
-      window:recursiveGetChildById('previewSpritePathEdit'):setText('')
-   end
    canvas:setVisible(true)
    selectedSpriteId = id
    window:recursiveGetChildById('spriteInfoLabel'):setText(
@@ -753,7 +773,6 @@ local function refreshAppearancePreview()
    selectedSpriteContext = nil
    canvas:setVisible(false)
    window:recursiveGetChildById('spriteInfoLabel'):setText(tr('No sprite is linked to this frame selection.'))
-   window:recursiveGetChildById('previewSpritePathEdit'):setText('')
    updateSpriteReplacementTarget()
    setStatus(tr('No sprite is linked to this frame selection.'))
    return false
@@ -1125,7 +1144,6 @@ local function refreshSelectedAppearance()
          selectedSpriteContext = nil
          canvas:setVisible(false)
          window:recursiveGetChildById('spriteInfoLabel'):setText(tr('This appearance has no linked sprites.'))
-         window:recursiveGetChildById('previewSpritePathEdit'):setText('')
          updateSpriteReplacementTarget()
       end
    end
@@ -1296,9 +1314,6 @@ local function loadAppearanceRecord(category, id, forceDiscard, forceReload)
       return false
    end
 
-   if selectedAppearanceCategory ~= category or selectedAppearanceId ~= id then
-      window:recursiveGetChildById('previewSpritePathEdit'):setText('')
-   end
    selectedAppearanceCategory = category
    selectedAppearanceId = id
    selectedSpriteId = nil
@@ -1427,6 +1442,15 @@ local function createWindow()
             tr('Preview %d x %d | Zoom %dx', canvas:getSpriteWidth(), canvas:getSpriteHeight(), canvas:getZoom()))
       end
    end
+
+   local spritePathEdit = window:recursiveGetChildById('previewSpritePathEdit')
+   spritePathEdit.onTextChange = function(widget)
+      if not settingSpritePath and
+            (not pendingSpriteEdit or widget:getText() ~= pendingSpriteEdit.path) then
+         preparedSpritePath = widget:getText()
+      end
+   end
+   setSpritePath(preparedSpritePath)
 
    local categoryBox = window:recursiveGetChildById('appearanceCategory')
    addCategories(categoryBox)
@@ -1643,46 +1667,306 @@ function zoomOut()
    if canvas then canvas:zoomOut() end
 end
 
+local function getSelectedSpriteReference()
+   local group = currentPreviewGroup()
+   if not group or not selectedAppearanceId or not selectedSpriteId then
+      setStatus(tr('Select a linked sprite frame before replacing it.'))
+      return nil
+   end
+
+   local spriteIndex = (((previewPhase * group.patternDepth + previewPatternZ) * group.patternHeight +
+      previewPatternY) * group.patternWidth + previewPatternX) * group.layers + previewLayer + 1
+   if group.sprites[spriteIndex] ~= selectedSpriteId then
+      setStatus(tr('The selected sprite frame is no longer current. Select it again and retry.'))
+      return nil
+   end
+
+   return previewFrameGroupIndex - 1, spriteIndex - 1
+end
+
+local function refreshAfterSpriteReferenceChange(category, appearanceId, previewSelection)
+   if not reloadAssets() then
+      setStatus(tr('The sprite link was saved, but the work copy could not be reloaded.'))
+      return false
+   end
+   refreshAppearanceCatalog(category)
+   if not loadAppearanceRecord(category, appearanceId, true, true) then
+      setStatus(tr('The sprite link was saved, but the appearance preview could not be reloaded.'))
+      return false
+   end
+   restorePreviewSelection(previewSelection)
+   setActivePage('editor')
+   return true
+end
+
+local function linkSpriteToSelectedFrame(spriteId)
+   local category = selectedAppearanceCategory
+   local appearanceId = selectedAppearanceId
+   local frameGroupIndex, spriteIndex = getSelectedSpriteReference()
+   if not frameGroupIndex then
+      return false
+   end
+
+   local previewSelection = capturePreviewSelection()
+   local ok, result = pcall(g_things.replaceAppearanceSprite, activeVersion, category,
+      appearanceId, frameGroupIndex, spriteIndex, spriteId)
+   if not ok then
+      setStatus(getUserFacingError(result))
+      return false
+   end
+   if not refreshAfterSpriteReferenceChange(category, appearanceId, previewSelection) then
+      return false
+   end
+
+   setStatus(tr('This frame now uses sprite %d. Other appearances using the previous sprite are unchanged.', spriteId))
+   return true
+end
+
+local function confirmSpriteLink(spriteId)
+   if spriteId == selectedSpriteId then
+      setStatus(tr('This frame already uses sprite %d.', spriteId))
+      return
+   end
+
+   local dialog
+   dialog = displayGeneralBox(tr('Replace sprite link'),
+      tr('Use sprite %d for this frame only? Other appearances and the existing sprite image will stay unchanged.', spriteId), {
+         { text = tr('Replace link'), callback = function()
+            dialog:ok()
+            linkSpriteToSelectedFrame(spriteId)
+         end },
+         { text = tr('Cancel'), callback = function() dialog:cancel() end },
+      })
+end
+
+local function importPngAsNewSprite()
+   if not activeVersion or g_game.isOnline() then
+      setStatus(tr('Open a 15.x work copy before importing a sprite.'))
+      return
+   end
+   local path = window:recursiveGetChildById('previewSpritePathEdit'):getText()
+   if path == '' then
+      setStatus(tr('Enter an absolute PNG path above, then choose Replace > Import PNG.'))
+      window:recursiveGetChildById('previewSpritePathEdit'):focus()
+      return
+   end
+   local category = selectedAppearanceCategory
+   local appearanceId = selectedAppearanceId
+   local frameGroupIndex, spriteIndex = getSelectedSpriteReference()
+   if not frameGroupIndex then
+      return
+   end
+   local previewSelection = capturePreviewSelection()
+   local imported, spriteId = pcall(g_spriteAppearances.importSpriteForAppearance, selectedSpriteId, path, activeVersion)
+   if not imported then
+      setStatus(getUserFacingError(spriteId))
+      return
+   end
+   if not reloadAssets() then
+      setStatus(tr('PNG was imported as sprite %d, but the work copy could not be reloaded. The current link is unchanged.', spriteId))
+      return
+   end
+
+   local linked, result = pcall(g_things.replaceAppearanceSprite, activeVersion, category,
+      appearanceId, frameGroupIndex, spriteIndex, spriteId)
+   if not linked then
+      setStatus(tr('PNG was imported as sprite %d, but it could not be linked: %s', spriteId, getUserFacingError(result)))
+      return
+   end
+   if not refreshAfterSpriteReferenceChange(category, appearanceId, previewSelection) then
+      return
+   end
+   setStatus(tr('PNG imported as sprite %d and linked to this frame.', spriteId))
+end
+
 function replaceSprite(forceDiscard)
    if hasAppearanceChanges() and not forceDiscard then
-      confirmUnsavedChanges(tr('Save changes before replacing this sprite?'), function()
+      confirmUnsavedChanges(tr('Save changes before replacing this frame sprite?'), function()
          replaceSprite(true)
       end)
       return
    end
    if not activeVersion or g_game.isOnline() then
-      setStatus(tr('Open a 15.x work copy before importing a sprite.'))
+      setStatus(tr('Open a 15.x work copy before replacing a sprite.'))
       return
    end
-   local id = selectedSpriteId
-   local path = window:recursiveGetChildById('previewSpritePathEdit'):getText()
-   if not id or path == '' then
-      setStatus(tr('Select a sprite and enter an absolute PNG path.'))
+   if not getSelectedSpriteReference() then
       return
    end
+
+   local dialog
+   dialog = displayGeneralBox(tr('Replace sprite'),
+      tr('Choose whether this frame should use another existing sprite ID or a PNG imported as a new sprite.'), {
+         { text = tr('Use sprite ID'), callback = function()
+            dialog:ok()
+            displayNumberInputBox(tr('Use existing sprite'), tr('Sprite ID'), function(spriteId)
+               confirmSpriteLink(spriteId)
+            end, nil, 1, 2147483647, 1, 1)
+         end },
+         { text = tr('Import PNG'), callback = function()
+            dialog:ok()
+            importPngAsNewSprite()
+         end },
+         { text = tr('Cancel'), callback = function() dialog:cancel() end },
+      })
+end
+
+local function saveExternalEditorPath(path)
+   local editorPath = path:gsub('^%s+', ''):gsub('%s+$', '')
+   if editorPath == '' or not g_platform.fileExists(editorPath) then
+      setStatus(tr('Choose an existing editor executable or launcher path.'))
+      return false
+   end
+
+   g_settings.setValue(EXTERNAL_EDITOR_SETTING, editorPath)
+   if not g_settings.save() then
+      setStatus(tr('The editor path was set for this session but could not be saved.'))
+   else
+      setStatus(tr('External editor saved: %s', editorPath))
+   end
+   return true
+end
+
+function configureSpriteEditor(onConfigured)
+   if not g_platform.isDesktop() then
+      setStatus(tr('External sprite editors are available in desktop builds.'))
+      return
+   end
+   displayInputBox(tr('External sprite editor'),
+      tr('Enter the absolute path to an editor executable or launcher. The PNG path will be passed to it.'),
+      function(path)
+         if saveExternalEditorPath(path) and onConfigured then
+            onConfigured(path:gsub('^%s+', ''):gsub('%s+$', ''))
+         end
+      end, nil, g_settings.getValue(EXTERNAL_EDITOR_SETTING), 1024)
+end
+
+local function launchSpriteInEditor(editorPath, pngPath)
+   local ok, launched = pcall(g_platform.spawnProcess, editorPath, { pngPath })
+   if not ok or not launched then
+      setStatus(tr('Could not start the external editor. Check its executable path.'))
+      return false
+   end
+   setStatus(tr('Editing sprite %d in the external editor. Save the PNG there, then return and apply it.',
+      pendingSpriteEdit.spriteId))
+   return true
+end
+
+function editSprite(forceDiscard)
+   if hasAppearanceChanges() and not forceDiscard then
+      confirmUnsavedChanges(tr('Save changes before opening the sprite editor?'), function()
+         editSprite(true)
+      end)
+      return
+   end
+   if not activeVersion or g_game.isOnline() or not selectedSpriteId then
+      setStatus(tr('Select a sprite in an offline 15.x work copy before editing it.'))
+      return
+   end
+   if not g_platform.isDesktop() then
+      setStatus(tr('External sprite editors are available in desktop builds.'))
+      return
+   end
+   if pendingSpriteEdit and (pendingSpriteEdit.spriteId ~= selectedSpriteId or
+         pendingSpriteEdit.version ~= activeVersion) then
+      setStatus(tr('Apply the pending edit for sprite %d before opening another sprite.', pendingSpriteEdit.spriteId))
+      return
+   end
+
+   local pngPath
+   if pendingSpriteEdit then
+      pngPath = pendingSpriteEdit.path
+   else
+      local tempRoot = g_platform.getTempPath()
+      if tempRoot:sub(-1) ~= '/' and tempRoot:sub(-1) ~= '\\' then
+         tempRoot = tempRoot .. '/'
+      end
+      pngPath = string.format('%sotclient-sprite-editor-%d-%d-%d-%d.png', tempRoot,
+         g_platform.getProcessId(), activeVersion, selectedSpriteId, g_clock.millis())
+      local saved, errorMessage = pcall(g_spriteAppearances.saveSpriteToFile, selectedSpriteId, pngPath)
+      if not saved or not g_platform.fileExists(pngPath) then
+         setStatus(saved and tr('Could not create the temporary PNG for this sprite.') or getUserFacingError(errorMessage))
+         return
+      end
+      pendingSpriteEdit = {
+         spriteId = selectedSpriteId,
+         version = activeVersion,
+         path = pngPath,
+         width = canvas:getSpriteWidth(),
+         height = canvas:getSpriteHeight(),
+      }
+      updateSpriteReplacementTarget()
+   end
+
+   local editorPath = g_settings.getValue(EXTERNAL_EDITOR_SETTING)
+   if editorPath == '' then
+      configureSpriteEditor(function(path)
+         launchSpriteInEditor(path, pngPath)
+      end)
+      return
+   end
+   launchSpriteInEditor(editorPath, pngPath)
+end
+
+function applyEditedSprite(forceDiscard, confirmed)
+   if hasAppearanceChanges() and not forceDiscard then
+      confirmUnsavedChanges(tr('Save changes before applying the edited sprite?'), function()
+         applyEditedSprite(true)
+      end)
+      return
+   end
+   if not pendingSpriteEdit then
+      setStatus(tr('Open a sprite in the external editor before applying an edit.'))
+      return
+   end
+   if not activeVersion or g_game.isOnline() or activeVersion ~= pendingSpriteEdit.version then
+      setStatus(tr('Reopen the matching offline 15.x work copy before applying this sprite edit.'))
+      return
+   end
+   if not confirmed then
+      local edit = pendingSpriteEdit
+      local dialog
+      dialog = displayGeneralBox(tr('Apply edited sprite'),
+         tr('Update sprite %d in the work copy? Every appearance sharing this sprite will change; installed assets remain untouched.', edit.spriteId), {
+            { text = tr('Apply to work copy'), callback = function()
+               dialog:ok()
+               applyEditedSprite(true, true)
+            end },
+            { text = tr('Cancel'), callback = function() dialog:cancel() end },
+         })
+      return
+   end
+
+   local edit = pendingSpriteEdit
+   local category = selectedAppearanceCategory
+   local appearanceId = selectedAppearanceId
    local previewSelection = capturePreviewSelection()
-   local ok, result = pcall(g_spriteAppearances.importSpriteFromFile, id, path, activeVersion)
-   if not ok then
+   local imported, result = pcall(g_spriteAppearances.importSpriteFromFile,
+      edit.spriteId, edit.path, edit.version)
+   if not imported then
       local errorMessage = getUserFacingError(result)
       if errorMessage:find('prepared PNG dimensions must match the selected sprite', 1, true) then
-         errorMessage = tr('This sprite needs a %d x %d PNG. The work copy was not changed.',
-            canvas:getSpriteWidth(), canvas:getSpriteHeight())
+         errorMessage = tr('Sprite %d needs a %d x %d PNG. The working copy was not changed.',
+            edit.spriteId, edit.width, edit.height)
       end
       setStatus(errorMessage)
       return
    end
    if not reloadAssets() then
-      displayErrorBox(tr('Assets Editor'), tr('The sprite was written, but the work copy could not be reloaded.'))
+      setStatus(tr('Sprite %d was written, but the work copy could not be reloaded. The edited PNG was kept.', edit.spriteId))
       return
    end
-   refreshAppearanceCatalog(selectedAppearanceCategory)
-   if not loadAppearanceRecord(selectedAppearanceCategory, selectedAppearanceId, true, true) then
-      setStatus(tr('Sprite %d was replaced, but the appearance preview could not be reloaded.', result))
-      return
+   if category ~= nil and appearanceId ~= nil then
+      refreshAppearanceCatalog(category)
+      if loadAppearanceRecord(category, appearanceId, true, true) then
+         restorePreviewSelection(previewSelection)
+      end
    end
-   restorePreviewSelection(previewSelection)
-   setActivePage('editor')
-   setStatus(tr('Sprite %d replaced; preview restored: %s.', result, selectedSpriteContext or tr('current selection')))
+
+   pendingSpriteEdit = nil
+   pcall(g_platform.removeFile, edit.path)
+   updateSpriteReplacementTarget()
+   setStatus(tr('Sprite %d was updated in the work copy. All appearances sharing this sprite use the edited image.', edit.spriteId))
 end
 
 function createAppearance(forceDiscard)

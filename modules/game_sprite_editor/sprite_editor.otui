@@ -730,7 +730,7 @@ SpriteEditorWindow < MainWindow
         anchors.right: parent.right
         anchors.top: appearanceDescription.bottom
         margin-top: 6
-        height: 46
+        height: 74
         visible: false
 
         AppearanceFieldLabel
@@ -739,7 +739,7 @@ SpriteEditorWindow < MainWindow
           anchors.left: parent.left
           anchors.right: parent.right
           anchors.top: parent.top
-          height: 30
+          height: 19
           text-align: center
           text-wrap: true
 
@@ -748,22 +748,60 @@ SpriteEditorWindow < MainWindow
           anchors.left: parent.left
           anchors.right: parent.right
           anchors.top: selectedSpriteLabel.bottom
-          margin-top: 3
+          margin-top: 2
           height: 22
-          layout: horizontalBox
 
           AppearanceTextEdit
             id: previewSpritePathEdit
-            width: 190
-            margin-right: 5
-            !placeholder: tr('Prepared PNG path')
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            !placeholder: tr('PNG path for import or edited sprite')
+            !tooltip: tr('Enter an absolute PNG path for importing, or use Edit to create a temporary PNG.')
+
+        Panel
+          id: spriteActionRow
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: previewSpritePathRow.bottom
+          margin-top: 4
+          height: 22
+          layout: horizontalBox
 
           AppearanceActionButton
             id: replaceAppearanceSpriteButton
-            !text: tr('Replace PNG')
-            width: 104
+            !text: tr('Replace')
+            !tooltip: tr('Use another sprite ID or import a PNG as a new sprite.')
+            width: 72
             height: 22
+            margin-right: 4
             @onClick: modules.game_sprite_editor.replaceSprite()
+
+          AppearanceActionButton
+            id: editAppearanceSpriteButton
+            !text: tr('Edit')
+            !tooltip: tr('Open a safe PNG copy in the configured external sprite editor.')
+            width: 58
+            height: 22
+            margin-right: 4
+            @onClick: modules.game_sprite_editor.editSprite()
+
+          AppearanceActionButton
+            id: applyEditedSpriteButton
+            !text: tr('Apply')
+            width: 82
+            height: 22
+            margin-right: 4
+            visible: false
+            @onClick: modules.game_sprite_editor.applyEditedSprite()
+
+          AppearanceActionButton
+            id: configureSpriteEditorButton
+            !text: tr('Editor...')
+            !tooltip: tr('Choose the external editor executable or launcher.')
+            width: 62
+            height: 22
+            @onClick: modules.game_sprite_editor.configureSpriteEditor()
 
       Panel
         id: propertiesTabBar

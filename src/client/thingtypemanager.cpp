@@ -561,6 +561,38 @@ bool ThingTypeManager::saveAppearanceEditorData(const int version, const int cat
 #endif
 }
 
+bool ThingTypeManager::replaceAppearanceSprite(const int version, const int category, const int appearanceId,
+                                               const int frameGroupIndex, const int spriteIndex, const int spriteId)
+{
+#ifdef FRAMEWORK_PROTOBUF
+    if (version < 1500 || version >= 1600)
+        throw stdext::exception("appearance sprite replacement is supported only for client versions 15.x");
+    if (appearanceId < 1 || frameGroupIndex < 0 || spriteIndex < 0 || spriteId < 1)
+        throw stdext::exception("invalid appearance sprite replacement request");
+    if (!g_spriteAppearances.getSheetBySpriteId(spriteId, false))
+        throw stdext::exception("sprite {} is not part of the active work copy", spriteId);
+
+    const auto path = getAppearanceEditorFile(m_catalogContentPath, version);
+    appearances::Appearances library;
+    readAppearancesFile(path, library);
+    auto* appearance = findAppearance(library, category, appearanceId);
+    if (!appearance)
+        throw stdext::exception("appearance {} was not found", appearanceId);
+    if (frameGroupIndex >= appearance->frame_group_size())
+        throw stdext::exception("appearance frame group is outside the selected appearance");
+
+    auto* spriteIds = appearance->mutable_frame_group(frameGroupIndex)->mutable_sprite_info();
+    if (spriteIndex >= spriteIds->sprite_id_size())
+        throw stdext::exception("sprite position is outside the selected frame group");
+    spriteIds->set_sprite_id(spriteIndex, static_cast<uint32_t>(spriteId));
+
+    writeAppearancesFile(path, library);
+    return true;
+#else
+    throw stdext::exception("protobuf support is required to replace appearance sprites");
+#endif
+}
+
 int ThingTypeManager::createAppearanceFromSprite(const int version, const int category, const int spriteId,
                                                  const std::string& name, const std::string& description)
 {

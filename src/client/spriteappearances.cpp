@@ -203,16 +203,15 @@ uint32_t validateSpriteSheetBitmap(const std::vector<uint8_t>& bitmap)
 }
 
 void writeSpritePixels(std::vector<uint8_t>& bitmap, const uint32_t bitmapOffset,
-                       const int spriteIndex, const ImagePtr& image)
+                       const int spriteIndex, const Size& spriteSize, const ImagePtr& image)
 {
-    constexpr int spriteSize = 32;
-    constexpr int spritesPerRow = SpriteSheet::SIZE / spriteSize;
-    const int originX = (spriteIndex % spritesPerRow) * spriteSize;
-    const int originY = (spriteIndex / spritesPerRow) * spriteSize;
+    const int spritesPerRow = SpriteSheet::SIZE / spriteSize.width();
+    const int originX = (spriteIndex % spritesPerRow) * spriteSize.width();
+    const int originY = (spriteIndex / spritesPerRow) * spriteSize.height();
     const auto& pixels = image->getPixels();
-    for (int y = 0; y < spriteSize; ++y) {
-        for (int x = 0; x < spriteSize; ++x) {
-            const size_t imageOffset = static_cast<size_t>(y * spriteSize + x) * 4;
+    for (int y = 0; y < spriteSize.height(); ++y) {
+        for (int x = 0; x < spriteSize.width(); ++x) {
+            const size_t imageOffset = static_cast<size_t>(y * spriteSize.width() + x) * 4;
             const int sheetX = originX + x;
             const int sheetY = SpriteSheet::SIZE - 1 - (originY + y);
             const size_t bitmapPixelOffset = bitmapOffset +
@@ -1015,7 +1014,25 @@ int SpriteAppearances::importSpriteFromFile(const int id, const std::string& fil
     if (id < 0)
         throw stdext::exception("sprite ID must be zero to allocate a new sprite");
 
-    const auto image = loadPreparedSprite(fileName);
+    return importNewSpriteFromFile(fileName, version, SpriteLayout::SIZE_32_32);
+}
+
+int SpriteAppearances::importSpriteForAppearance(const int referenceSpriteId, const std::string& fileName,
+                                                 const int version)
+{
+    if (referenceSpriteId < 1)
+        throw stdext::exception("a reference sprite ID is required to allocate a replacement sprite");
+    const auto referenceSheet = getSheetBySpriteId(referenceSpriteId);
+    if (!referenceSheet)
+        throw stdext::exception("reference sprite {} is not available in the loaded asset package", referenceSpriteId);
+    return importNewSpriteFromFile(fileName, version, referenceSheet->spriteLayout);
+}
+
+int SpriteAppearances::importNewSpriteFromFile(const std::string& fileName, const int version,
+                                               const SpriteLayout spriteLayout)
+{
+    const SpriteSheet layoutTemplate(0, 0, spriteLayout, {});
+    const auto image = loadPreparedSprite(fileName, layoutTemplate.getSpriteSize());
 
     const auto catalogPath = getEditorCatalogPath(version);
     const auto package = catalogPath.parent_path();
@@ -1041,16 +1058,17 @@ int SpriteAppearances::importSpriteFromFile(const int id, const std::string& fil
         if (firstId < 0 || lastId < firstId)
             throw stdext::exception("the active sprite catalog contains an invalid sprite range");
         maximumSpriteId = std::max(maximumSpriteId, lastId);
-        templateSheet = &entry;
+        if (layout == static_cast<int>(spriteLayout))
+            templateSheet = &entry;
 
         const auto file = entry.at("file").get<std::string>();
         const int capacity = SpriteSheet(firstId, lastId, static_cast<SpriteLayout>(layout), file).getSpritesPerSheet();
-        if (file.starts_with("sprite-editor-") && layout == static_cast<int>(SpriteLayout::SIZE_32_32) &&
+        if (file.starts_with("sprite-editor-") && layout == static_cast<int>(spriteLayout) &&
             lastId < firstId + capacity - 1 && (!reusableSheet || lastId > reusableSheet->at("lastspriteid").get<int>()))
             reusableSheet = &entry;
     }
     if (!templateSheet || maximumSpriteId < 0)
-        throw stdext::exception("the active sprite catalog does not contain any sprite sheets");
+        throw stdext::exception("the active sprite catalog does not contain a sheet with the selected sprite layout");
     if (maximumSpriteId == std::numeric_limits<int>::max())
         throw stdext::exception("no sprite IDs remain in the active catalog");
 
@@ -1098,7 +1116,7 @@ int SpriteAppearances::importSpriteFromFile(const int id, const std::string& fil
             bitmap[offset + 3] = 0x00;
         }
     }
-    writeSpritePixels(bitmap, bitmapOffset, spriteId - firstId, image);
+    writeSpritePixels(bitmap, bitmapOffset, spriteId - firstId, layoutTemplate.getSpriteSize(), image);
 
     const auto encodedSheet = compressSpriteSheet(bitmap, header, original);
     writeFileAtomically(sheetPath, encodedSheet);
@@ -1108,7 +1126,7 @@ int SpriteAppearances::importSpriteFromFile(const int id, const std::string& fil
         catalog.push_back({
             { "type", "sprite" },
             { "file", relativeSheetPath.generic_string() },
-            { "spritetype", static_cast<int>(SpriteLayout::SIZE_32_32) },
+            { "spritetype", static_cast<int>(spriteLayout) },
             { "firstspriteid", firstId },
             { "lastspriteid", spriteId },
             { "area", 0 }
