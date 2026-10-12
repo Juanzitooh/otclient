@@ -13,40 +13,53 @@ AppearanceResultRow < Button
     size: 40 40
 
   Label
-    id: appearanceResultName
-    anchors.left: thumbnail.right
-    anchors.right: parent.right
-    anchors.top: parent.top
-    margin-left: 7
-    margin-top: 5
-    height: 18
-    text-wrap: false
-
-  Label
     id: appearanceId
     anchors.left: thumbnail.right
     anchors.right: parent.right
-    anchors.top: parent.top
+    anchors.verticalCenter: parent.verticalCenter
     margin-left: 7
-    margin-top: 27
-    height: 18
+    height: 22
     text-wrap: false
 
-AppearanceFlagCheckBox < CheckBox
-  height: 21
+AppearanceSectionHeader < Label
+  height: 23
+  background-color: #603bb0
+  color: #ffffff
+  text-offset: 5 3
   text-wrap: false
+
+AppearanceFieldLabel < Label
+  height: 18
+  text-offset: 0 2
+  text-wrap: false
+
+AppearanceTextEdit < TextEdit
+  height: 22
+
+AppearanceOptionCheckBox < CheckBox
+  height: 21
+  text-offset: 18 0
+  text-wrap: false
+
+AppearanceFlagCheckBox < AppearanceOptionCheckBox
+
+AppearanceNavigationButton < Button
+  height: 26
+
+AppearanceActionButton < Button
+  height: 26
 
 AppearanceValueRow < Panel
   height: 24
 
-  Label
+  AppearanceFieldLabel
     id: propertyLabel
     anchors.left: parent.left
     anchors.verticalCenter: parent.verticalCenter
     width: 145
     text-wrap: false
 
-  TextEdit
+  AppearanceTextEdit
     id: propertyValue
     anchors.left: propertyLabel.right
     anchors.right: parent.right
@@ -101,7 +114,7 @@ SpriteEditorWindow < MainWindow
 
   Label
     id: assetsLabel
-    !text: tr('Client assets 15.x')
+    !text: tr('Source version')
     anchors.left: parent.left
     anchors.top: parent.top
 
@@ -115,16 +128,17 @@ SpriteEditorWindow < MainWindow
 
   Button
     id: openWorkCopyButton
-    !text: tr('Open work copy')
+    !text: tr('Open working copy')
+    !tooltip: tr('Create or resume a work copy; installed assets stay unchanged.')
     anchors.left: versionComboBox.right
     anchors.verticalCenter: versionComboBox.verticalCenter
     margin-left: 8
-    width: 120
+    width: 142
     @onClick: modules.game_sprite_editor.openWorkCopy()
 
   Label
     id: statusLabel
-    !text: tr('Choose an installed 15.x asset version.')
+    !text: tr('Choose an installed 15.x version, then open its safe working copy.')
     anchors.left: openWorkCopyButton.right
     anchors.right: parent.right
     anchors.verticalCenter: openWorkCopyButton.verticalCenter
@@ -139,33 +153,30 @@ SpriteEditorWindow < MainWindow
     margin-top: 8
     height: 28
 
-    Button
+    AppearanceNavigationButton
       id: editorPageButton
-      !text: tr('Browse and edit')
+      !text: tr('Browse')
       anchors.left: parent.left
       anchors.top: parent.top
       width: 150
-      height: 26
       @onClick: modules.game_sprite_editor.showEditorPage()
 
-    Button
+    AppearanceNavigationButton
       id: importPageButton
-      !text: tr('Import and create')
+      !text: tr('Import / create')
       anchors.left: editorPageButton.right
       anchors.top: parent.top
       margin-left: 4
       width: 150
-      height: 26
       @onClick: modules.game_sprite_editor.showImportPage()
 
-    Button
+    AppearanceNavigationButton
       id: exportPageButton
-      !text: tr('Export work copy')
+      !text: tr('Export package')
       anchors.left: importPageButton.right
       anchors.top: parent.top
       margin-left: 4
       width: 140
-      height: 26
       @onClick: modules.game_sprite_editor.showExportPage()
 
   Panel
@@ -375,23 +386,21 @@ SpriteEditorWindow < MainWindow
       width: 94
       height: 21
 
-    CheckBox
+    AppearanceOptionCheckBox
       id: previewMoving
       !text: tr('Moving')
       anchors.left: previewSettings.left
       anchors.top: parent.top
       width: 90
-      height: 21
       visible: false
 
-    CheckBox
+    AppearanceOptionCheckBox
       id: previewMounted
       !text: tr('Mounted')
       anchors.left: previewSettings.left
       anchors.top: parent.top
       margin-left: 96
       width: 90
-      height: 21
       visible: false
 
     ComboBox
@@ -474,45 +483,38 @@ SpriteEditorWindow < MainWindow
       id: propertiesPanel
       anchors.fill: parent
 
-      Label
+      AppearanceSectionHeader
         id: appearanceInfoLabel
         !text: tr('Select an appearance from the list.')
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        height: 23
-        background-color: #603bb0
-        color: #ffffff
-        text-offset: 5 3
-        text-wrap: false
 
-      Label
+      AppearanceFieldLabel
         !text: tr('Name')
         anchors.left: parent.left
         anchors.top: appearanceInfoLabel.bottom
         margin-top: 7
 
-      TextEdit
+      AppearanceTextEdit
         id: appearanceName
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: prev.bottom
         margin-top: 3
-        height: 22
 
-      Label
+      AppearanceFieldLabel
         !text: tr('Description')
         anchors.left: parent.left
         anchors.top: appearanceName.bottom
         margin-top: 5
 
-      TextEdit
+      AppearanceTextEdit
         id: appearanceDescription
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: prev.bottom
         margin-top: 3
-        height: 22
 
       Panel
         id: spriteReplacementPanel
@@ -523,7 +525,7 @@ SpriteEditorWindow < MainWindow
         height: 46
         visible: false
 
-        Label
+        AppearanceFieldLabel
           id: selectedSpriteLabel
           !text: tr('Select a linked sprite to replace its PNG.')
           anchors.left: parent.left
@@ -541,14 +543,13 @@ SpriteEditorWindow < MainWindow
           height: 22
           layout: horizontalBox
 
-          TextEdit
+          AppearanceTextEdit
             id: previewSpritePathEdit
             width: 190
-            height: 22
             margin-right: 5
             !placeholder: tr('Prepared PNG path')
 
-          Button
+          AppearanceActionButton
             id: replaceAppearanceSpriteButton
             !text: tr('Replace PNG')
             width: 104
@@ -565,7 +566,7 @@ SpriteEditorWindow < MainWindow
         layout: horizontalBox
         visible: false
 
-        Button
+        AppearanceNavigationButton
           id: flagsTabButton
           !text: tr('Flags')
           width: 96
@@ -573,7 +574,7 @@ SpriteEditorWindow < MainWindow
           margin-right: 4
           @onClick: modules.game_sprite_editor.showPropertiesTab('flags')
 
-        Button
+        AppearanceNavigationButton
           id: valuesTabButton
           !text: tr('Values')
           width: 96
@@ -581,7 +582,7 @@ SpriteEditorWindow < MainWindow
           margin-right: 4
           @onClick: modules.game_sprite_editor.showPropertiesTab('values')
 
-        Button
+        AppearanceNavigationButton
           id: animationTabButton
           !text: tr('Animation')
           width: 96
@@ -669,34 +670,32 @@ SpriteEditorWindow < MainWindow
           id: animationDefaultPhaseRow
           height: 25
 
-          Label
+          AppearanceFieldLabel
             !text: tr('Default phase')
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             width: 82
 
-          TextEdit
+          AppearanceTextEdit
             id: animationDefaultPhase
             anchors.left: prev.right
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             height: 20
 
-        CheckBox
+        AppearanceOptionCheckBox
           id: animationRandomStart
           !text: tr('Random start phase')
-          height: 22
 
-        CheckBox
+        AppearanceOptionCheckBox
           id: animationSynchronized
           !text: tr('Synchronized')
-          height: 22
 
         Panel
           id: animationLoopTypeRow
           height: 25
 
-          Label
+          AppearanceFieldLabel
             !text: tr('Loop type')
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
@@ -713,13 +712,13 @@ SpriteEditorWindow < MainWindow
           id: animationLoopCountRow
           height: 25
 
-          Label
+          AppearanceFieldLabel
             !text: tr('Loop count')
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             width: 82
 
-          TextEdit
+          AppearanceTextEdit
             id: animationLoopCount
             anchors.left: prev.right
             anchors.right: parent.right
@@ -746,7 +745,7 @@ SpriteEditorWindow < MainWindow
 
       Label
         id: appearanceStatus
-        !text: tr('Changes are saved to the work copy.')
+        !text: tr('Saved in the working copy.')
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: saveAppearanceButton.top
@@ -754,13 +753,14 @@ SpriteEditorWindow < MainWindow
         height: 28
         text-wrap: true
 
-      Button
+      AppearanceActionButton
         id: saveAppearanceButton
-        !text: tr('Save appearance')
+        !text: tr('Save changes')
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: 26
+        height: 0
+        visible: false
         enabled: false
         @onClick: modules.game_sprite_editor.saveAppearanceProperties()
 
@@ -769,66 +769,59 @@ SpriteEditorWindow < MainWindow
       anchors.fill: parent
       visible: false
 
-      Label
+      AppearanceSectionHeader
         !text: tr('Create an appearance from a prepared PNG')
         anchors.left: parent.left
+        anchors.right: parent.right
         anchors.top: parent.top
-        height: 23
-        background-color: #603bb0
-        color: #ffffff
-        text-offset: 5 3
 
-      Label
+      AppearanceFieldLabel
         !text: tr('Name')
         anchors.left: parent.left
         anchors.top: prev.bottom
         margin-top: 8
 
-      TextEdit
+      AppearanceTextEdit
         id: newAppearanceName
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: prev.bottom
         margin-top: 4
-        height: 22
 
-      Label
+      AppearanceFieldLabel
         !text: tr('Description')
         anchors.left: parent.left
         anchors.top: newAppearanceName.bottom
         margin-top: 7
 
-      TextEdit
+      AppearanceTextEdit
         id: newAppearanceDescription
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: prev.bottom
         margin-top: 4
-        height: 22
 
-      Label
+      AppearanceFieldLabel
         !text: tr('Prepared PNG path')
         anchors.left: parent.left
         anchors.top: newAppearanceDescription.bottom
         margin-top: 7
 
-      TextEdit
+      AppearanceTextEdit
         id: newAppearancePngPathEdit
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: prev.bottom
         margin-top: 4
-        height: 22
         !placeholder: tr('Paste the absolute path to a prepared PNG')
 
-      Button
+      AppearanceActionButton
         id: createAppearanceButton
         !text: tr('Create appearance from PNG')
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: newAppearancePngPathEdit.bottom
         margin-top: 7
-        height: 26
         @onClick: modules.game_sprite_editor.createAppearance()
 
       Label
@@ -845,18 +838,14 @@ SpriteEditorWindow < MainWindow
       anchors.fill: parent
       visible: false
 
-      Label
+      AppearanceSectionHeader
         !text: tr('Export the edited client assets')
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        height: 23
-        background-color: #603bb0
-        color: #ffffff
-        text-offset: 5 3
 
       Label
-        !text: tr('Export copies the work package to data/things/<version> under your chosen client folder. Existing packages are never overwritten.')
+        !text: tr('Export creates data/things/<version> inside the destination root. It leaves installed assets untouched and never overwrites an existing package.')
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: prev.bottom
@@ -864,13 +853,13 @@ SpriteEditorWindow < MainWindow
         height: 42
         text-wrap: true
 
-      Label
+      AppearanceFieldLabel
         !text: tr('Current work copy')
         anchors.left: parent.left
         anchors.top: prev.bottom
         margin-top: 12
 
-      Label
+      AppearanceFieldLabel
         id: activeWorkCopyLabel
         anchors.left: parent.left
         anchors.right: parent.right
@@ -879,29 +868,27 @@ SpriteEditorWindow < MainWindow
         height: 48
         text-wrap: true
 
-      Label
-        !text: tr('OTClient folder to receive the package')
+      AppearanceFieldLabel
+        !text: tr('New destination root')
         anchors.left: parent.left
         anchors.top: activeWorkCopyLabel.bottom
         margin-top: 8
 
-      TextEdit
+      AppearanceTextEdit
         id: exportPathEdit
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: prev.bottom
         margin-top: 4
-        height: 22
-        !placeholder: tr('For example: /home/user/otclient')
+        !placeholder: tr('Choose or enter an absolute folder path')
 
-      Button
+      AppearanceActionButton
         id: exportButton
-        !text: tr('Export work package')
+        !text: tr('Export to new folder')
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: exportPathEdit.bottom
         margin-top: 7
-        height: 26
         @onClick: modules.game_sprite_editor.exportWorkCopy()
 
       Label
@@ -914,13 +901,14 @@ SpriteEditorWindow < MainWindow
         height: 46
         text-wrap: true
 
-  Button
+  AppearanceActionButton
     id: reloadButton
-    !text: tr('Reload work copy')
+    !text: tr('Reload saved copy')
     anchors.left: editorCanvasFrame.left
     anchors.bottom: parent.bottom
     width: 130
     height: 25
+    !tooltip: tr('Reload saved changes from the work copy, not installed assets.')
     @onClick: modules.game_sprite_editor.reloadPackage()
 
   Button
