@@ -186,7 +186,7 @@ SpriteEditorWindow < MainWindow
     anchors.bottom: parent.bottom
     margin-top: 8
     margin-bottom: 33
-    width: 230
+    width: 190
 
     Label
       !text: tr('Appearance category')
@@ -260,6 +260,7 @@ SpriteEditorWindow < MainWindow
       id: canvas
       anchors.fill: parent
       margin: 4
+      margin-bottom: 88
       focusable: true
 
   Label
@@ -277,19 +278,23 @@ SpriteEditorWindow < MainWindow
     anchors.left: editorCanvasFrame.left
     anchors.right: editorCanvasFrame.right
     anchors.bottom: editorCanvasFrame.bottom
-    margin: 8
+    margin-left: 8
+    margin-right: 8
+    margin-bottom: 88
     text-wrap: true
 
   Panel
     id: previewControls
     anchors.left: editorCanvasFrame.left
     anchors.right: editorCanvasFrame.right
-    anchors.top: spriteInfoLabel.bottom
+    anchors.bottom: editorCanvasFrame.bottom
     margin-left: 8
     margin-right: 8
-    margin-top: 4
+    margin-bottom: 8
     height: 74
-    background-color: #242424
+    background-color: #363636
+    border-width: 1
+    border-color: #4a4a4a
     visible: false
 
     Panel
@@ -461,16 +466,6 @@ SpriteEditorWindow < MainWindow
       width: 46
       height: 21
       text-wrap: false
-
-    Button
-      id: replacePreviewSpriteButton
-      !text: tr('Replace PNG...')
-      anchors.left: previewPhaseCount.right
-      anchors.verticalCenter: previewPhaseCount.verticalCenter
-      margin-left: 5
-      width: 116
-      height: 23
-      @onClick: modules.game_sprite_editor.quickReplacePreviewSprite()
 
   Panel
     id: rightPanel
