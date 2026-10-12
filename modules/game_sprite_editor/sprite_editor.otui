@@ -67,44 +67,9 @@ AppearanceValueRow < Panel
     margin-left: 5
     height: 20
 
-AppearanceFrameDurationRow < Panel
-  height: 27
-
-  Label
-    id: phaseLabel
-    anchors.left: parent.left
-    anchors.verticalCenter: parent.verticalCenter
-    width: 52
-    text-wrap: false
-
-  Label
-    !text: tr('Min')
-    anchors.left: phaseLabel.right
-    anchors.verticalCenter: parent.verticalCenter
-    width: 25
-    text-wrap: false
-
-  TextEdit
-    id: durationMin
-    anchors.left: prev.right
-    anchors.verticalCenter: parent.verticalCenter
-    width: 58
-    height: 20
-
-  Label
-    !text: tr('Max')
-    anchors.left: durationMin.right
-    anchors.verticalCenter: parent.verticalCenter
-    margin-left: 5
-    width: 27
-    text-wrap: false
-
-  TextEdit
-    id: durationMax
-    anchors.left: prev.right
-    anchors.verticalCenter: parent.verticalCenter
-    width: 58
-    height: 20
+AppearanceTimelineFrame < Button
+  size: 28 22
+  text-wrap: false
 
 SpriteEditorWindow < MainWindow
   id: spriteEditorWindow
@@ -260,7 +225,7 @@ SpriteEditorWindow < MainWindow
       id: canvas
       anchors.fill: parent
       margin: 4
-      margin-bottom: 88
+      margin-bottom: 4
       focusable: true
 
   Label
@@ -280,7 +245,7 @@ SpriteEditorWindow < MainWindow
     anchors.bottom: editorCanvasFrame.bottom
     margin-left: 8
     margin-right: 8
-    margin-bottom: 88
+    margin-bottom: 8
     text-wrap: true
 
   Panel
@@ -291,7 +256,7 @@ SpriteEditorWindow < MainWindow
     margin-left: 8
     margin-right: 8
     margin-bottom: 8
-    height: 74
+    height: 156
     background-color: #363636
     border-width: 1
     border-color: #4a4a4a
@@ -301,6 +266,8 @@ SpriteEditorWindow < MainWindow
       id: previewDirectionPad
       anchors.left: parent.left
       anchors.top: parent.top
+      margin-left: 8
+      margin-top: 8
       size: 150 68
       visible: false
 
@@ -378,94 +345,210 @@ SpriteEditorWindow < MainWindow
 
     Panel
       id: previewSettings
-      anchors.left: previewDirectionPad.right
+      anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: parent.top
-      anchors.bottom: parent.bottom
       margin-left: 8
+      margin-right: 8
+      margin-top: 8
+      height: 1
+      layout: verticalBox
+      spacing: 4
 
-    ComboBox
-      id: previewFrameGroup
-      anchors.left: previewSettings.left
-      anchors.top: parent.top
-      width: 94
-      height: 21
+      Panel
+        id: previewMetaRow
+        height: 22
+        layout: horizontalBox
+        spacing: 4
 
-    AppearanceOptionCheckBox
-      id: previewMoving
-      !text: tr('Moving')
-      anchors.left: previewSettings.left
-      anchors.top: parent.top
-      width: 90
-      visible: false
+        ComboBox
+          id: previewFrameGroup
+          width: 112
+          height: 22
 
-    AppearanceOptionCheckBox
-      id: previewMounted
-      !text: tr('Mounted')
-      anchors.left: previewSettings.left
-      anchors.top: parent.top
-      margin-left: 96
-      width: 90
-      visible: false
+        AppearanceOptionCheckBox
+          id: previewMoving
+          !text: tr('Moving')
+          width: 88
+          visible: false
 
-    ComboBox
-      id: previewPatternX
-      anchors.left: previewSettings.left
-      anchors.top: parent.top
-      width: 94
-      height: 21
+        AppearanceOptionCheckBox
+          id: previewMounted
+          !text: tr('Mounted')
+          width: 88
+          visible: false
 
-    ComboBox
-      id: previewPatternY
-      anchors.left: previewSettings.left
-      anchors.top: parent.top
-      margin-left: 100
-      width: 88
-      height: 21
+      Panel
+        id: previewPatternRow
+        height: 22
+        layout: horizontalBox
+        spacing: 4
 
-    ComboBox
-      id: previewLayer
-      anchors.left: previewSettings.left
-      anchors.top: parent.top
-      margin-left: 200
-      width: 82
-      height: 21
+        ComboBox
+          id: previewPatternX
+          width: 124
+          height: 22
 
-    ComboBox
-      id: previewPatternZ
-      anchors.left: previewSettings.left
-      anchors.top: previewFrameGroup.bottom
-      margin-top: 4
-      width: 90
-      height: 22
+        ComboBox
+          id: previewPatternY
+          width: 124
+          height: 22
 
-    Label
-      id: previewPhaseLabel
-      !text: tr('Frame')
-      anchors.left: previewSettings.left
-      anchors.top: previewPatternZ.bottom
-      margin-top: 5
-      width: 45
-      height: 21
+        ComboBox
+          id: previewLayer
+          width: 100
+          height: 22
 
-    SpinBox
-      id: previewPhaseStepper
-      anchors.left: previewPhaseLabel.right
-      anchors.verticalCenter: previewPhaseLabel.verticalCenter
-      width: 66
-      height: 22
-      minimum: 1
-      maximum: 1
-      text: 1
+        ComboBox
+          id: previewPatternZ
+          width: 124
+          height: 22
 
-    Label
-      id: previewPhaseCount
-      anchors.left: previewPhaseStepper.right
-      anchors.verticalCenter: previewPhaseStepper.verticalCenter
-      margin-left: 4
-      width: 46
-      height: 21
-      text-wrap: false
+      Panel
+        id: previewAnimationSettingsRow
+        height: 22
+        layout: horizontalBox
+        spacing: 3
+        visible: false
+
+        Label
+          !text: tr('Start')
+          width: 36
+          height: 22
+          text-wrap: false
+          tooltip: tr('Default starting frame for this animation.')
+
+        AppearanceTextEdit
+          id: animationDefaultPhase
+          width: 44
+          height: 22
+
+        AppearanceOptionCheckBox
+          id: animationRandomStart
+          !text: tr('Random')
+          width: 68
+          tooltip: tr('Start at a random frame.')
+
+        AppearanceOptionCheckBox
+          id: animationSynchronized
+          !text: tr('Sync')
+          width: 58
+          tooltip: tr('Synchronize this animation with other appearances.')
+
+        ComboBox
+          id: animationLoopType
+          width: 90
+          height: 22
+          tooltip: tr('Animation loop type.')
+
+        Label
+          id: animationLoopCountLabel
+          !text: tr('Count')
+          width: 38
+          height: 22
+          text-wrap: false
+
+        AppearanceTextEdit
+          id: animationLoopCount
+          width: 44
+          height: 22
+          tooltip: tr('Number of loops when the loop type is Counted.')
+
+    Panel
+      id: previewTimelinePanel
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: previewSettings.bottom
+      margin-left: 8
+      margin-right: 8
+      margin-top: 6
+      height: 68
+
+      UIScrollArea
+        id: previewTimeline
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 22
+        horizontal-scrollbar: previewTimelineScroll
+        auto-focus: none
+
+        Panel
+          id: previewTimelineFrames
+          anchors.left: parent.left
+          anchors.top: parent.top
+          height: 22
+          layout: horizontalBox
+          spacing: 2
+
+      HorizontalScrollBar
+        id: previewTimelineScroll
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: previewTimeline.bottom
+        margin-top: 2
+        height: 10
+        pixels-scroll: true
+        visible: false
+
+      Panel
+        id: previewAnimationFrameRow
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: previewTimelineScroll.bottom
+        margin-top: 3
+        height: 22
+        layout: horizontalBox
+        spacing: 4
+
+        Label
+          id: previewPhaseLabel
+          !text: tr('Frame')
+          width: 42
+          height: 22
+          text-wrap: false
+
+        SpinBox
+          id: previewPhaseStepper
+          width: 62
+          height: 22
+          minimum: 1
+          maximum: 1
+          text: 1
+
+        Label
+          id: previewPhaseCount
+          width: 48
+          height: 22
+          text-wrap: false
+
+        Label
+          id: animationDurationMinLabel
+          !text: tr('Min ms')
+          width: 48
+          height: 22
+          text-wrap: false
+          visible: false
+
+        AppearanceTextEdit
+          id: animationDurationMin
+          width: 58
+          height: 22
+          visible: false
+
+        Label
+          id: animationDurationMaxLabel
+          !text: tr('Max ms')
+          width: 48
+          height: 22
+          text-wrap: false
+          visible: false
+
+        AppearanceTextEdit
+          id: animationDurationMax
+          width: 58
+          height: 22
+          visible: false
 
   Panel
     id: rightPanel
@@ -577,16 +660,9 @@ SpriteEditorWindow < MainWindow
           margin-right: 4
           @onClick: modules.game_sprite_editor.showPropertiesTab('values')
 
-        AppearanceNavigationButton
-          id: animationTabButton
-          !text: tr('Animation')
-          width: 96
-          height: 24
-          @onClick: modules.game_sprite_editor.showPropertiesTab('animation')
-
       Label
         id: noPropertyOptionsLabel
-        !text: tr('No flags, values or animation data for this appearance.')
+        !text: tr('No flags or values for this appearance.')
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: propertiesTabBar.bottom
@@ -637,104 +713,6 @@ SpriteEditorWindow < MainWindow
         anchors.bottom: appearanceValuesList.bottom
         anchors.right: parent.right
         step: 24
-        pixels-scroll: true
-        visible: false
-
-      UIScrollArea
-        id: appearanceAnimationPanel
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: propertiesTabBar.bottom
-        anchors.bottom: appearanceStatus.top
-        margin-top: 4
-        margin-right: 12
-        margin-bottom: 5
-        vertical-scrollbar: appearanceAnimationScroll
-        layout: verticalBox
-        padding: 3
-        auto-focus: none
-        visible: false
-
-        Label
-          id: animationGroupInfo
-          !text: tr('Select a frame group to edit its animation.')
-          height: 33
-          text-wrap: true
-
-        Panel
-          id: animationDefaultPhaseRow
-          height: 25
-
-          AppearanceFieldLabel
-            !text: tr('Default phase')
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            width: 82
-
-          AppearanceTextEdit
-            id: animationDefaultPhase
-            anchors.left: prev.right
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            height: 20
-
-        AppearanceOptionCheckBox
-          id: animationRandomStart
-          !text: tr('Random start phase')
-
-        AppearanceOptionCheckBox
-          id: animationSynchronized
-          !text: tr('Synchronized')
-
-        Panel
-          id: animationLoopTypeRow
-          height: 25
-
-          AppearanceFieldLabel
-            !text: tr('Loop type')
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            width: 82
-
-          ComboBox
-            id: animationLoopType
-            anchors.left: prev.right
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            height: 22
-
-        Panel
-          id: animationLoopCountRow
-          height: 25
-
-          AppearanceFieldLabel
-            !text: tr('Loop count')
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            width: 82
-
-          AppearanceTextEdit
-            id: animationLoopCount
-            anchors.left: prev.right
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            height: 20
-
-        Label
-          !text: tr('Frame durations (milliseconds)')
-          height: 20
-
-        Panel
-          id: animationFrameDurations
-          layout: verticalBox
-          height: 1
-
-      VerticalScrollBar
-        id: appearanceAnimationScroll
-        anchors.top: appearanceAnimationPanel.top
-        anchors.bottom: appearanceAnimationPanel.bottom
-        anchors.right: parent.right
-        step: 27
         pixels-scroll: true
         visible: false
 
