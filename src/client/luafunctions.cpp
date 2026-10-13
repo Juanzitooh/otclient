@@ -749,6 +749,7 @@ void Client::registerLuaFunctions()
     g_lua.bindClassMemberFunction<ThingType>("getNumPatternY", &ThingType::getNumPatternY);
     g_lua.bindClassMemberFunction<ThingType>("getNumPatternZ", &ThingType::getNumPatternZ);
     g_lua.bindClassMemberFunction<ThingType>("getAnimationPhases", &ThingType::getAnimationPhases);
+    g_lua.bindClassMemberFunction<ThingType>("getThumbnailAnimationSprites", &ThingType::getThumbnailAnimationSprites);
     g_lua.bindClassMemberFunction<ThingType>("getGroundSpeed", &ThingType::getGroundSpeed);
     g_lua.bindClassMemberFunction<ThingType>("getMaxTextLength", &ThingType::getMaxTextLength);
     g_lua.bindClassMemberFunction<ThingType>("getLight", &ThingType::getLight);
@@ -1171,9 +1172,12 @@ void Client::registerLuaFunctions()
     g_lua.registerClass<UISpriteEditorCanvas, UIWidget>();
     g_lua.bindClassStaticFunction<UISpriteEditorCanvas>("create", [] { return std::make_shared<UISpriteEditorCanvas>(); });
     g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("setSpriteId", &UISpriteEditorCanvas::setSpriteId);
+    g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("setThumbnailSpriteId", &UISpriteEditorCanvas::setThumbnailSpriteId);
+    g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("setSpriteAnimationIds", &UISpriteEditorCanvas::setSpriteAnimationIds);
     g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("getSpriteId", &UISpriteEditorCanvas::getSpriteId);
     g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("getSpriteWidth", &UISpriteEditorCanvas::getSpriteWidth);
     g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("getSpriteHeight", &UISpriteEditorCanvas::getSpriteHeight);
+    g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("getSpriteRenderCenter", &UISpriteEditorCanvas::getSpriteRenderCenter);
     g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("zoomIn", &UISpriteEditorCanvas::zoomIn);
     g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("zoomOut", &UISpriteEditorCanvas::zoomOut);
     g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("getZoom", &UISpriteEditorCanvas::getZoom);

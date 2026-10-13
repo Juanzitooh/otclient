@@ -10,6 +10,7 @@ local selectedAppearanceId
 local selectedSpriteId
 local appearanceEntries = {}
 local filteredAppearanceEntries = {}
+local categoryAppearanceCounts = {}
 local appearanceRows = {}
 local appearanceOriginal
 local appearanceChanges = { bools = {}, values = {}, strings = {}, animation = { groups = {} } }
@@ -48,9 +49,12 @@ local PREVIEW_HINT_BOTTOM_MARGIN = 8
 local MAX_PREVIEW_TIMELINE_FRAMES = 20
 local PREVIEW_TIMELINE_HEIGHT = 74
 local PREVIEW_TIMELINE_ONLY_HEIGHT = 36
-local PREVIEW_FRAME_COUNTER_HEIGHT = 32
 local PREVIEW_FRAME_SELECTION_WIDTH = 164
 local PREVIEW_DURATION_GROUP_GAP = 6
+local PREVIEW_DIRECTION_BUTTON_WIDTH = 48
+local PREVIEW_DIRECTION_BUTTON_HEIGHT = 21
+local PREVIEW_DIRECTION_PAD_GAP = 8
+local MAX_APPEARANCE_THUMBNAIL_FRAMES = 8
 
 local PREVIEW_DIRECTIONS = {
    { index = 0, id = 'previewNorth', name = 'North' },
@@ -75,7 +79,10 @@ local selectSprite
 local renderAppearanceRows
 local configurePreviewControls
 local updateAnimationEditor
+local updatePreviewPatternControls
+local refreshAppearancePreview
 local collectAnimationWidgetChanges
+local updateDirectionPadLayout
 
 local function setStatus(message)
    if window then
@@ -125,10 +132,52 @@ local function getSuggestedExportRoot(version)
    return string.format('%s/sprite-editor/exports/otclient-%s', writeRoot, formatClientVersion(version))
 end
 
-local function addCategories(comboBox)
-   for _, category in ipairs(categories) do
-      comboBox:addOption(tr(category.name), category.data)
+local function getCategoryAppearanceCount(category)
+   if categoryAppearanceCounts[category.data] ~= nil then
+      return categoryAppearanceCounts[category.data]
    end
+
+   local count = 0
+   for _, thing in pairs(g_things.getThingTypes(category.data)) do
+      if thing and thing:getId() > 0 then
+         count = count + 1
+      end
+   end
+   categoryAppearanceCounts[category.data] = count
+   return count
+end
+
+local function updateCategoryOptions()
+   if not window then
+      return
+   end
+   local comboBox = window:recursiveGetChildById('appearanceCategory')
+   local onOptionChange = comboBox.onOptionChange
+   comboBox.onOptionChange = nil
+   comboBox:clearOptions()
+   for _, category in ipairs(categories) do
+      local label = tr(category.name)
+      if activeVersion then
+         label = string.format('%s (%d)', label, getCategoryAppearanceCount(category))
+      end
+      comboBox:addOption(label, category.data)
+   end
+   comboBox.onOptionChange = onOptionChange
+   comboBox:setCurrentOptionByData(selectedAppearanceCategory, true)
+end
+
+local function getThumbnailAnimationSprites(thing)
+   local sprites = thing:getThumbnailAnimationSprites()
+   if #sprites <= MAX_APPEARANCE_THUMBNAIL_FRAMES then
+      return sprites
+   end
+
+   local sampled = {}
+   for index = 0, MAX_APPEARANCE_THUMBNAIL_FRAMES - 1 do
+      local sourceIndex = math.floor(index * (#sprites - 1) / (MAX_APPEARANCE_THUMBNAIL_FRAMES - 1)) + 1
+      table.insert(sampled, sprites[sourceIndex])
+   end
+   return sampled
 end
 
 local function hasAppearanceChanges()
@@ -228,6 +277,28 @@ local function setSpritePath(path)
    settingSpritePath = false
 end
 
+local function updatePreviewTitle()
+   if not window or not canvas or not selectedSpriteId then
+      return
+   end
+
+   window:recursiveGetChildById('spriteInfoLabel'):setText(tr('Sprite ID %d | %d x %d | Zoom %dx',
+      selectedSpriteId, canvas:getSpriteWidth(), canvas:getSpriteHeight(), canvas:getZoom()))
+   local contextLabel = window:recursiveGetChildById('spriteContextLabel')
+   contextLabel:setText(selectedSpriteContext or '')
+   contextLabel:setVisible(selectedSpriteContext ~= nil and selectedSpriteContext ~= '')
+end
+
+local function setPreviewMessage(message)
+   if not window then
+      return
+   end
+   window:recursiveGetChildById('spriteInfoLabel'):setText(message)
+   local contextLabel = window:recursiveGetChildById('spriteContextLabel')
+   contextLabel:setText('')
+   contextLabel:setVisible(false)
+end
+
 local function updateSpriteReplacementTarget()
    if not window then
       return
@@ -235,28 +306,30 @@ local function updateSpriteReplacementTarget()
    local hasTarget = selectedSpriteId ~= nil
    local canReplace = hasTarget and activeVersion ~= nil and not g_game.isOnline()
    local targetPanel = window:recursiveGetChildById('spriteReplacementPanel')
-   targetPanel:setVisible(currentPage == 'editor' and canReplace)
-   targetPanel:setHeight(canReplace and 74 or 0)
-   targetPanel:setMarginTop(canReplace and 6 or 0)
+   local showSpriteTools = currentPage == 'import'
+   targetPanel:setVisible(showSpriteTools)
+   targetPanel:setHeight(showSpriteTools and 112 or 0)
+   targetPanel:setMarginTop(showSpriteTools and 4 or 0)
+   window:recursiveGetChildById('selectedSpriteTargetLabel'):setText(
+      hasTarget and tr('Sprite ID %d', selectedSpriteId) or tr('No sprite selected'))
+   window:recursiveGetChildById('spriteReplacementHelpLabel'):setText(canReplace and
+      tr('Replace affects this frame only. Edit opens a temporary PNG; save it, then apply the edit.') or
+      tr('Select an appearance and frame to replace or edit its sprite.'))
    window:recursiveGetChildById('replaceAppearanceSpriteButton'):setEnabled(canReplace)
    window:recursiveGetChildById('editAppearanceSpriteButton'):setEnabled(canReplace)
+   window:recursiveGetChildById('previewSpritePathEdit'):setEnabled(canReplace)
    local applyButton = window:recursiveGetChildById('applyEditedSpriteButton')
    applyButton:setVisible(pendingSpriteEdit ~= nil)
    applyButton:setEnabled(pendingSpriteEdit ~= nil and not g_game.isOnline())
-   applyButton:setText(pendingSpriteEdit and tr('Apply %d', pendingSpriteEdit.spriteId) or tr('Apply'))
+   applyButton:setText(tr('Apply edit'))
    applyButton:setTooltip(pendingSpriteEdit and tr('Apply the edited PNG to sprite %d in the work copy.', pendingSpriteEdit.spriteId) or '')
-   window:recursiveGetChildById('configureSpriteEditorButton'):setEnabled(canReplace)
+   window:recursiveGetChildById('configureSpriteEditorButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    if not hasTarget then
-      window:recursiveGetChildById('selectedSpriteLabel'):setText(tr('Select a linked sprite to replace its PNG.'))
       setSpritePath(preparedSpritePath)
       return
    end
 
-   local size = string.format('%d x %d', canvas:getSpriteWidth(), canvas:getSpriteHeight())
-   local targetLabel = window:recursiveGetChildById('selectedSpriteLabel')
-   targetLabel:setText(tr('Sprite ID %d | %s', selectedSpriteId, selectedSpriteContext or tr('current frame')))
-   targetLabel:setTooltip(tr('Replace changes only this frame link. Edit changes sprite %d wherever that ID is shared. Use a %s PNG.',
-      selectedSpriteId, size))
+   updatePreviewTitle()
    setSpritePath(pendingSpriteEdit and selectedSpriteId == pendingSpriteEdit.spriteId and
       pendingSpriteEdit.path or preparedSpritePath)
 end
@@ -271,27 +344,25 @@ local function setPreviewControlsVisible(visible, panelHeight)
 end
 
 local function updatePreviewTimelineLayout(phaseCount, hasFrameControls, hasAnimation)
-   local hasMultipleFrames = phaseCount > 1
-   local showFrameButtons = hasFrameControls and hasMultipleFrames and
-      phaseCount <= MAX_PREVIEW_TIMELINE_FRAMES
+   local showFrameButtons = hasFrameControls and phaseCount <= MAX_PREVIEW_TIMELINE_FRAMES
    local showNumericFrameSelector = hasFrameControls and phaseCount > MAX_PREVIEW_TIMELINE_FRAMES
    local showAnimationFrameRow = showNumericFrameSelector or hasAnimation
    local timelinePanel = window:recursiveGetChildById('previewTimelinePanel')
    local timelineLabel = window:recursiveGetChildById('previewTimelineLabel')
    local timeline = window:recursiveGetChildById('previewTimeline')
    local timelineScroll = window:recursiveGetChildById('previewTimelineScroll')
+   local phaseActions = window:recursiveGetChildById('previewPhaseActions')
    local frameRow = window:recursiveGetChildById('previewAnimationFrameRow')
    local frameSelectionGroup = window:recursiveGetChildById('previewFrameSelectionGroup')
    local durationGroup = window:recursiveGetChildById('previewDurationGroup')
 
    timelinePanel:setVisible(hasFrameControls)
-   local panelHeight = showFrameButtons and
-      (showAnimationFrameRow and PREVIEW_TIMELINE_HEIGHT or PREVIEW_TIMELINE_ONLY_HEIGHT) or
-      (showAnimationFrameRow and PREVIEW_FRAME_COUNTER_HEIGHT or 0)
+   local panelHeight = showAnimationFrameRow and PREVIEW_TIMELINE_HEIGHT or PREVIEW_TIMELINE_ONLY_HEIGHT
    timelinePanel:setHeight(panelHeight)
-   timelineLabel:setVisible(showFrameButtons)
+   timelineLabel:setVisible(hasFrameControls)
    timeline:setVisible(showFrameButtons)
    timelineScroll:setVisible(showFrameButtons and phaseCount * 30 > timeline:getWidth())
+   phaseActions:setVisible(hasFrameControls)
    frameRow:setVisible(showAnimationFrameRow)
    frameRow:setMarginBottom(showFrameButtons and showAnimationFrameRow and 11 or 0)
    frameSelectionGroup:setVisible(showNumericFrameSelector)
@@ -335,8 +406,8 @@ local function setPropertiesTab(tab)
    window:recursiveGetChildById('appearanceFlagsScroll'):setVisible(flagsVisible and flagsAvailable)
    window:recursiveGetChildById('appearanceValuesList'):setVisible(valuesVisible and valuesAvailable)
    window:recursiveGetChildById('appearanceValuesScroll'):setVisible(valuesVisible and valuesAvailable)
-   window:recursiveGetChildById('flagsTabButton'):setBackgroundColor(flagsVisible and '#603bb0' or '#363636')
-   window:recursiveGetChildById('valuesTabButton'):setBackgroundColor(valuesVisible and '#603bb0' or '#363636')
+   window:recursiveGetChildById('flagsTabButton'):setOn(flagsVisible)
+   window:recursiveGetChildById('valuesTabButton'):setOn(valuesVisible)
 end
 
 local function buildAppearanceProperties(data)
@@ -431,7 +502,7 @@ local function clearAppearanceProperties()
    window:recursiveGetChildById('appearanceFlagsList'):destroyChildren()
    window:recursiveGetChildById('appearanceValuesList'):destroyChildren()
    window:recursiveGetChildById('previewTimelineFrames'):destroyChildren()
-   window:recursiveGetChildById('spriteInfoLabel'):setText(tr('Select an appearance to preview its sprite.'))
+   setPreviewMessage(tr('Select an appearance to see its sprite.'))
    window:recursiveGetChildById('appearanceName'):setEnabled(false)
    window:recursiveGetChildById('appearanceDescription'):setEnabled(false)
    selectedSpriteId = nil
@@ -489,6 +560,7 @@ selectSprite = function(id)
       canvas:setVisible(false)
       selectedSpriteId = nil
       selectedSpriteContext = nil
+      updateDirectionPadLayout()
       updateSpriteReplacementTarget()
       setStatus(tr('Sprite %d is not available in this 15.x work copy.', id))
       return false
@@ -496,10 +568,9 @@ selectSprite = function(id)
 
    canvas:setVisible(true)
    selectedSpriteId = id
-   window:recursiveGetChildById('spriteInfoLabel'):setText(
-      tr('Preview %d x %d | Zoom %dx', canvas:getSpriteWidth(), canvas:getSpriteHeight(), canvas:getZoom()))
+   updatePreviewTitle()
+   updateDirectionPadLayout()
    updateSpriteReplacementTarget()
-   setStatus(tr('Sprite preview updated.'))
    return true
 end
 
@@ -566,6 +637,126 @@ local function setAnimationChange(groupIndex, field, value, phaseIndex)
    updateAppearanceSaveButton()
 end
 
+local function updatePreviewAnimationPhaseCount(groupIndex, phaseCount)
+   local group = previewFrameGroups[groupIndex + 1]
+   local originalGroup = appearanceOriginal and appearanceOriginal.frameGroups[groupIndex + 1]
+   if not group or not originalGroup or phaseCount < 1 then
+      return false
+   end
+
+   local spritesPerPhase = math.max(1, originalGroup.layers or 1) *
+      math.max(1, originalGroup.patternWidth or 1) *
+      math.max(1, originalGroup.patternHeight or 1) *
+      math.max(1, originalGroup.patternDepth or 1)
+   local originalPhaseCount = math.max(1, originalGroup.phaseCount or 1)
+   local maximumPhaseCount = math.floor(2147483647 / spritesPerPhase)
+   if phaseCount > maximumPhaseCount then
+      setAppearanceStatus(tr('This frame group cannot contain more animation frames.'))
+      return false
+   end
+
+   local sprites = {}
+   local originalSprites = originalGroup.sprites or {}
+   local copiedPhaseCount = math.min(phaseCount, originalPhaseCount)
+   for index = 1, math.min(#originalSprites, copiedPhaseCount * spritesPerPhase) do
+      sprites[index] = originalSprites[index]
+   end
+   for phaseIndex = originalPhaseCount, phaseCount - 1 do
+      for spriteOffset = 1, spritesPerPhase do
+         local spriteIndex = phaseIndex * spritesPerPhase + spriteOffset
+         local previousSpriteIndex = (phaseIndex - 1) * spritesPerPhase + spriteOffset
+         sprites[spriteIndex] = sprites[previousSpriteIndex] or 0
+      end
+   end
+
+   local originalAnimation = originalGroup.animation or {}
+   local animation = {
+      enabled = phaseCount > 1,
+      defaultStartPhase = originalAnimation.defaultStartPhase or 0,
+      randomStartPhase = originalAnimation.randomStartPhase or false,
+      synchronized = originalAnimation.synchronized or false,
+      loopType = originalAnimation.enabled and originalAnimation.loopType or 0,
+      loopCount = originalAnimation.loopCount or 0,
+      phases = {},
+   }
+   if phaseCount > 1 then
+      for phaseIndex = 1, phaseCount do
+         local originalPhase = originalAnimation.phases and originalAnimation.phases[phaseIndex]
+         animation.phases[phaseIndex] = originalPhase and {
+            durationMin = originalPhase.durationMin,
+            durationMax = originalPhase.durationMax,
+         } or { durationMin = 100, durationMax = 100 }
+      end
+      animation.defaultStartPhase = math.min(animation.defaultStartPhase, phaseCount - 1)
+   else
+      animation.defaultStartPhase = 0
+      animation.randomStartPhase = false
+      animation.synchronized = false
+      animation.loopType = 0
+      animation.loopCount = 0
+   end
+
+   group.phaseCount = phaseCount
+   group.sprites = sprites
+   group.animation = animation
+
+   local groupKey = tostring(groupIndex)
+   local groupChanges = appearanceChanges.animation.groups[groupKey]
+   if not groupChanges then
+      groupChanges = { phases = {} }
+      appearanceChanges.animation.groups[groupKey] = groupChanges
+   end
+   groupChanges.phaseCount = phaseCount ~= originalPhaseCount and phaseCount or nil
+   if phaseCount == 1 then
+      groupChanges.defaultStartPhase = nil
+      groupChanges.randomStartPhase = nil
+      groupChanges.synchronized = nil
+      groupChanges.loopType = nil
+      groupChanges.loopCount = nil
+   end
+   if phaseCount == 1 then
+      groupChanges.phases = nil
+   else
+      groupChanges.phases = groupChanges.phases or {}
+      for phaseKey in pairs(groupChanges.phases) do
+         if tonumber(phaseKey) >= phaseCount then
+            groupChanges.phases[phaseKey] = nil
+         end
+      end
+      if next(groupChanges.phases) == nil then
+         groupChanges.phases = nil
+      end
+   end
+   if next(groupChanges) == nil then
+      appearanceChanges.animation.groups[groupKey] = nil
+   end
+
+   previewPhase = math.min(previewPhase, phaseCount - 1)
+   updateAppearanceSaveButton()
+   return true
+end
+
+local function changeAnimationPhaseCount(delta)
+   local group = currentPreviewGroup()
+   if not group or not collectAnimationWidgetChanges() then
+      return false
+   end
+   local phaseCount = math.max(1, group.phaseCount or 1)
+   local newPhaseCount = phaseCount + delta
+   if newPhaseCount < 1 then
+      return false
+   end
+   if not updatePreviewAnimationPhaseCount(group.index, newPhaseCount) then
+      return false
+   end
+   updatePreviewPatternControls()
+   updateAnimationEditor()
+   refreshAppearancePreview()
+   setAppearanceStatus(delta > 0 and tr('Frame added. Replace its sprite if needed, then save the appearance.') or
+      tr('Last frame removed. Save the appearance to apply the change.'))
+   return true
+end
+
 local function setComboOptions(comboBox, options, selectedData)
    local onOptionChange = comboBox.onOptionChange
    comboBox.onOptionChange = nil
@@ -602,13 +793,52 @@ local function directionName(index, width)
    return tr('Pattern X %d', index + 1)
 end
 
-local function updatePreviewPatternControls()
+updateDirectionPadLayout = function()
+   if not window or not canvas then
+      return
+   end
+
+   local directionPad = window:recursiveGetChildById('previewDirectionPad')
+   local group = currentPreviewGroup()
+   local visible = selectedSpriteId ~= nil and selectedAppearanceCategory == 1 and group and
+      group.patternWidth >= 4 or false
+   directionPad:setVisible(visible)
+   if not visible then
+      return
+   end
+
+   local spriteWidth = canvas:getSpriteWidth()
+   local spriteHeight = canvas:getSpriteHeight()
+   if spriteWidth > 0 and spriteHeight > 0 then
+      local zoom = canvas:getZoom()
+      local padWidth = spriteWidth * zoom + 2 * (PREVIEW_DIRECTION_BUTTON_WIDTH + PREVIEW_DIRECTION_PAD_GAP)
+      local padHeight = spriteHeight * zoom + 2 * (PREVIEW_DIRECTION_BUTTON_HEIGHT + PREVIEW_DIRECTION_PAD_GAP)
+      local maxWidth = math.max(PREVIEW_DIRECTION_BUTTON_WIDTH, canvas:getWidth() - 16)
+      local maxHeight = math.max(PREVIEW_DIRECTION_BUTTON_HEIGHT, canvas:getHeight() - 16)
+      local width = math.min(padWidth, maxWidth)
+      local height = math.min(padHeight, maxHeight)
+      directionPad:setWidth(width)
+      directionPad:setHeight(height)
+
+      local canvasRect = canvas:getPaddingRect()
+      local spriteCenter = canvas:getSpriteRenderCenter()
+      local maxOffsetX = math.max(0, (canvasRect.width - width) / 2)
+      local maxOffsetY = math.max(0, (canvasRect.height - height) / 2)
+      local offsetX = math.max(-maxOffsetX, math.min(maxOffsetX, spriteCenter.x - canvasRect.width / 2))
+      local offsetY = math.max(-maxOffsetY, math.min(maxOffsetY, spriteCenter.y - canvasRect.height / 2))
+      directionPad:setMarginLeft(offsetX)
+      directionPad:setMarginTop(offsetY)
+   end
+end
+
+updatePreviewPatternControls = function()
    if not window then
       return
    end
    local group = currentPreviewGroup()
    if not group then
       setPreviewControlsVisible(false)
+      updateDirectionPadLayout()
       return
    end
 
@@ -621,17 +851,14 @@ local function updatePreviewPatternControls()
    local addonBox = window:recursiveGetChildById('previewPatternY')
    local layerBox = window:recursiveGetChildById('previewLayer')
    local patternZBox = window:recursiveGetChildById('previewPatternZ')
-   local directionPad = window:recursiveGetChildById('previewDirectionPad')
-   local settings = window:recursiveGetChildById('previewSettings')
+   local settings = window:recursiveGetChildById('previewTopControls')
    local phaseLabel = window:recursiveGetChildById('previewPhaseLabel')
 
-   directionPad:setVisible(useDirectionPad)
-   settings:setMarginLeft(useDirectionPad and 166 or 8)
+   settings:setMarginLeft(8)
    local hasAnimation = group.animation and group.animation.enabled and group.animation.phases and
       #group.animation.phases > 0 or false
    local phaseCount = math.max(1, group.phaseCount or 1)
-   local hasMultipleFrames = phaseCount > 1
-   local hasFrameControls = hasMultipleFrames or hasAnimation
+   local hasFrameControls = group ~= nil
    local _, showNumericFrameSelector, framePanelHeight =
       updatePreviewTimelineLayout(phaseCount, hasFrameControls, hasAnimation)
 
@@ -651,7 +878,7 @@ local function updatePreviewPatternControls()
          button:setVisible(visible)
          if visible then
             local selected = direction.index == previewPatternX
-            button:setOn(selected)
+            button:setChecked(selected)
             button:setColor(selected and '#d9c7ff' or '#dfdfdf')
          end
       end
@@ -669,16 +896,13 @@ local function updatePreviewPatternControls()
 
    local metaRow = window:recursiveGetChildById('previewMetaRow')
    local patternRow = window:recursiveGetChildById('previewPatternRow')
-   local controls = window:recursiveGetChildById('previewControls')
-   local hasMetaControls = groupBox:isVisible() or movingCheck:isVisible() or mountedCheck:isVisible()
-   local hasPatternControls = directionBox:isVisible() or addonBox:isVisible() or layerBox:isVisible() or
-      patternZBox:isVisible()
+   local hasMetaControls = (#previewFrameGroups > 1 and not previewHasMovementToggle) or
+      previewHasMovementToggle or (isOutfit and group.patternDepth > 1)
+   local hasPatternControls = (not useDirectionPad and group.patternWidth > 1) or group.patternHeight > 1 or
+      group.layers > 1 or (not isOutfit and group.patternDepth > 1)
    local hasTopSettings = hasMetaControls or hasPatternControls or hasAnimation
    metaRow:setVisible(hasMetaControls)
    patternRow:setVisible(hasPatternControls)
-   directionPad:setMarginLeft(useDirectionPad and
-      (hasTopSettings and 8 or math.max(8, math.floor((controls:getWidth() - 150) / 2))) or 8)
-
    local settingsRowCount = (hasMetaControls and 1 or 0) + (hasPatternControls and 1 or 0) +
       (hasAnimation and 1 or 0)
    local settingsHeight = settingsRowCount > 0 and
@@ -707,13 +931,13 @@ local function updatePreviewPatternControls()
    local phaseCountLabel = window:recursiveGetChildById('previewPhaseCount')
    phaseCountLabel:setVisible(showNumericFrameSelector)
    phaseCountLabel:setText(tr('of %d', phaseCount))
-   local topAreaHeight = math.max(useDirectionPad and 68 or 0, settingsHeight)
-   local panelHeight = 8 + topAreaHeight + (hasFrameControls and 6 or 0) + framePanelHeight + 8
-   setPreviewControlsVisible(useDirectionPad or hasTopSettings or hasFrameControls, panelHeight)
+   local panelHeight = 8 + settingsHeight + (hasFrameControls and 6 or 0) + framePanelHeight + 8
+   setPreviewControlsVisible(hasTopSettings or hasFrameControls, panelHeight)
+   updateDirectionPadLayout()
    updateSpriteReplacementTarget()
 end
 
-local function refreshAppearancePreview()
+refreshAppearancePreview = function()
    local group = currentPreviewGroup()
    if not group then
       return false
@@ -764,7 +988,6 @@ local function refreshAppearancePreview()
          table.insert(details, tr('Frame %d/%d', previewPhase + 1, math.max(1, group.phaseCount or 1)))
          selectedSpriteContext = table.concat(details, ' | ')
          updateSpriteReplacementTarget()
-         setStatus(tr('Preview: %s', selectedSpriteContext))
       end
       return selected
    end
@@ -772,7 +995,8 @@ local function refreshAppearancePreview()
    selectedSpriteId = nil
    selectedSpriteContext = nil
    canvas:setVisible(false)
-   window:recursiveGetChildById('spriteInfoLabel'):setText(tr('No sprite is linked to this frame selection.'))
+   updateDirectionPadLayout()
+   setPreviewMessage(tr('No sprite is linked to this frame selection.'))
    updateSpriteReplacementTarget()
    setStatus(tr('No sprite is linked to this frame selection.'))
    return false
@@ -940,6 +1164,8 @@ updateAnimationEditor = function()
    local settingsRow = window:recursiveGetChildById('previewAnimationSettingsRow')
    local timeline = window:recursiveGetChildById('previewTimeline')
    local phaseStepper = window:recursiveGetChildById('previewPhaseStepper')
+   local addFrameButton = window:recursiveGetChildById('addAnimationFrameButton')
+   local removeFrameButton = window:recursiveGetChildById('removeAnimationFrameButton')
    local phaseCountLabel = window:recursiveGetChildById('previewPhaseCount')
    local minLabel = window:recursiveGetChildById('animationDurationMinLabel')
    local minEdit = window:recursiveGetChildById('animationDurationMin')
@@ -947,8 +1173,7 @@ updateAnimationEditor = function()
    local maxEdit = window:recursiveGetChildById('animationDurationMax')
    local frameSelectionGroup = window:recursiveGetChildById('previewFrameSelectionGroup')
    local durationGroup = window:recursiveGetChildById('previewDurationGroup')
-   local hasMultipleFrames = phaseCount > 1
-   local hasFrameControls = hasMultipleFrames or isAnimated
+   local hasFrameControls = group ~= nil
    local showFrameButtons, showNumericFrameSelector =
       updatePreviewTimelineLayout(phaseCount, hasFrameControls, isAnimated)
 
@@ -966,6 +1191,28 @@ updateAnimationEditor = function()
    maxLabel:setVisible(isAnimated)
    maxEdit:setVisible(isAnimated)
    settingsRow:setVisible(isAnimated)
+   local canEditFrames = group ~= nil and activeVersion ~= nil and not g_game.isOnline()
+   addFrameButton:setEnabled(canEditFrames and phaseCount < math.floor(2147483647 /
+      (math.max(1, group.layers or 1) * math.max(1, group.patternWidth or 1) *
+      math.max(1, group.patternHeight or 1) * math.max(1, group.patternDepth or 1))))
+   removeFrameButton:setEnabled(canEditFrames and phaseCount > 1)
+   addFrameButton.onClick = function()
+      changeAnimationPhaseCount(1)
+   end
+   removeFrameButton.onClick = function()
+      if not canEditFrames or phaseCount <= 1 or not collectAnimationWidgetChanges() then
+         return
+      end
+      local messageBox
+      messageBox = displayGeneralBox(tr('Remove animation frame'),
+         tr('Remove the last frame (%d) and its sprite links? This change will be applied when you save the appearance.', phaseCount), {
+            { text = tr('Remove frame'), callback = function()
+               messageBox:ok()
+               changeAnimationPhaseCount(-1)
+            end },
+            { text = tr('Cancel'), callback = function() messageBox:cancel() end },
+         })
+   end
 
    local onValueChange = phaseStepper.onValueChange
    phaseStepper.onValueChange = nil
@@ -1143,7 +1390,7 @@ local function refreshSelectedAppearance()
          selectedSpriteId = nil
          selectedSpriteContext = nil
          canvas:setVisible(false)
-         window:recursiveGetChildById('spriteInfoLabel'):setText(tr('This appearance has no linked sprites.'))
+         setPreviewMessage(tr('This appearance has no linked sprites.'))
          updateSpriteReplacementTarget()
       end
    end
@@ -1156,25 +1403,33 @@ local function getThingEntries(category)
       if id and id > 0 then
          local sprites = thing:getSprites()
          local name = thing:getName()
-         local spriteIds = {}
+         local spriteSearchParts = {}
          local seenSpriteIds = {}
          local spriteId
+         local minSpriteId
+         local maxSpriteId
+         local linkedSpriteCount = 0
          for _, linkedSpriteId in ipairs(sprites or {}) do
             if linkedSpriteId > 0 then
                spriteId = spriteId or linkedSpriteId
                if not seenSpriteIds[linkedSpriteId] then
-                  table.insert(spriteIds, linkedSpriteId)
                   seenSpriteIds[linkedSpriteId] = true
+                  table.insert(spriteSearchParts, tostring(linkedSpriteId))
+                  minSpriteId = not minSpriteId and linkedSpriteId or math.min(minSpriteId, linkedSpriteId)
+                  maxSpriteId = not maxSpriteId and linkedSpriteId or math.max(maxSpriteId, linkedSpriteId)
+                  linkedSpriteCount = linkedSpriteCount + 1
                end
             end
          end
-         table.sort(spriteIds)
          table.insert(entries, {
             id = id,
             category = category,
             name = name ~= '' and name or nil,
             spriteId = spriteId,
-            spriteIds = spriteIds,
+            spriteSearchIds = table.concat(spriteSearchParts, '|'),
+            minSpriteId = minSpriteId,
+            maxSpriteId = maxSpriteId,
+            linkedSpriteCount = linkedSpriteCount,
          })
       end
    end
@@ -1188,10 +1443,11 @@ local function getAppearanceTooltip(entry)
       table.insert(lines, entry.name)
    end
 
-   if #entry.spriteIds == 1 then
-      table.insert(lines, tr('Sprite ID: %d', entry.spriteIds[1]))
-   elseif #entry.spriteIds > 1 then
-      table.insert(lines, tr('Sprite ID span: %d-%d (%d linked)', entry.spriteIds[1], entry.spriteIds[#entry.spriteIds], #entry.spriteIds))
+   if entry.linkedSpriteCount == 1 then
+      table.insert(lines, tr('Sprite ID: %d', entry.minSpriteId))
+   elseif entry.linkedSpriteCount > 1 then
+      table.insert(lines, tr('Sprite ID span: %d-%d (%d linked)',
+         entry.minSpriteId, entry.maxSpriteId, entry.linkedSpriteCount))
    else
       table.insert(lines, tr('No linked sprites'))
    end
@@ -1206,8 +1462,9 @@ renderAppearanceRows = function(scrollY)
    local content = window:recursiveGetChildById('appearanceListContent')
    content:setHeight(math.max(1, #filteredAppearanceEntries * APPEARANCE_ROW_HEIGHT))
    local firstIndex = math.floor(math.max(0, scrollY or 0) / APPEARANCE_ROW_HEIGHT) + 1
-   local viewportHeight = math.max(list:getHeight(), 400)
-   local poolSize = math.ceil(viewportHeight / APPEARANCE_ROW_HEIGHT) + 2
+   local viewportHeight = math.max(list:getHeight(), 1)
+   local poolSize = math.ceil(math.max(viewportHeight, 400) / APPEARANCE_ROW_HEIGHT) + 2
+   local thumbnailsUpdated = false
    while #appearanceRows < poolSize do
       local row = g_ui.createWidget('AppearanceResultRow', content)
       table.insert(appearanceRows, row)
@@ -1219,22 +1476,38 @@ renderAppearanceRows = function(scrollY)
       row:setVisible(entry ~= nil)
       if entry then
          row:setMarginTop((index - 1) * APPEARANCE_ROW_HEIGHT)
-         row:recursiveGetChildById('appearanceId'):setText(tr('ID %d', entry.id))
+         row:setText('')
+         row:recursiveGetChildById('appearanceId'):setText(tostring(entry.id))
          row:setTooltip(getAppearanceTooltip(entry))
          local thumbnail = row:recursiveGetChildById('thumbnail')
          thumbnail:setVisible(entry.spriteId ~= nil)
-         if entry.spriteId then
-            thumbnail:setSpriteId(entry.spriteId)
+         local lastVisibleIndex = math.floor(((scrollY or 0) + viewportHeight) / APPEARANCE_ROW_HEIGHT) + 1
+         if entry.spriteId and index <= lastVisibleIndex and row.thumbnailEntry ~= entry then
+            local loaded
+            local thing = g_things.getThingType(entry.id, entry.category)
+            local animationSprites = getThumbnailAnimationSprites(thing)
+            if #animationSprites > 1 then
+               loaded = thumbnail:setSpriteAnimationIds(animationSprites)
+            else
+               loaded = thumbnail:setThumbnailSpriteId(entry.spriteId)
+            end
+            if not loaded and #animationSprites > 1 then
+               loaded = thumbnail:setThumbnailSpriteId(entry.spriteId)
+            end
+            if loaded then
+               thumbnailsUpdated = true
+            end
+            row.thumbnailEntry = entry
          end
          local selected = entry.id == selectedAppearanceId and entry.category == selectedAppearanceCategory
-         row:setBackgroundColor(selected and '#514276' or '#363636')
+         row:setOn(selected)
          row.onClick = function()
             selectAppearance(entry.category, entry.id)
          end
       end
    end
 
-   if g_spriteAppearances.releaseDecodedSpriteSheets then
+   if thumbnailsUpdated and g_spriteAppearances.releaseDecodedSpriteSheets then
       g_spriteAppearances.releaseDecodedSpriteSheets()
    end
 end
@@ -1248,21 +1521,12 @@ local function applyAppearanceFilter()
    for _, entry in ipairs(appearanceEntries) do
       local idText = tostring(entry.id)
       local nameText = entry.name and entry.name:lower() or ''
-      local spriteMatch = false
-      for _, spriteId in ipairs(entry.spriteIds) do
-         if tostring(spriteId):find(search, 1, true) then
-            spriteMatch = true
-            break
-         end
-      end
+      local spriteMatch = entry.spriteSearchIds:find(search, 1, true) ~= nil
       if search == '' or nameText:find(search, 1, true) or
             idText:find(search, 1, true) or spriteMatch then
          table.insert(filteredAppearanceEntries, entry)
       end
    end
-   local countLabel = window:recursiveGetChildById('appearanceResultsLabel')
-   countLabel:setText(activeVersion and tr('%d appearances', #filteredAppearanceEntries) or
-      tr('Open a work copy to browse.'))
    local list = window:recursiveGetChildById('appearanceList')
    list:setVirtualOffset({ x = 0, y = 0 })
    renderAppearanceRows(0)
@@ -1273,12 +1537,11 @@ local function refreshAppearanceCatalog(category)
    if not window or not activeVersion then
       appearanceEntries = {}
       filteredAppearanceEntries = {}
-      if window then
-         window:recursiveGetChildById('appearanceResultsLabel'):setText(tr('Open a work copy to browse.'))
-      end
       return
    end
    appearanceEntries = getThingEntries(category)
+   categoryAppearanceCounts[category] = #appearanceEntries
+   updateCategoryOptions()
    applyAppearanceFilter()
 end
 
@@ -1322,10 +1585,8 @@ local function loadAppearanceRecord(category, id, forceDiscard, forceReload)
    window:recursiveGetChildById('appearanceCategory'):setCurrentOptionByData(category, true)
    buildAppearanceProperties(data)
    refreshSelectedAppearance()
-   if not selectedSpriteId then
-      local categoryInfo = categories[category + 1]
-      setStatus(tr('%s loaded.', categoryInfo and tr(categoryInfo.singular) or tr('Appearance')))
-   end
+   local categoryInfo = categories[category + 1]
+   setStatus(tr('%s %d loaded.', categoryInfo and tr(categoryInfo.singular) or tr('Appearance'), id))
    renderAppearanceRows(window:recursiveGetChildById('appearanceList'):getVirtualOffset().y)
    return true
 end
@@ -1405,9 +1666,9 @@ local function setActivePage(page)
    window:recursiveGetChildById('propertiesPanel'):setVisible(page == 'editor')
    window:recursiveGetChildById('importPanel'):setVisible(page == 'import')
    window:recursiveGetChildById('exportPanel'):setVisible(page == 'export')
-   window:recursiveGetChildById('editorPageButton'):setBackgroundColor(page == 'editor' and '#603bb0' or '#363636')
-   window:recursiveGetChildById('importPageButton'):setBackgroundColor(page == 'import' and '#603bb0' or '#363636')
-   window:recursiveGetChildById('exportPageButton'):setBackgroundColor(page == 'export' and '#603bb0' or '#363636')
+   window:recursiveGetChildById('editorPageButton'):setOn(page == 'editor')
+   window:recursiveGetChildById('importPageButton'):setOn(page == 'import')
+   window:recursiveGetChildById('exportPageButton'):setOn(page == 'export')
    updateSpriteReplacementTarget()
    updateExportControls()
    if page == 'export' then
@@ -1438,8 +1699,13 @@ local function createWindow()
    end
    canvas.onStateChange = function()
       if canvas and window then
-         window:recursiveGetChildById('spriteInfoLabel'):setText(
-            tr('Preview %d x %d | Zoom %dx', canvas:getSpriteWidth(), canvas:getSpriteHeight(), canvas:getZoom()))
+         updatePreviewTitle()
+         updateDirectionPadLayout()
+      end
+   end
+   canvas.onPositionChange = function()
+      if canvas and window then
+         updateDirectionPadLayout()
       end
    end
 
@@ -1453,7 +1719,7 @@ local function createWindow()
    setSpritePath(preparedSpritePath)
 
    local categoryBox = window:recursiveGetChildById('appearanceCategory')
-   addCategories(categoryBox)
+   updateCategoryOptions()
    categoryBox:setCurrentOptionByData(selectedAppearanceCategory, true)
    categoryBox.onOptionChange = function(_, _, category)
       changeAppearanceCategory(category)
@@ -1550,6 +1816,7 @@ local function loadAssets(version)
    activeVersion = version
    activeAssetPath = assetPath
    activeWorkRoot = workRoot
+   categoryAppearanceCounts = {}
    selectedAppearanceCategory = 0
    return true
 end
@@ -1877,13 +2144,16 @@ function editSprite(forceDiscard)
    if pendingSpriteEdit then
       pngPath = pendingSpriteEdit.path
    else
-      local tempRoot = g_platform.getTempPath()
-      if tempRoot:sub(-1) ~= '/' and tempRoot:sub(-1) ~= '\\' then
-         tempRoot = tempRoot .. '/'
+      local writeRoot = g_resources.getWriteDir()
+      if not writeRoot or writeRoot == '' then
+         setStatus(tr('Could not find the client profile directory for the temporary PNG.'))
+         return
       end
-      pngPath = string.format('%sotclient-sprite-editor-%d-%d-%d-%d.png', tempRoot,
+      writeRoot = writeRoot:gsub('[\\/]+$', '')
+      local fileName = string.format('otclient-sprite-editor-%d-%d-%d-%d.png',
          g_platform.getProcessId(), activeVersion, selectedSpriteId, g_clock.millis())
-      local saved, errorMessage = pcall(g_spriteAppearances.saveSpriteToFile, selectedSpriteId, pngPath)
+      pngPath = string.format('%s/%s', writeRoot, fileName)
+      local saved, errorMessage = pcall(g_spriteAppearances.saveSpriteToFile, selectedSpriteId, fileName)
       if not saved or not g_platform.fileExists(pngPath) then
          setStatus(saved and tr('Could not create the temporary PNG for this sprite.') or getUserFacingError(errorMessage))
          return
@@ -2096,6 +2366,7 @@ function saveAppearanceProperties()
       return
    end
 
+   local previewSelection = capturePreviewSelection()
    local updates = {}
    for section, values in pairs(appearanceChanges) do
       local hasSectionChanges = section == 'animation' and next(values.groups) ~= nil or
@@ -2115,7 +2386,11 @@ function saveAppearanceProperties()
       return
    end
    refreshAppearanceCatalog(selectedAppearanceCategory)
-   loadAppearanceRecord(selectedAppearanceCategory, selectedAppearanceId, true, true)
+   if not loadAppearanceRecord(selectedAppearanceCategory, selectedAppearanceId, true, true) then
+      setAppearanceStatus(tr('Changes were saved, but the appearance could not be reloaded.'))
+      return
+   end
+   restorePreviewSelection(previewSelection)
    setAppearanceStatus(tr('Appearance %d saved to the work copy.', selectedAppearanceId))
 end
 
