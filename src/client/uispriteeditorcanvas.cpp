@@ -38,12 +38,18 @@ constexpr int CHECKER_SIZE = 12;
 
 bool UISpriteEditorCanvas::setSpriteId(const int id)
 {
-    return setSpriteIdInternal(id, true);
+    const bool loaded = setSpriteIdInternal(id, true);
+    if (loaded)
+        m_isThumbnail = false;
+    return loaded;
 }
 
 bool UISpriteEditorCanvas::setThumbnailSpriteId(const int id)
 {
-    return setSpriteIdInternal(id, false);
+    const bool loaded = setSpriteIdInternal(id, false);
+    if (loaded)
+        m_isThumbnail = true;
+    return loaded;
 }
 
 bool UISpriteEditorCanvas::setSpriteIdInternal(const int id, const bool releaseDecodedSheets)
@@ -74,7 +80,7 @@ bool UISpriteEditorCanvas::setSpriteAnimationIds(const std::vector<uint32_t>& id
     if (ids.empty())
         return false;
     if (ids.size() == 1)
-        return setSpriteId(static_cast<int>(ids.front()));
+        return setThumbnailSpriteId(static_cast<int>(ids.front()));
 
     std::vector<TexturePtr> textures;
     textures.reserve(ids.size());
@@ -98,6 +104,7 @@ bool UISpriteEditorCanvas::setSpriteAnimationIds(const std::vector<uint32_t>& id
     m_animationTimer.restart();
     m_hasUserZoom = false;
     m_pan = {};
+    m_isThumbnail = true;
     updateRenderRect();
     callLuaField("onStateChange");
     return true;
@@ -214,7 +221,7 @@ bool UISpriteEditorCanvas::onMouseMove(const Point& mousePos, const Point& mouse
 
 bool UISpriteEditorCanvas::onMouseWheel(const Point& mousePos, const Fw::MouseWheelDirection direction)
 {
-    if (!getPaddingRect().contains(mousePos))
+    if (m_isThumbnail || !getPaddingRect().contains(mousePos))
         return UIWidget::onMouseWheel(mousePos, direction);
 
     if (direction == Fw::MouseWheelUp)

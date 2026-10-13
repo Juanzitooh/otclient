@@ -387,7 +387,7 @@ SpriteEditorWindow < MainWindow
 
   Label
     id: previewHintLabel
-    !text: tr('1x | Wheel: zoom | Middle-drag: pan | Checkerboard: transparency')
+    !text: tr('Wheel over preview: zoom | Middle-drag: pan | Checkerboard: transparency')
     anchors.left: editorCanvasFrame.left
     anchors.right: editorCanvasFrame.right
     anchors.bottom: editorCanvasFrame.bottom

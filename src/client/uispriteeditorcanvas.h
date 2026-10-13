@@ -68,6 +68,7 @@ private:
     Point m_pan;
     bool m_isPanning{ false };
     bool m_hasUserZoom{ false };
+    bool m_isThumbnail{ false };
 };
 
 #endif
