@@ -40,6 +40,22 @@ SpritePickerCell < Button
     phantom: true
 
   Label
+    id: spriteSizeBadge
+    anchors.top: parent.top
+    anchors.right: parent.right
+    margin-top: 2
+    margin-right: 1
+    size: 20 12
+    text-align: right
+    text-offset: 9 -10
+    text-wrap: false
+    font: small-9px
+    color: #ffffff
+    background-color: alpha
+    phantom: true
+    visible: false
+
+  Label
     id: spritePickerId
     anchors.left: parent.left
     anchors.right: parent.right

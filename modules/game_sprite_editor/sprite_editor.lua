@@ -1520,8 +1520,10 @@ renderAppearanceRows = function(scrollY)
             end
             if loaded then
                thumbnailsUpdated = true
+               row.thumbnailEntry = entry
+            else
+               row.thumbnailEntry = nil
             end
-            row.thumbnailEntry = entry
          end
          local selected = entry.id == selectedAppearanceId and entry.category == selectedAppearanceCategory
          row:setOn(selected)
@@ -1993,6 +1995,15 @@ local function getSpritePickerIdAt(index)
    return range[1] + index - previousCount - 1
 end
 
+local function getSpriteSizeTier(width, height)
+   local size = math.max(width, height)
+   local tier = 32
+   while tier < size do
+      tier = tier * 2
+   end
+   return tier
+end
+
 applySpritePickerFilter = function()
    if not window then
       return
@@ -2115,12 +2126,26 @@ renderSpritePickerRows = function(scrollY)
          cell:setMarginLeft(((index - 1) % columnCount) * (cellWidth + columnGap))
          cell:recursiveGetChildById('spritePickerId'):setText(tostring(spriteId))
          cell:setOn(spriteId == selectedReplacementSpriteId)
-         if cell.spriteId ~= spriteId then
+         cell.spriteId = spriteId
+         if cell.thumbnailSpriteId ~= spriteId then
             local thumbnail = cell:recursiveGetChildById('thumbnail')
+            local sizeBadge = cell:recursiveGetChildById('spriteSizeBadge')
             if thumbnail:setThumbnailSpriteId(spriteId) then
+               cell.thumbnailSpriteId = spriteId
                updatedThumbnails = true
+               local width = thumbnail:getSpriteWidth()
+               local height = thumbnail:getSpriteHeight()
+               local largestDimension = math.max(width, height)
+               thumbnail:setThumbnailSizeBadge(largestDimension)
+               sizeBadge:setText(tostring(getSpriteSizeTier(width, height)))
+               sizeBadge:setColor(largestDimension <= 32 and '#ffffff' or '#171717')
+               cell:setTooltip(tr('Sprite dimensions: %d x %d', width, height))
+               sizeBadge:setVisible(true)
+            else
+               cell.thumbnailSpriteId = nil
+               cell:setTooltip('')
+               sizeBadge:setVisible(false)
             end
-            cell.spriteId = spriteId
          end
          cell.onClick = function()
             selectReplacementSprite(spriteId)
@@ -2149,8 +2174,11 @@ renderSpritePickerRows = function(scrollY)
          end
       else
          cell.spriteId = nil
+         cell.thumbnailSpriteId = nil
          cell.isSpritePickerCell = false
          cell:setDraggable(false)
+         cell:setTooltip('')
+         cell:recursiveGetChildById('spriteSizeBadge'):setVisible(false)
       end
    end
 
