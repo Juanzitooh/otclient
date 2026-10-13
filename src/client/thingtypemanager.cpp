@@ -55,6 +55,7 @@ ThingTypeManager g_things;
 namespace {
 
 using AppearanceBank = google::protobuf::RepeatedPtrField<appearances::Appearance>;
+constexpr uint32_t DEFAULT_ANIMATION_FRAME_DURATION_MS = 100;
 
 const AppearanceBank* getAppearanceBank(const appearances::Appearances& library, const int category)
 {
@@ -472,8 +473,78 @@ bool ThingTypeManager::saveAppearanceEditorData(const int version, const int cat
                     throw stdext::exception("appearance animation group changes must be an object");
 
                 auto* spriteInfo = appearance->mutable_frame_group(groupIndex)->mutable_sprite_info();
-                if (!spriteInfo->has_animation())
-                    throw stdext::exception("appearance frame group has no animation data");
+                uint64_t spritesPerPhase = 1;
+                const auto multiplySpriteDimension = [&](const uint32_t dimension) {
+                    const auto maximumSpriteCount = static_cast<uint64_t>(std::numeric_limits<int>::max());
+                    if (dimension == 0 || spritesPerPhase > maximumSpriteCount / dimension)
+                        throw stdext::exception("appearance frame group dimensions are too large");
+                    spritesPerPhase *= dimension;
+                };
+                multiplySpriteDimension(std::max<uint32_t>(1, spriteInfo->layers()));
+                multiplySpriteDimension(std::max<uint32_t>(1, spriteInfo->pattern_width()));
+                multiplySpriteDimension(std::max<uint32_t>(1, spriteInfo->pattern_height()));
+                multiplySpriteDimension(std::max<uint32_t>(1, spriteInfo->pattern_depth()));
+
+                const auto* currentAnimation = &spriteInfo->animation();
+                const bool hadAnimation = spriteInfo->has_animation();
+                const uint64_t currentPhaseCount = currentAnimation->sprite_phase_size() > 0
+                    ? currentAnimation->sprite_phase_size()
+                    : std::max<uint64_t>(1, spriteInfo->sprite_id_size() / spritesPerPhase);
+                if (spriteInfo->sprite_id_size() != currentPhaseCount * spritesPerPhase)
+                    throw stdext::exception("appearance frame group has inconsistent sprite and animation frames");
+
+                uint64_t requestedPhaseCount = currentPhaseCount;
+                const auto phaseCountChange = groupChange->find("phaseCount");
+                if (phaseCountChange != groupChange->end()) {
+                    if ((!phaseCountChange->is_number_unsigned() && !phaseCountChange->is_number_integer()) ||
+                        (phaseCountChange->is_number_integer() && phaseCountChange->get<int64_t>() < 1))
+                        throw stdext::exception("animation frame count must be a positive integer");
+                    requestedPhaseCount = phaseCountChange->get<uint64_t>();
+                    if (requestedPhaseCount == 0 ||
+                        requestedPhaseCount > static_cast<uint64_t>(std::numeric_limits<int>::max()) / spritesPerPhase)
+                        throw stdext::exception("animation frame count is too large for this appearance");
+                }
+
+                if (requestedPhaseCount > currentPhaseCount) {
+                    for (uint64_t phase = currentPhaseCount; phase < requestedPhaseCount; ++phase) {
+                        const auto sourceStart = static_cast<int>((phase - 1) * spritesPerPhase);
+                        for (uint64_t sprite = 0; sprite < spritesPerPhase; ++sprite) {
+                            const auto spriteId = spriteInfo->sprite_id(sourceStart + static_cast<int>(sprite));
+                            spriteInfo->add_sprite_id(spriteId);
+                        }
+                    }
+                } else if (requestedPhaseCount < currentPhaseCount) {
+                    auto* spriteIds = spriteInfo->mutable_sprite_id();
+                    const auto remainingSpriteCount = static_cast<int>(requestedPhaseCount * spritesPerPhase);
+                    while (spriteIds->size() > remainingSpriteCount)
+                        spriteIds->RemoveLast();
+                }
+
+                const bool frameCountChanged = requestedPhaseCount != currentPhaseCount;
+                if (requestedPhaseCount == 1 && frameCountChanged) {
+                    spriteInfo->clear_animation();
+                } else if (requestedPhaseCount > 1 && frameCountChanged) {
+                    auto* resizedAnimation = spriteInfo->mutable_animation();
+                    if (!hadAnimation)
+                        resizedAnimation->set_loop_type(appearances::ANIMATION_LOOP_TYPE_INFINITE);
+                    while (resizedAnimation->sprite_phase_size() > static_cast<int>(requestedPhaseCount))
+                        resizedAnimation->mutable_sprite_phase()->RemoveLast();
+                    while (resizedAnimation->sprite_phase_size() < static_cast<int>(requestedPhaseCount)) {
+                        auto* phase = resizedAnimation->add_sprite_phase();
+                        phase->set_duration_min(DEFAULT_ANIMATION_FRAME_DURATION_MS);
+                        phase->set_duration_max(DEFAULT_ANIMATION_FRAME_DURATION_MS);
+                    }
+                    if (resizedAnimation->default_start_phase() >= requestedPhaseCount)
+                        resizedAnimation->set_default_start_phase(0);
+                }
+
+                if (!spriteInfo->has_animation()) {
+                    if (groupChange->contains("defaultStartPhase") || groupChange->contains("loopCount") ||
+                        groupChange->contains("randomStartPhase") || groupChange->contains("synchronized") ||
+                        groupChange->contains("loopType") || groupChange->contains("phases"))
+                        throw stdext::exception("appearance frame group has no animation data");
+                    continue;
+                }
                 auto* animation = spriteInfo->mutable_animation();
                 const auto setUint32 = [&](const char* field, const auto& setter) {
                     const auto value = groupChange->find(field);
@@ -498,11 +569,6 @@ bool ThingTypeManager::saveAppearanceEditorData(const int version, const int cat
                 setUint32("loopCount", [&](const uint32_t value) { animation->set_loop_count(value); });
                 setBool("randomStartPhase", [&](const bool value) { animation->set_random_start_phase(value); });
                 setBool("synchronized", [&](const bool value) { animation->set_synchronized(value); });
-                const uint64_t spritesPerPhase =
-                    static_cast<uint64_t>(std::max<uint32_t>(1, spriteInfo->layers())) *
-                    std::max<uint32_t>(1, spriteInfo->pattern_width()) *
-                    std::max<uint32_t>(1, spriteInfo->pattern_height()) *
-                    std::max<uint32_t>(1, spriteInfo->pattern_depth());
                 const uint64_t phaseCount = animation->sprite_phase_size() > 0
                     ? animation->sprite_phase_size()
                     : std::max<uint64_t>(1, spriteInfo->sprite_id_size() / spritesPerPhase);

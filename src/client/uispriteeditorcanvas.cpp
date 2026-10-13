@@ -38,6 +38,16 @@ constexpr int CHECKER_SIZE = 12;
 
 bool UISpriteEditorCanvas::setSpriteId(const int id)
 {
+    return setSpriteIdInternal(id, true);
+}
+
+bool UISpriteEditorCanvas::setThumbnailSpriteId(const int id)
+{
+    return setSpriteIdInternal(id, false);
+}
+
+bool UISpriteEditorCanvas::setSpriteIdInternal(const int id, const bool releaseDecodedSheets)
+{
     if (id <= 0)
         return false;
 
@@ -47,13 +57,49 @@ bool UISpriteEditorCanvas::setSpriteId(const int id)
 
     m_spriteId = id;
     m_image = image;
+    m_animationTextures.clear();
     m_texture = std::make_shared<Texture>(m_image);
     m_texture->setSmooth(false);
     m_hasUserZoom = false;
     m_pan = {};
     updateRenderRect();
     callLuaField("onStateChange");
-    g_spriteAppearances.releaseSpriteSheetsExcept(id);
+    if (releaseDecodedSheets)
+        g_spriteAppearances.releaseSpriteSheetsExcept(id);
+    return true;
+}
+
+bool UISpriteEditorCanvas::setSpriteAnimationIds(const std::vector<uint32_t>& ids)
+{
+    if (ids.empty())
+        return false;
+    if (ids.size() == 1)
+        return setSpriteId(static_cast<int>(ids.front()));
+
+    std::vector<TexturePtr> textures;
+    textures.reserve(ids.size());
+    ImagePtr firstImage;
+    for (const auto id : ids) {
+        const auto image = g_spriteAppearances.getSpriteImage(static_cast<int>(id));
+        if (!image)
+            return false;
+
+        auto texture = std::make_shared<Texture>(image);
+        texture->setSmooth(false);
+        if (textures.empty())
+            firstImage = image;
+        textures.push_back(std::move(texture));
+    }
+
+    m_spriteId = static_cast<int>(ids.front());
+    m_image = std::move(firstImage);
+    m_texture = textures.front();
+    m_animationTextures = std::move(textures);
+    m_animationTimer.restart();
+    m_hasUserZoom = false;
+    m_pan = {};
+    updateRenderRect();
+    callLuaField("onStateChange");
     return true;
 }
 
@@ -100,6 +146,12 @@ void UISpriteEditorCanvas::drawSelf(const DrawPoolType drawPane)
     if (!m_image || !m_texture)
         return;
 
+    auto texture = m_texture;
+    if (m_animationTextures.size() > 1) {
+        const auto frame = (m_animationTimer.ticksElapsed() / 180) % m_animationTextures.size();
+        texture = m_animationTextures[frame];
+    }
+
     updateRenderRect();
     const Rect viewRect = getPaddingRect();
     const Rect visibleRect = m_renderRect.intersection(viewRect);
@@ -122,7 +174,7 @@ void UISpriteEditorCanvas::drawSelf(const DrawPoolType drawPane)
                           (visibleRect.top() - m_renderRect.top()) / m_zoom,
                           visibleRect.width() / m_zoom,
                           visibleRect.height() / m_zoom);
-    g_drawPool.addTexturedRect(visibleRect, m_texture, sourceRect, Color::white);
+    g_drawPool.addTexturedRect(visibleRect, texture, sourceRect, Color::white);
 
     if (oldClipRect.isValid())
         g_drawPool.setClipRect(oldClipRect);
@@ -156,6 +208,7 @@ bool UISpriteEditorCanvas::onMouseMove(const Point& mousePos, const Point& mouse
     m_pan.x += mouseMoved.x;
     m_pan.y += mouseMoved.y;
     updateRenderRect();
+    callLuaField("onPositionChange");
     return true;
 }
 
@@ -181,6 +234,7 @@ void UISpriteEditorCanvas::updateRenderRect()
 {
     if (!m_image) {
         m_renderRect = {};
+        m_spriteRenderCenter = {};
         return;
     }
 
@@ -193,6 +247,8 @@ void UISpriteEditorCanvas::updateRenderRect()
     const Point origin(viewRect.x() + (viewRect.width() - renderSize.width()) / 2 + m_pan.x,
                        viewRect.y() + (viewRect.height() - renderSize.height()) / 2 + m_pan.y);
     m_renderRect = Rect(origin, renderSize);
+    m_spriteRenderCenter = Point(origin.x + renderSize.width() / 2 - viewRect.x(),
+                                 origin.y + renderSize.height() / 2 - viewRect.y());
 }
 
 #endif

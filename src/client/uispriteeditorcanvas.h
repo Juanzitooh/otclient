@@ -25,6 +25,7 @@
 #ifdef FRAMEWORK_EDITOR
 
 #include <framework/graphics/declarations.h>
+#include <framework/core/timer.h>
 #include <framework/ui/uiwidget.h>
 
 class Image;
@@ -33,9 +34,12 @@ class UISpriteEditorCanvas final : public UIWidget
 {
 public:
     bool setSpriteId(int id);
+    bool setThumbnailSpriteId(int id);
+    bool setSpriteAnimationIds(const std::vector<uint32_t>& ids);
     int getSpriteId() const { return m_spriteId; }
     int getSpriteWidth() const;
     int getSpriteHeight() const;
+    Point getSpriteRenderCenter() const { return m_spriteRenderCenter; }
     int zoomIn();
     int zoomOut();
     int getZoom() const { return m_zoom; }
@@ -50,13 +54,17 @@ protected:
     void onGeometryChange(const Rect& oldRect, const Rect& newRect) override;
 
 private:
+    bool setSpriteIdInternal(int id, bool releaseDecodedSheets);
     void updateRenderRect();
 
     int m_spriteId{ 0 };
     int m_zoom{ 1 };
     ImagePtr m_image;
     TexturePtr m_texture;
+    std::vector<TexturePtr> m_animationTextures;
+    Timer m_animationTimer;
     Rect m_renderRect;
+    Point m_spriteRenderCenter;
     Point m_pan;
     bool m_isPanning{ false };
     bool m_hasUserZoom{ false };
