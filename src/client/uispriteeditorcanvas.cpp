@@ -25,6 +25,7 @@
 #ifdef FRAMEWORK_EDITOR
 
 #include <algorithm>
+#include <cmath>
 
 #include "spriteappearances.h"
 #include "framework/graphics/drawpoolmanager.h"
@@ -38,28 +39,44 @@ constexpr int CHECKER_SIZE = 12;
 
 bool UISpriteEditorCanvas::setSpriteId(const int id)
 {
-    const bool loaded = setSpriteIdInternal(id, true);
-    if (loaded)
-        m_isThumbnail = false;
-    return loaded;
+    m_isThumbnail = false;
+    return setSpriteIdInternal(id, true);
 }
 
 bool UISpriteEditorCanvas::setThumbnailSpriteId(const int id)
 {
-    const bool loaded = setSpriteIdInternal(id, false);
-    if (loaded)
-        m_isThumbnail = true;
-    return loaded;
+    m_isThumbnail = true;
+    return setSpriteIdInternal(id, false);
+}
+
+void UISpriteEditorCanvas::clearSprite()
+{
+    m_spriteId = 0;
+    m_thumbnailSizeBadgeDimension = 0;
+    m_zoom = 1;
+    m_image.reset();
+    m_texture.reset();
+    m_animationTextures.clear();
+    m_hasUserZoom = false;
+    m_isPanning = false;
+    m_pan = {};
+    updateRenderRect();
+    callLuaField("onStateChange");
 }
 
 bool UISpriteEditorCanvas::setSpriteIdInternal(const int id, const bool releaseDecodedSheets)
 {
-    if (id <= 0)
+    m_thumbnailSizeBadgeDimension = 0;
+    if (id <= 0) {
+        clearSprite();
         return false;
+    }
 
     const auto image = g_spriteAppearances.getSpriteImage(id);
-    if (!image)
+    if (!image) {
+        clearSprite();
         return false;
+    }
 
     m_spriteId = id;
     m_image = image;
@@ -75,8 +92,15 @@ bool UISpriteEditorCanvas::setSpriteIdInternal(const int id, const bool releaseD
     return true;
 }
 
+void UISpriteEditorCanvas::setThumbnailSizeBadge(const int dimension)
+{
+    m_thumbnailSizeBadgeDimension = std::max(0, dimension);
+    repaint();
+}
+
 bool UISpriteEditorCanvas::setSpriteAnimationIds(const std::vector<uint32_t>& ids)
 {
+    m_thumbnailSizeBadgeDimension = 0;
     if (ids.empty())
         return false;
     if (ids.size() == 1)
@@ -177,16 +201,29 @@ void UISpriteEditorCanvas::drawSelf(const DrawPoolType drawPane)
         }
     }
 
-    const Rect sourceRect((visibleRect.left() - m_renderRect.left()) / m_zoom,
-                          (visibleRect.top() - m_renderRect.top()) / m_zoom,
-                          visibleRect.width() / m_zoom,
-                          visibleRect.height() / m_zoom);
+    const Rect sourceRect = m_isThumbnail
+        ? Rect(0, 0, m_image->getSize())
+        : Rect((visibleRect.left() - m_renderRect.left()) / m_zoom,
+               (visibleRect.top() - m_renderRect.top()) / m_zoom,
+               visibleRect.width() / m_zoom,
+               visibleRect.height() / m_zoom);
     g_drawPool.addTexturedRect(visibleRect, texture, sourceRect, Color::white);
 
     if (oldClipRect.isValid())
         g_drawPool.setClipRect(oldClipRect);
     else
         g_drawPool.resetClipRect();
+
+    if (m_isThumbnail && m_thumbnailSizeBadgeDimension > 0) {
+        const auto parent = getParent();
+        const Rect badgeRect = parent ? parent->getRect() : getRect();
+        constexpr int BADGE_SIZE = 22;
+        const auto topRight = badgeRect.topRight();
+        const Color badgeColor = m_thumbnailSizeBadgeDimension <= 32 ? Color(49, 155, 84) :
+                                 m_thumbnailSizeBadgeDimension <= 64 ? Color(210, 170, 40) : Color(216, 141, 35);
+        g_drawPool.addFilledTriangle(topRight - Point(BADGE_SIZE - 1, 0), topRight,
+                                     topRight + Point(0, BADGE_SIZE - 1), badgeColor);
+    }
 }
 
 bool UISpriteEditorCanvas::onMousePress(const Point& mousePos, const Fw::MouseButton button)
@@ -250,7 +287,16 @@ void UISpriteEditorCanvas::updateRenderRect()
         m_zoom = 1;
     }
 
-    const Size renderSize(m_image->getWidth() * m_zoom, m_image->getHeight() * m_zoom);
+    Size renderSize;
+    if (m_isThumbnail) {
+        const float scale = std::min({ 1.0f,
+                                       static_cast<float>(viewRect.width()) / m_image->getWidth(),
+                                       static_cast<float>(viewRect.height()) / m_image->getHeight() });
+        renderSize = Size(std::min(viewRect.width(), std::max(1, static_cast<int>(std::lround(m_image->getWidth() * scale)))),
+                          std::min(viewRect.height(), std::max(1, static_cast<int>(std::lround(m_image->getHeight() * scale)))));
+    } else {
+        renderSize = Size(m_image->getWidth() * m_zoom, m_image->getHeight() * m_zoom);
+    }
     const Point origin(viewRect.x() + (viewRect.width() - renderSize.width()) / 2 + m_pan.x,
                        viewRect.y() + (viewRect.height() - renderSize.height()) / 2 + m_pan.y);
     m_renderRect = Rect(origin, renderSize);

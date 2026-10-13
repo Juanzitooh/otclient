@@ -1187,6 +1187,7 @@ void Client::registerLuaFunctions()
     g_lua.bindClassStaticFunction<UISpriteEditorCanvas>("create", [] { return std::make_shared<UISpriteEditorCanvas>(); });
     g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("setSpriteId", &UISpriteEditorCanvas::setSpriteId);
     g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("setThumbnailSpriteId", &UISpriteEditorCanvas::setThumbnailSpriteId);
+    g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("setThumbnailSizeBadge", &UISpriteEditorCanvas::setThumbnailSizeBadge);
     g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("setSpriteAnimationIds", &UISpriteEditorCanvas::setSpriteAnimationIds);
     g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("getSpriteId", &UISpriteEditorCanvas::getSpriteId);
     g_lua.bindClassMemberFunction<UISpriteEditorCanvas>("getSpriteWidth", &UISpriteEditorCanvas::getSpriteWidth);

@@ -35,6 +35,7 @@ class UISpriteEditorCanvas final : public UIWidget
 public:
     bool setSpriteId(int id);
     bool setThumbnailSpriteId(int id);
+    void setThumbnailSizeBadge(int dimension);
     bool setSpriteAnimationIds(const std::vector<uint32_t>& ids);
     int getSpriteId() const { return m_spriteId; }
     int getSpriteWidth() const;
@@ -54,6 +55,7 @@ protected:
     void onGeometryChange(const Rect& oldRect, const Rect& newRect) override;
 
 private:
+    void clearSprite();
     bool setSpriteIdInternal(int id, bool releaseDecodedSheets);
     void updateRenderRect();
 
@@ -69,6 +71,7 @@ private:
     bool m_isPanning{ false };
     bool m_hasUserZoom{ false };
     bool m_isThumbnail{ false };
+    int m_thumbnailSizeBadgeDimension{ 0 };
 };
 
 #endif
