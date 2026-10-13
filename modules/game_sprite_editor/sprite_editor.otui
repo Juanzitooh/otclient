@@ -259,7 +259,8 @@ SpriteEditorWindow < MainWindow
       anchors.bottom: duplicateAppearanceButton.top
       margin-bottom: 4
       height: 23
-      !placeholder: tr('Filter by name, ID or sprite')
+      !placeholder: tr('Name or exact ID')
+      !tooltip: tr('Numbers match an exact appearance ID. Text matches part of the name.')
       @onEnter: modules.game_sprite_editor.applyAppearanceSearch()
 
     AppearanceActionButton

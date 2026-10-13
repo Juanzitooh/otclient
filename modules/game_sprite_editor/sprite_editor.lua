@@ -1425,7 +1425,6 @@ local function getThingEntries(category)
       if id and id > 0 then
          local sprites = thing:getSprites()
          local name = thing:getName()
-         local spriteSearchParts = {}
          local seenSpriteIds = {}
          local spriteId
          local minSpriteId
@@ -1436,7 +1435,6 @@ local function getThingEntries(category)
                spriteId = spriteId or linkedSpriteId
                if not seenSpriteIds[linkedSpriteId] then
                   seenSpriteIds[linkedSpriteId] = true
-                  table.insert(spriteSearchParts, tostring(linkedSpriteId))
                   minSpriteId = not minSpriteId and linkedSpriteId or math.min(minSpriteId, linkedSpriteId)
                   maxSpriteId = not maxSpriteId and linkedSpriteId or math.max(maxSpriteId, linkedSpriteId)
                   linkedSpriteCount = linkedSpriteCount + 1
@@ -1448,7 +1446,6 @@ local function getThingEntries(category)
             category = category,
             name = name ~= '' and name or nil,
             spriteId = spriteId,
-            spriteSearchIds = table.concat(spriteSearchParts, '|'),
             minSpriteId = minSpriteId,
             maxSpriteId = maxSpriteId,
             linkedSpriteCount = linkedSpriteCount,
@@ -1538,14 +1535,13 @@ local function applyAppearanceFilter()
    if not window then
       return
    end
-   local search = window:recursiveGetChildById('appearanceSearch'):getText():lower()
+   local search = window:recursiveGetChildById('appearanceSearch'):getText():lower():match('^%s*(.-)%s*$')
+   local exactId = search:match('^%d+$') and tonumber(search) or nil
    filteredAppearanceEntries = {}
    for _, entry in ipairs(appearanceEntries) do
-      local idText = tostring(entry.id)
       local nameText = entry.name and entry.name:lower() or ''
-      local spriteMatch = entry.spriteSearchIds:find(search, 1, true) ~= nil
-      if search == '' or nameText:find(search, 1, true) or
-            idText:find(search, 1, true) or spriteMatch then
+      if search == '' or (exactId and entry.id == exactId) or
+            (not exactId and nameText:find(search, 1, true)) then
          table.insert(filteredAppearanceEntries, entry)
       end
    end
