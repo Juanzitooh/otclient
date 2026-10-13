@@ -96,8 +96,10 @@ local updateDirectionPadLayout
 local refreshSpritePicker
 local renderSpritePickerRows
 local applySpritePickerFilter
-local confirmSpriteLink
 local importPngAsNewSprite
+local selectReplacementSprite
+local linkSpriteToSelectedFrame
+local replaceSelectedFrameWithSprite
 
 local function setStatus(message)
    if window then
@@ -336,7 +338,6 @@ local function updateSpriteReplacementTarget()
    window:recursiveGetChildById('spriteIdModeButton'):setOn(currentReplaceMode == 'sprite')
    window:recursiveGetChildById('pngModeButton'):setOn(currentReplaceMode == 'png')
    window:recursiveGetChildById('spriteSearchEdit'):setEnabled(canReplace)
-   window:recursiveGetChildById('useSelectedSpriteButton'):setEnabled(canReplace and selectedReplacementSpriteId ~= nil)
    local pngPathEdit = window:recursiveGetChildById('previewSpritePathEdit')
    pngPathEdit:setEnabled(canReplace)
    window:recursiveGetChildById('importPngReplaceButton'):setEnabled(canReplace and pngPathEdit:getText() ~= '')
@@ -352,6 +353,10 @@ local function updateSpriteReplacementTarget()
    window:recursiveGetChildById('configureSpriteEditorButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('duplicateAppearanceButton'):setEnabled(
       selectedAppearanceId ~= nil and activeVersion ~= nil and not g_game.isOnline())
+   window:recursiveGetChildById('previewHintLabel'):setText(
+      showSpriteTools and currentReplaceMode == 'sprite' and
+         tr('Drop a sprite here to replace this frame | Wheel over preview: zoom | Middle-drag: pan') or
+         tr('Wheel over preview: zoom | Middle-drag: pan | Checkerboard: transparency'))
    if hasTarget then updatePreviewTitle() end
    if renderSpritePickerRows then renderSpritePickerRows() end
 end
@@ -1728,6 +1733,20 @@ local function createWindow()
          updateDirectionPadLayout()
       end
    end
+   canvas.onDrop = function(_, draggedWidget)
+      if not draggedWidget or not draggedWidget.isSpritePickerCell or
+            currentPage ~= 'import' or currentImportSection ~= 'replace' or currentReplaceMode ~= 'sprite' then
+         return false
+      end
+      local spriteId = tonumber(draggedWidget.spriteId)
+      if not spriteId or not activeVersion or g_game.isOnline() or not selectedSpriteId then
+         return false
+      end
+
+      selectReplacementSprite(spriteId)
+      replaceSelectedFrameWithSprite(spriteId)
+      return true
+   end
 
    local spritePathEdit = window:recursiveGetChildById('previewSpritePathEdit')
    spritePathEdit.onTextChange = function(widget)
@@ -2054,6 +2073,15 @@ refreshSpritePicker = function()
    applySpritePickerFilter()
 end
 
+selectReplacementSprite = function(spriteId)
+   if not window or not spriteId then
+      return
+   end
+   selectedReplacementSpriteId = spriteId
+   local list = window:recursiveGetChildById('spritePickerList')
+   renderSpritePickerRows(list:getVirtualOffset().y)
+end
+
 renderSpritePickerRows = function(scrollY)
    if not window then
       return
@@ -2081,6 +2109,8 @@ renderSpritePickerRows = function(scrollY)
       local spriteId = index <= spritePickerCount and getSpritePickerIdAt(index) or nil
       cell:setVisible(spriteId ~= nil)
       if spriteId then
+         cell.isSpritePickerCell = true
+         cell:setDraggable(activeVersion ~= nil and not g_game.isOnline() and selectedSpriteId ~= nil)
          cell:setMarginTop(math.floor((index - 1) / columnCount) * cellHeight)
          cell:setMarginLeft(((index - 1) % columnCount) * (cellWidth + columnGap))
          cell:recursiveGetChildById('spritePickerId'):setText(tostring(spriteId))
@@ -2093,13 +2123,34 @@ renderSpritePickerRows = function(scrollY)
             cell.spriteId = spriteId
          end
          cell.onClick = function()
-            selectedReplacementSpriteId = spriteId
-            window:recursiveGetChildById('selectedReplacementSpriteLabel'):setText(
-               tr('Selected sprite: %d', spriteId))
-            window:recursiveGetChildById('useSelectedSpriteButton'):setEnabled(
-               activeVersion ~= nil and not g_game.isOnline() and selectedSpriteId ~= nil)
-            renderSpritePickerRows(list:getVirtualOffset().y)
+            selectReplacementSprite(spriteId)
          end
+         cell.onDragEnter = function(widget)
+            if not widget.spriteId or not activeVersion or g_game.isOnline() or not selectedSpriteId then
+               return false
+            end
+            selectReplacementSprite(widget.spriteId)
+            return true
+         end
+         cell.onDragMove = function(widget, mousePos)
+            local overCanvas = canvas and canvas:isVisible() and canvas:containsPoint(mousePos)
+            if canvas then
+               canvas:setBorderWidth(overCanvas and 2 or 0)
+               canvas:setBorderColor(overCanvas and '#8f69d3' or 'alpha')
+            end
+            return true
+         end
+         cell.onDragLeave = function()
+            if canvas then
+               canvas:setBorderWidth(0)
+               canvas:setBorderColor('alpha')
+            end
+            return true
+         end
+      else
+         cell.spriteId = nil
+         cell.isSpritePickerCell = false
+         cell:setDraggable(false)
       end
    end
 
@@ -2107,9 +2158,8 @@ renderSpritePickerRows = function(scrollY)
    countLabel:setText(spritePickerCount == 1 and tr('%d sprite', spritePickerCount) or
       tr('%d sprites', spritePickerCount))
    window:recursiveGetChildById('selectedReplacementSpriteLabel'):setText(
-      selectedReplacementSpriteId and tr('Selected sprite: %d', selectedReplacementSpriteId) or tr('Select a sprite below'))
-   window:recursiveGetChildById('useSelectedSpriteButton'):setEnabled(
-      activeVersion ~= nil and not g_game.isOnline() and selectedSpriteId ~= nil and selectedReplacementSpriteId ~= nil)
+      selectedReplacementSpriteId and tr('Drag sprite %d onto the preview.', selectedReplacementSpriteId) or
+         tr('Select or drag a sprite onto the preview.'))
 
    if updatedThumbnails and g_spriteAppearances.releaseDecodedSpriteSheets then
       g_spriteAppearances.releaseDecodedSpriteSheets()
@@ -2136,14 +2186,6 @@ function setReplaceMode(mode)
    end
    currentReplaceMode = mode
    updateSpriteReplacementTarget()
-end
-
-function useSelectedSprite()
-   if not selectedReplacementSpriteId then
-      setStatus(tr('Select a sprite from the list first.'))
-      return
-   end
-   confirmSpriteLink(selectedReplacementSpriteId)
 end
 
 function duplicateSelectedAppearance(forceDiscard)
@@ -2245,7 +2287,7 @@ local function getSelectedSpriteReference()
    return previewFrameGroupIndex - 1, spriteIndex - 1
 end
 
-local function refreshAfterSpriteReferenceChange(category, appearanceId, previewSelection)
+local function refreshAfterSpriteReferenceChange(category, appearanceId, previewSelection, returnToImport)
    if not reloadAssets() then
       setStatus(tr('The sprite link was saved, but the work copy could not be reloaded.'))
       return false
@@ -2256,11 +2298,11 @@ local function refreshAfterSpriteReferenceChange(category, appearanceId, preview
       return false
    end
    restorePreviewSelection(previewSelection)
-   setActivePage('editor')
+   setActivePage(returnToImport and 'import' or 'editor')
    return true
 end
 
-local function linkSpriteToSelectedFrame(spriteId)
+linkSpriteToSelectedFrame = function(spriteId)
    local category = selectedAppearanceCategory
    local appearanceId = selectedAppearanceId
    local frameGroupIndex, spriteIndex = getSelectedSpriteReference()
@@ -2275,7 +2317,7 @@ local function linkSpriteToSelectedFrame(spriteId)
       setStatus(getUserFacingError(result))
       return false
    end
-   if not refreshAfterSpriteReferenceChange(category, appearanceId, previewSelection) then
+   if not refreshAfterSpriteReferenceChange(category, appearanceId, previewSelection, true) then
       return false
    end
 
@@ -2283,21 +2325,30 @@ local function linkSpriteToSelectedFrame(spriteId)
    return true
 end
 
-confirmSpriteLink = function(spriteId)
+replaceSelectedFrameWithSprite = function(spriteId, forceDiscard)
+   if not activeVersion or g_game.isOnline() then
+      setStatus(tr('Open a 15.x work copy before replacing a sprite.'))
+      return false
+   end
+   if currentPage ~= 'import' or currentImportSection ~= 'replace' or currentReplaceMode ~= 'sprite' then
+      return false
+   end
+   if not getSelectedSpriteReference() then
+      return false
+   end
    if spriteId == selectedSpriteId then
       setStatus(tr('This frame already uses sprite %d.', spriteId))
-      return
+      return false
    end
 
-   local dialog
-   dialog = displayGeneralBox(tr('Replace sprite link'),
-      tr('Use sprite %d for this frame only? Other appearances and the existing sprite image will stay unchanged.', spriteId), {
-         { text = tr('Replace link'), callback = function()
-            dialog:ok()
-            linkSpriteToSelectedFrame(spriteId)
-         end },
-         { text = tr('Cancel'), callback = function() dialog:cancel() end },
-      })
+   if hasAppearanceChanges() and not forceDiscard then
+      confirmUnsavedChanges(tr('Save changes before replacing this frame sprite?'), function()
+         replaceSelectedFrameWithSprite(spriteId, true)
+      end)
+      return false
+   end
+
+   return linkSpriteToSelectedFrame(spriteId)
 end
 
 importPngAsNewSprite = function()

@@ -26,6 +26,7 @@ SpritePickerCell < Button
   size: 70 60
   text: ''
   checkable: true
+  draggable: true
   anchors.left: parent.left
   anchors.top: parent.top
   text-wrap: false
@@ -56,6 +57,9 @@ SpritePickerCell < Button
   $pressed:
     image-clip: 0 20 43 20
     text-offset: 1 1
+
+  $dragging:
+    opacity: 0.8
 
 AppearanceSectionHeader < Label
   height: 23
@@ -1043,20 +1047,12 @@ SpriteEditorWindow < MainWindow
           AppearanceFieldLabel
             id: selectedReplacementSpriteLabel
             anchors.left: parent.left
-            anchors.right: useSelectedSpriteButton.left
-            anchors.bottom: parent.bottom
-            margin-right: 5
-            height: 23
-            text-wrap: false
-
-          AppearanceActionButton
-            id: useSelectedSpriteButton
-            !text: tr('Use sprite')
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            width: 100
             height: 23
-            @onClick: modules.game_sprite_editor.useSelectedSprite()
+            text-wrap: false
+            !text: tr('Drag a sprite onto the preview to replace this frame.')
+            !tooltip: tr('Drag a sprite from this list onto the center preview to replace the selected frame.')
 
           VerticalScrollBar
             id: spritePickerScroll
