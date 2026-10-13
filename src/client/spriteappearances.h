@@ -112,6 +112,7 @@ public:
 
     void setSpritesCount(const int count) { m_spritesCount = count; }
     int getSpritesCount() const { return m_spritesCount; }
+    std::string getSpriteRanges() const;
 
     void setPath(const std::string& path) { m_path = path; }
     std::string getPath() const { return m_path; }

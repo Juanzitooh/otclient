@@ -635,7 +635,8 @@ bool ThingTypeManager::replaceAppearanceSprite(const int version, const int cate
         throw stdext::exception("appearance sprite replacement is supported only for client versions 15.x");
     if (appearanceId < 1 || frameGroupIndex < 0 || spriteIndex < 0 || spriteId < 1)
         throw stdext::exception("invalid appearance sprite replacement request");
-    if (!g_spriteAppearances.getSheetBySpriteId(spriteId, false))
+    const auto replacementSheet = g_spriteAppearances.getSheetBySpriteId(spriteId, false);
+    if (!replacementSheet)
         throw stdext::exception("sprite {} is not part of the active work copy", spriteId);
 
     const auto path = getAppearanceEditorFile(m_catalogContentPath, version);
@@ -650,6 +651,10 @@ bool ThingTypeManager::replaceAppearanceSprite(const int version, const int cate
     auto* spriteIds = appearance->mutable_frame_group(frameGroupIndex)->mutable_sprite_info();
     if (spriteIndex >= spriteIds->sprite_id_size())
         throw stdext::exception("sprite position is outside the selected frame group");
+    const auto currentSheet = g_spriteAppearances.getSheetBySpriteId(spriteIds->sprite_id(spriteIndex), false);
+    if (currentSheet && (currentSheet->getSpriteSize().width() != replacementSheet->getSpriteSize().width() ||
+                         currentSheet->getSpriteSize().height() != replacementSheet->getSpriteSize().height()))
+        throw stdext::exception("replacement sprite dimensions must match the selected frame");
     spriteIds->set_sprite_id(spriteIndex, static_cast<uint32_t>(spriteId));
 
     writeAppearancesFile(path, library);
@@ -702,6 +707,40 @@ int ThingTypeManager::createAppearanceFromSprite(const int version, const int ca
     return static_cast<int>(id);
 #else
     throw stdext::exception("protobuf support is required to create appearances");
+#endif
+}
+
+int ThingTypeManager::duplicateAppearance(const int version, const int category, const int sourceId)
+{
+#ifdef FRAMEWORK_PROTOBUF
+    if (version < 1500 || version >= 1600)
+        throw stdext::exception("appearance duplication is supported only for client versions 15.x");
+    if (sourceId < 1)
+        throw stdext::exception("appearance ID must be positive");
+
+    const auto path = getAppearanceEditorFile(m_catalogContentPath, version);
+    appearances::Appearances library;
+    readAppearancesFile(path, library);
+    const auto* source = findAppearance(library, category, sourceId);
+    if (!source)
+        throw stdext::exception("appearance {} was not found", sourceId);
+    const appearances::Appearance sourceCopy = *source;
+    auto* bank = getAppearanceBank(library, category);
+
+    uint32_t maximumId = 0;
+    for (const auto& appearance : *bank)
+        maximumId = std::max(maximumId, appearance.id());
+    if (maximumId >= std::numeric_limits<uint16_t>::max())
+        throw stdext::exception("the selected appearance category has no available 15.x IDs");
+
+    const uint32_t id = maximumId + 1;
+    auto* duplicate = bank->Add();
+    duplicate->CopyFrom(sourceCopy);
+    duplicate->set_id(id);
+    writeAppearancesFile(path, library);
+    return static_cast<int>(id);
+#else
+    throw stdext::exception("protobuf support is required to duplicate appearances");
 #endif
 }
 #endif

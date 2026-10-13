@@ -93,6 +93,7 @@ public:
     bool replaceAppearanceSprite(int version, int category, int appearanceId,
                                  int frameGroupIndex, int spriteIndex, int spriteId);
     int createAppearanceFromSprite(int version, int category, int spriteId, const std::string& name, const std::string& description);
+    int duplicateAppearance(int version, int category, int sourceId);
 #endif
 
 private:

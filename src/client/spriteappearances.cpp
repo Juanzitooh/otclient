@@ -698,6 +698,14 @@ SpriteSheetPtr SpriteAppearances::getSheetBySpriteId(const int id, bool& isLoadi
     return sheet;
 }
 
+std::string SpriteAppearances::getSpriteRanges() const
+{
+    json ranges = json::array();
+    for (const auto& sheet : m_sheets)
+        ranges.push_back({ sheet->firstId, sheet->lastId });
+    return ranges.dump();
+}
+
 ImagePtr SpriteAppearances::getSpriteImage(const int id, bool& isLoading)
 {
     try {
