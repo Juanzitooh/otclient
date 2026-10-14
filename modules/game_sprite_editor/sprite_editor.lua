@@ -107,6 +107,20 @@ local categories = {
    { name = 'Missiles', singular = 'Missile', data = 3 },
 }
 
+local EQUIPMENT_SLOT_OPTIONS = {
+   { label = 'Not equippable', data = 0 },
+   { label = 'Head', data = 1 },
+   { label = 'Necklace', data = 2 },
+   { label = 'Backpack', data = 3 },
+   { label = 'Armor', data = 4 },
+   { label = 'Right hand', data = 5 },
+   { label = 'Left hand', data = 6 },
+   { label = 'Legs', data = 7 },
+   { label = 'Feet', data = 8 },
+   { label = 'Ring', data = 9 },
+   { label = 'Ammo', data = 10 },
+}
+
 local selectAppearance
 local selectSprite
 local renderAppearanceRows
@@ -767,6 +781,29 @@ local function setPropertiesTab(tab)
    window:recursiveGetChildById('valuesTabButton'):setOn(valuesVisible)
 end
 
+local function buildEquipmentSlotEditor(valuesList, data)
+   local slot = data.values['clothes.slot'] or 0
+   local row = g_ui.createWidget('AppearanceValueSelectRow', valuesList)
+   row:setWidth(285)
+   row:recursiveGetChildById('propertyLabel'):setText(tr('Equipment slot'))
+   local comboBox = row:recursiveGetChildById('propertySelection')
+   for _, option in ipairs(EQUIPMENT_SLOT_OPTIONS) do
+      comboBox:addOption(tr(option.label), option.data)
+   end
+   comboBox:setCurrentOptionByData(slot, true)
+   comboBox.onOptionChange = function(_, _, value)
+      if buildingAppearanceProperties then
+         return
+      end
+      if value == slot then
+         appearanceChanges.values['clothes.slot'] = nil
+      else
+         appearanceChanges.values['clothes.slot'] = value
+      end
+      updateAppearanceSaveButton()
+   end
+end
+
 local function buildAppearanceProperties(data)
    local flagsList = window:recursiveGetChildById('appearanceFlagsList')
    local valuesList = window:recursiveGetChildById('appearanceValuesList')
@@ -776,6 +813,10 @@ local function buildAppearanceProperties(data)
    appearanceStringWidgets = {}
    clearAppearanceChanges()
    appearanceOriginal = data
+   data.values = data.values or {}
+   if selectedAppearanceCategory == 0 then
+      data.values['clothes.slot'] = data.values['clothes.slot'] or 0
+   end
    buildingAppearanceProperties = true
 
    local nameEdit = window:recursiveGetChildById('appearanceName')
@@ -820,24 +861,30 @@ local function buildAppearanceProperties(data)
       end
    end
 
+   if selectedAppearanceCategory == 0 then
+      buildEquipmentSlotEditor(valuesList, data)
+   end
+
    for _, key in ipairs(sortedKeys(data.values)) do
-      local row = g_ui.createWidget('AppearanceValueRow', valuesList)
-      row:setWidth(285)
-      row:recursiveGetChildById('propertyLabel'):setText(propertyLabel(key))
-      local edit = row:recursiveGetChildById('propertyValue')
-      edit:setText(tostring(data.values[key]))
-      appearanceValueWidgets[key] = edit
-      edit.onTextChange = function(widget)
-         if buildingAppearanceProperties then
-            return
+      if key ~= 'clothes.slot' or selectedAppearanceCategory ~= 0 then
+         local row = g_ui.createWidget('AppearanceValueRow', valuesList)
+         row:setWidth(285)
+         row:recursiveGetChildById('propertyLabel'):setText(propertyLabel(key))
+         local edit = row:recursiveGetChildById('propertyValue')
+         edit:setText(tostring(data.values[key]))
+         appearanceValueWidgets[key] = edit
+         edit.onTextChange = function(widget)
+            if buildingAppearanceProperties then
+               return
+            end
+            local value = tonumber(widget:getText())
+            if value and value >= 0 and value % 1 == 0 and value ~= data.values[key] then
+               appearanceChanges.values[key] = value
+            else
+               appearanceChanges.values[key] = nil
+            end
+            updateAppearanceSaveButton()
          end
-         local value = tonumber(widget:getText())
-         if value and value >= 0 and value % 1 == 0 and value ~= data.values[key] then
-            appearanceChanges.values[key] = value
-         else
-            appearanceChanges.values[key] = nil
-         end
-         updateAppearanceSaveButton()
       end
    end
 
