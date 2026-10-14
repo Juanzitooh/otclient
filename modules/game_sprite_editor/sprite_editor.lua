@@ -19,7 +19,6 @@ local appearanceStringWidgets = {}
 local animationWidgets = {}
 local buildingAppearanceProperties = false
 local currentPage = 'editor'
-local suggestedExportRoot
 local currentPropertiesTab = 'flags'
 local previewFrameGroups = {}
 local previewFrameGroupIndex = 1
@@ -49,6 +48,10 @@ local selectedReplacementSpriteId
 local spriteSearchEvent
 local currentImportSection = 'replace'
 local currentReplaceMode = 'sprite'
+local filePickerWindow
+local filePickerDirectory
+local filePickerSelection
+local filePickerTarget
 
 local EXTERNAL_EDITOR_SETTING = 'offline-assets-editor-external-editor'
 
@@ -100,6 +103,7 @@ local importPngAsNewSprite
 local selectReplacementSprite
 local linkSpriteToSelectedFrame
 local replaceSelectedFrameWithSprite
+local updateSpriteReplacementTarget
 
 local function setStatus(message)
    if window then
@@ -138,15 +142,6 @@ end
 
 local function formatClientVersion(version)
    return string.format('%d.%02d', math.floor(version / 100), version % 100)
-end
-
-local function getSuggestedExportRoot(version)
-   local writeRoot = g_resources.getWriteDir()
-   if not writeRoot or writeRoot == '' then
-      return ''
-   end
-   writeRoot = writeRoot:gsub('[\\/]+$', '')
-   return string.format('%s/sprite-editor/exports/otclient-%s', writeRoot, formatClientVersion(version))
 end
 
 local function getCategoryAppearanceCount(category)
@@ -294,6 +289,268 @@ local function setSpritePath(path)
    settingSpritePath = false
 end
 
+local function normalizeDirectoryPath(path)
+   path = (path or ''):trim():gsub('\\', '/')
+   if path == '' then
+      path = g_platform.getCurrentDir()
+   end
+   if path:match('^%a:/$') or path == '/' then
+      return path
+   end
+   return path:gsub('/+$', '')
+end
+
+local function getParentDirectory(path)
+   path = normalizeDirectoryPath(path)
+   if path == '/' or path:match('^%a:/$') then
+      return nil
+   end
+
+   local parent = path:gsub('/+$', ''):match('^(.*)/[^/]+$')
+   if not parent or parent == '' then
+      return '/'
+   end
+   if parent:match('^%a:$') then
+      return parent .. '/'
+   end
+   return parent
+end
+
+local function getPathName(path)
+   return path:gsub('/+$', ''):match('([^/]+)$') or path
+end
+
+local function getDefaultPngDirectory()
+   local baseDirectory
+   local ok, realDirectory = pcall(g_resources.getRealDir, '/data/things/README.md')
+   if ok and realDirectory and realDirectory ~= '' then
+      baseDirectory = realDirectory
+   else
+      baseDirectory = g_platform.getCurrentDir()
+   end
+   baseDirectory = baseDirectory:gsub('\\', '/'):gsub('/+$', '')
+   return normalizeDirectoryPath(baseDirectory .. '/data/things/pngs')
+end
+
+local function renderPngFilePicker()
+   if not filePickerWindow then
+      return
+   end
+
+   local previousSelection = filePickerSelection
+   filePickerDirectory = normalizeDirectoryPath(filePickerDirectory)
+   filePickerSelection = nil
+   local list = filePickerWindow:recursiveGetChildById('filePickerEntries')
+   list:destroyChildren()
+   filePickerWindow:recursiveGetChildById('filePickerPathEdit'):setText(filePickerDirectory)
+   filePickerWindow:recursiveGetChildById('filePickerSelectedLabel'):setText(tr('Choose a PNG file.'))
+   filePickerWindow:recursiveGetChildById('filePickerUseButton'):setEnabled(false)
+
+   local ok, entries = pcall(g_platform.listDirectoryEntries, filePickerDirectory)
+   if not ok then
+      entries = {}
+   end
+
+   local visibleEntries = {}
+   for _, path in ipairs(entries or {}) do
+      local isDirectory = path:ends('/')
+      if isDirectory or path:lower():ends('.png') then
+         table.insert(visibleEntries, { path = path, isDirectory = isDirectory })
+      end
+   end
+   table.sort(visibleEntries, function(a, b)
+      if a.isDirectory ~= b.isDirectory then
+         return a.isDirectory
+      end
+      return a.path:lower() < b.path:lower()
+   end)
+
+   local filter = filePickerWindow:recursiveGetChildById('filePickerFilterEdit'):getText():trim():lower()
+   local shown = 0
+   for _, entry in ipairs(visibleEntries) do
+      local name = getPathName(entry.path)
+      if filter == '' or name:lower():find(filter, 1, true) then
+         local row = g_ui.createWidget('SpriteEditorFileEntry', list)
+         row:setText(entry.isDirectory and tr('[Folder] %s', name) or name)
+         row.filePickerPath = entry.path
+         row.filePickerIsDirectory = entry.isDirectory
+         if not entry.isDirectory and entry.path == previousSelection then
+            filePickerSelection = entry.path
+         end
+         row.onClick = function(widget)
+            if widget.filePickerIsDirectory then
+               filePickerSelection = nil
+               filePickerWindow:recursiveGetChildById('filePickerUseButton'):setEnabled(false)
+               filePickerWindow:recursiveGetChildById('filePickerSelectedLabel'):setText(
+                  tr('Double-click to open %s', getPathName(widget.filePickerPath)))
+            else
+               filePickerSelection = widget.filePickerPath
+               filePickerWindow:recursiveGetChildById('filePickerUseButton'):setEnabled(true)
+               local label = filePickerWindow:recursiveGetChildById('filePickerSelectedLabel')
+               label:setText(widget.filePickerPath)
+               label:setTooltip(widget.filePickerPath)
+            end
+         end
+         row.onDoubleClick = function(widget)
+            if widget.filePickerIsDirectory then
+               filePickerDirectory = widget.filePickerPath
+               renderPngFilePicker()
+            else
+               filePickerSelection = widget.filePickerPath
+               modules.game_sprite_editor.useSelectedPngFile()
+            end
+         end
+         shown = shown + 1
+      end
+   end
+
+   local parentButton = filePickerWindow:recursiveGetChildById('filePickerParentButton')
+   parentButton:setEnabled(getParentDirectory(filePickerDirectory) ~= nil)
+   filePickerWindow:recursiveGetChildById('filePickerCountLabel'):setText(
+      tr('%d PNG files and folders', shown))
+   if filePickerSelection then
+      local label = filePickerWindow:recursiveGetChildById('filePickerSelectedLabel')
+      label:setText(filePickerSelection)
+      label:setTooltip(filePickerSelection)
+      filePickerWindow:recursiveGetChildById('filePickerUseButton'):setEnabled(true)
+   end
+   if shown == 0 then
+      filePickerWindow:recursiveGetChildById('filePickerSelectedLabel'):setText(
+         tr('No PNG files or folders match this location and filter.'))
+   end
+end
+
+local function destroyPngFilePicker()
+   local picker = filePickerWindow
+   filePickerWindow = nil
+   filePickerSelection = nil
+   filePickerTarget = nil
+
+   if not picker then
+      return
+   end
+
+   local ok, err = pcall(function()
+      if not picker:isDestroyed() then
+         picker:destroy()
+      end
+   end)
+   if not ok then
+      g_logger.error('[game_sprite_editor] Unable to close PNG file browser: ' .. tostring(err))
+   end
+end
+
+function closePngFilePicker()
+   destroyPngFilePicker()
+end
+
+function navigatePngFilePicker()
+   if not filePickerWindow then
+      return
+   end
+   filePickerDirectory = normalizeDirectoryPath(
+      filePickerWindow:recursiveGetChildById('filePickerPathEdit'):getText())
+   renderPngFilePicker()
+end
+
+function goToParentPngFilePicker()
+   if not filePickerWindow then
+      return
+   end
+   filePickerDirectory = getParentDirectory(filePickerDirectory)
+   if filePickerDirectory then
+      renderPngFilePicker()
+   end
+end
+
+function filterPngFilePicker()
+   renderPngFilePicker()
+end
+
+function useSelectedPngFile()
+   if not filePickerWindow or not filePickerSelection then
+      return
+   end
+   local path = filePickerSelection
+   local target = filePickerTarget
+   filePickerDirectory = getParentDirectory(path) or filePickerDirectory
+   if target == 'create' then
+      window:recursiveGetChildById('newAppearancePngPathEdit'):setText(path)
+      setStatus(tr('PNG selected for the new appearance: %s', getPathName(path)))
+   else
+      preparedSpritePath = path
+      setSpritePath(path)
+      updateSpriteReplacementTarget()
+      setStatus(tr('PNG selected: %s', getPathName(path)))
+   end
+   destroyPngFilePicker()
+end
+
+function openPngFilePicker(target)
+   target = target or 'replace'
+   if target ~= 'replace' and target ~= 'create' then
+      return
+   end
+   if not window or not activeVersion or g_game.isOnline() or (target == 'replace' and not selectedSpriteId) then
+      return
+   end
+   if not g_platform.isDesktop() then
+      setStatus(tr('Browsing local files is available in desktop builds.'))
+      return
+   end
+   if not g_platform.getCurrentDir or not g_platform.listDirectoryEntries then
+      setStatus(tr('Restart the client to enable PNG file browsing.'))
+      return
+   end
+   destroyPngFilePicker()
+   filePickerTarget = target
+   local pathEditId = target == 'create' and 'newAppearancePngPathEdit' or 'previewSpritePathEdit'
+   local existingPath = window:recursiveGetChildById(pathEditId):getText():gsub('\\', '/')
+   if existingPath ~= '' and existingPath:lower():ends('.png') then
+      filePickerDirectory = getParentDirectory(existingPath) or g_platform.getCurrentDir()
+      filePickerSelection = g_platform.fileExists(existingPath) and existingPath or nil
+   elseif not filePickerDirectory then
+      filePickerDirectory = getDefaultPngDirectory()
+   end
+   local opened, picker = pcall(g_ui.displayUI, 'sprite_editor_file_picker')
+   if not opened or not picker then
+      filePickerWindow = nil
+      if not opened then
+         g_logger.error('[game_sprite_editor] Unable to open PNG file browser: ' .. tostring(picker))
+      end
+      setStatus(tr('Could not open the PNG file browser. Check the client log.'))
+      return
+   end
+   filePickerWindow = picker
+   local initialized, err = pcall(function()
+      filePickerWindow:recursiveGetChildById('filePickerGoButton').onClick = navigatePngFilePicker
+      filePickerWindow:recursiveGetChildById('filePickerParentButton').onClick = goToParentPngFilePicker
+      filePickerWindow:recursiveGetChildById('filePickerUseButton').onClick = useSelectedPngFile
+      filePickerWindow:recursiveGetChildById('filePickerCancelButton').onClick = closePngFilePicker
+      local pathEdit = filePickerWindow:recursiveGetChildById('filePickerPathEdit')
+      pathEdit.onEnter = navigatePngFilePicker
+      pathEdit.onTextChange = function()
+         filePickerSelection = nil
+         filePickerWindow:recursiveGetChildById('filePickerUseButton'):setEnabled(false)
+      end
+      local filterEdit = filePickerWindow:recursiveGetChildById('filePickerFilterEdit')
+      filterEdit.onTextChange = filterPngFilePicker
+      renderPngFilePicker()
+      if filePickerSelection then
+         filePickerWindow:recursiveGetChildById('filePickerSelectedLabel'):setText(filePickerSelection)
+         filePickerWindow:recursiveGetChildById('filePickerSelectedLabel'):setTooltip(filePickerSelection)
+         filePickerWindow:recursiveGetChildById('filePickerUseButton'):setEnabled(true)
+      end
+      filePickerWindow:raise()
+      filePickerWindow:focus()
+   end)
+   if not initialized then
+      g_logger.error('[game_sprite_editor] Unable to initialize PNG file browser: ' .. tostring(err))
+      destroyPngFilePicker()
+      setStatus(tr('Could not initialize the PNG file browser. Check the client log.'))
+   end
+end
+
 local function updatePreviewTitle()
    if not window or not canvas or not selectedSpriteId then
       return
@@ -316,7 +573,7 @@ local function setPreviewMessage(message)
    contextLabel:setVisible(false)
 end
 
-local function updateSpriteReplacementTarget()
+updateSpriteReplacementTarget = function()
    if not window then
       return
    end
@@ -340,6 +597,7 @@ local function updateSpriteReplacementTarget()
    window:recursiveGetChildById('spriteSearchEdit'):setEnabled(canReplace)
    local pngPathEdit = window:recursiveGetChildById('previewSpritePathEdit')
    pngPathEdit:setEnabled(canReplace)
+   window:recursiveGetChildById('browsePngButton'):setEnabled(canReplace and g_platform.isDesktop())
    window:recursiveGetChildById('importPngReplaceButton'):setEnabled(canReplace and pngPathEdit:getText() ~= '')
    window:recursiveGetChildById('spriteEditHelpLabel'):setText(pendingSpriteEdit and
       tr('Temporary PNG: %s', pendingSpriteEdit.path) or
@@ -682,6 +940,19 @@ local function updatePreviewAnimationPhaseCount(groupIndex, phaseCount)
       return false
    end
 
+   local groupKey = tostring(groupIndex)
+   local groupChanges = appearanceChanges.animation.groups[groupKey]
+   if not groupChanges then
+      groupChanges = { phases = {} }
+      appearanceChanges.animation.groups[groupKey] = groupChanges
+   end
+   local function getAnimationValue(field, fallback)
+      if groupChanges[field] ~= nil then
+         return groupChanges[field]
+      end
+      return fallback
+   end
+
    local sprites = {}
    local originalSprites = originalGroup.sprites or {}
    local copiedPhaseCount = math.min(phaseCount, originalPhaseCount)
@@ -699,20 +970,23 @@ local function updatePreviewAnimationPhaseCount(groupIndex, phaseCount)
    local originalAnimation = originalGroup.animation or {}
    local animation = {
       enabled = phaseCount > 1,
-      defaultStartPhase = originalAnimation.defaultStartPhase or 0,
-      randomStartPhase = originalAnimation.randomStartPhase or false,
-      synchronized = originalAnimation.synchronized or false,
-      loopType = originalAnimation.enabled and originalAnimation.loopType or 0,
-      loopCount = originalAnimation.loopCount or 0,
+      defaultStartPhase = getAnimationValue('defaultStartPhase', originalAnimation.defaultStartPhase or 0),
+      randomStartPhase = getAnimationValue('randomStartPhase', originalAnimation.randomStartPhase or false),
+      synchronized = getAnimationValue('synchronized', originalAnimation.synchronized or false),
+      loopType = getAnimationValue('loopType', originalAnimation.enabled and originalAnimation.loopType or 0),
+      loopCount = getAnimationValue('loopCount', originalAnimation.loopCount or 0),
       phases = {},
    }
    if phaseCount > 1 then
       for phaseIndex = 1, phaseCount do
          local originalPhase = originalAnimation.phases and originalAnimation.phases[phaseIndex]
-         animation.phases[phaseIndex] = originalPhase and {
-            durationMin = originalPhase.durationMin,
-            durationMax = originalPhase.durationMax,
-         } or { durationMin = 100, durationMax = 100 }
+         local phaseChanges = groupChanges.phases and groupChanges.phases[tostring(phaseIndex - 1)] or {}
+         animation.phases[phaseIndex] = {
+            durationMin = phaseChanges.durationMin ~= nil and phaseChanges.durationMin or
+               originalPhase and originalPhase.durationMin or 100,
+            durationMax = phaseChanges.durationMax ~= nil and phaseChanges.durationMax or
+               originalPhase and originalPhase.durationMax or 100,
+         }
       end
       animation.defaultStartPhase = math.min(animation.defaultStartPhase, phaseCount - 1)
    else
@@ -727,12 +1001,6 @@ local function updatePreviewAnimationPhaseCount(groupIndex, phaseCount)
    group.sprites = sprites
    group.animation = animation
 
-   local groupKey = tostring(groupIndex)
-   local groupChanges = appearanceChanges.animation.groups[groupKey]
-   if not groupChanges then
-      groupChanges = { phases = {} }
-      appearanceChanges.animation.groups[groupKey] = groupChanges
-   end
    groupChanges.phaseCount = phaseCount ~= originalPhaseCount and phaseCount or nil
    if phaseCount == 1 then
       groupChanges.defaultStartPhase = nil
@@ -1189,7 +1457,6 @@ updateAnimationEditor = function()
    local phaseCount = group and math.max(1, group.phaseCount or 1) or 1
    local isAnimated = enabled and group.animation.phases and #group.animation.phases > 0 or false
    local settingsRow = window:recursiveGetChildById('previewAnimationSettingsRow')
-   local timeline = window:recursiveGetChildById('previewTimeline')
    local phaseStepper = window:recursiveGetChildById('previewPhaseStepper')
    local addFrameButton = window:recursiveGetChildById('addAnimationFrameButton')
    local removeFrameButton = window:recursiveGetChildById('removeAnimationFrameButton')
@@ -1381,9 +1648,18 @@ updateAnimationEditor = function()
          end
 
          if currentPhaseIndex == previewPhase then
+            local phaseToReveal = currentPhaseIndex
             addEvent(function()
-               if timeline and frameButton then
-                  timeline:ensureChildVisible(frameButton)
+               if not window or not window:isVisible() then
+                  return
+               end
+
+               local currentTimeline = window:recursiveGetChildById('previewTimeline')
+               local currentFrameList = window:recursiveGetChildById('previewTimelineFrames')
+               local currentFrameButton = currentFrameList:getChildByIndex(phaseToReveal + 1)
+               local ensureChildVisible = UIScrollArea and UIScrollArea.ensureChildVisible
+               if currentTimeline and currentFrameButton and ensureChildVisible then
+                  ensureChildVisible(currentTimeline, currentFrameButton)
                end
             end)
          end
@@ -1660,25 +1936,84 @@ local function reloadAssets()
    return true
 end
 
+local function unmountWorkRoot(root)
+   if not root or not mountedRoots[root] then
+      return true, false
+   end
+   if not g_resources.removeSearchPath(root) then
+      return false, false
+   end
+   mountedRoots[root] = nil
+   return true, true
+end
+
+local function restoreWorkRoot(root, wasMounted)
+   if not wasMounted then
+      return true
+   end
+   if not g_resources.addSearchPath(root, true) then
+      return false
+   end
+   mountedRoots[root] = true
+   return true
+end
+
+local function releaseActiveWorkCopy()
+   if not activeVersion then
+      return true
+   end
+
+   local version = activeVersion
+   local root = activeWorkRoot
+   local workAssetPath = activeAssetPath
+   local unmounted = true
+   if root then
+      unmounted = unmountWorkRoot(root)
+   end
+   if not unmounted then
+      return false, tr('Could not unmount the sprite editor working copy.')
+   end
+
+   local installedAssetPath = resolvepath(string.format('/data/things/%d/', version))
+   local reloaded, loaded = pcall(function()
+      g_things.invalidateTextureCache()
+      if not g_things.loadAppearances(installedAssetPath) then
+         return false
+      end
+      return g_things.loadStaticData(installedAssetPath)
+   end)
+   if not reloaded or not loaded then
+      local remounted = not root or mountedRoots[root] or g_resources.addSearchPath(root, true)
+      if remounted and root then
+         mountedRoots[root] = true
+      end
+      if remounted and workAssetPath then
+         pcall(function()
+            g_things.invalidateTextureCache()
+            g_things.loadAppearances(workAssetPath)
+            g_things.loadStaticData(workAssetPath)
+         end)
+      end
+      local detail = not reloaded and getUserFacingError(loaded) or
+         tr('The installed client assets could not be reloaded.')
+      return false, detail
+   end
+
+   activeVersion = nil
+   activeAssetPath = nil
+   activeWorkRoot = nil
+   return true
+end
+
 local function updateExportControls()
    if not window then
       return
    end
 
-   local pathEdit = window:recursiveGetChildById('exportPathEdit')
-   local exportButton = window:recursiveGetChildById('exportButton')
-   if activeVersion then
-      local currentPath = pathEdit:getText()
-      if currentPath == '' or currentPath == suggestedExportRoot then
-         suggestedExportRoot = getSuggestedExportRoot(activeVersion)
-         pathEdit:setText(suggestedExportRoot)
-      end
-   else
-      suggestedExportRoot = nil
-   end
-
-   local enabled = activeVersion ~= nil and not g_game.isOnline() and pathEdit:getText() ~= ''
-   exportButton:setEnabled(enabled)
+   local offline = not g_game.isOnline()
+   local selectedVersion = selectedOption(window:recursiveGetChildById('versionComboBox'))
+   window:recursiveGetChildById('loadAssetsButton'):setEnabled(offline and selectedVersion ~= nil)
+   window:recursiveGetChildById('exportButton'):setEnabled(activeVersion ~= nil and offline)
    window:recursiveGetChildById('importPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('exportPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('reloadButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
@@ -1704,6 +2039,8 @@ local function setActivePage(page)
       local copyLabel = window:recursiveGetChildById('activeWorkCopyLabel')
       copyLabel:setText(packagePath or tr('No work copy is open.'))
       copyLabel:setTooltip(packagePath or '')
+      window:recursiveGetChildById('installTargetLabel'):setText(activeVersion and
+         string.format('data/things/%d', activeVersion) or tr('No assets version selected.'))
    end
 end
 
@@ -1791,17 +2128,16 @@ local function createWindow()
    end
 
    local versionBox = window:recursiveGetChildById('versionComboBox')
-   for _, version in ipairs(getVersions()) do
+   local versions = getVersions()
+   for _, version in ipairs(versions) do
       versionBox:addOption(formatClientVersion(version), version)
    end
-   if activeVersion then
-      versionBox:setCurrentOptionByData(activeVersion, true)
+   local selectedVersion = activeVersion or versions[1]
+   if selectedVersion then
+      versionBox:setCurrentOptionByData(selectedVersion, true)
    end
-   window:recursiveGetChildById('exportPathEdit').onTextChange = function(widget)
-      local destination = widget:getText()
-      local exportButton = window:recursiveGetChildById('exportButton')
-      local enabled = activeVersion ~= nil and not g_game.isOnline() and destination ~= ''
-      exportButton:setEnabled(enabled)
+   versionBox.onOptionChange = function()
+      updateExportControls()
    end
 
    setActivePage(currentPage)
@@ -1823,6 +2159,7 @@ local function createWindow()
 end
 
 local function destroyWindow()
+   destroyPngFilePicker()
    if spriteSearchEvent then
       removeEvent(spriteSearchEvent)
       spriteSearchEvent = nil
@@ -1909,6 +2246,12 @@ end
 
 function terminate()
    disconnect(g_game, { onGameStart = gameStartCallback, onGameEnd = gameEndCallback })
+   if activeVersion then
+      local released, err = releaseActiveWorkCopy()
+      if not released then
+         g_logger.error('[game_sprite_editor] Unable to restore installed assets during shutdown: ' .. tostring(err))
+      end
+   end
    destroyWindow()
    if topMenuButton then
       topMenuButton:destroy()
@@ -1928,12 +2271,20 @@ function toggle()
    end
    if window then
       requestClose()
-   else
+   elseif activeVersion then
       createWindow()
+   else
+      local version = getVersions()[1]
+      if version then
+         openWorkCopyVersion(version)
+      else
+         createWindow()
+         setStatus(tr('No installed client assets in version 15.x were found.'))
+      end
    end
 end
 
-function openWorkCopy()
+function loadSelectedAssets()
    if not window or g_game.isOnline() then
       return
    end
@@ -1942,28 +2293,72 @@ function openWorkCopy()
       displayErrorBox(tr('Assets Editor'), tr('No installed client version 15.x assets were found.'))
       return
    end
-   if hasAppearanceChanges() then
-      confirmUnsavedChanges(tr('Save changes before opening another work copy?'), function()
-         openWorkCopyVersion(version)
-      end)
+
+   local ok, hasWorkCopy = pcall(g_spriteAppearances.workCopyExists, version)
+   if not ok then
+      displayErrorBox(tr('Assets Editor'), getUserFacingError(hasWorkCopy))
       return
    end
-   openWorkCopyVersion(version)
+   if not hasWorkCopy then
+      if hasAppearanceChanges() then
+         confirmUnsavedChanges(tr('Save changes before loading another assets version?'), function()
+            openWorkCopyVersion(version)
+         end)
+         return
+      end
+      openWorkCopyVersion(version)
+      return
+   end
+
+   local messageBox
+   local function cancelReset()
+      messageBox:cancel()
+   end
+   local function resetAndLoad()
+      messageBox:ok()
+      local mountedRoot = activeWorkRoot
+      local unmountOk, wasMounted = unmountWorkRoot(mountedRoot)
+      if not unmountOk then
+         displayErrorBox(tr('Assets Editor'), tr('Could not unmount the working copy before reloading assets.'))
+         return
+      end
+
+      local resetOk, result = pcall(g_spriteAppearances.resetWorkCopy, version)
+      if not resetOk then
+         if not restoreWorkRoot(mountedRoot, wasMounted) then
+            displayErrorBox(tr('Assets Editor'), tr('%s The working copy could not be remounted.', getUserFacingError(result)))
+            return
+         end
+         displayErrorBox(tr('Assets Editor'), getUserFacingError(result))
+         return
+      end
+      openWorkCopyVersion(version)
+   end
+   messageBox = displayGeneralBox(tr('Reload assets from the installed version?'),
+      tr('This replaces the selected working copy with the installed assets and discards its saved edits and any unsaved editor changes.'), {
+         { text = tr('Reload assets'), callback = resetAndLoad },
+         { text = tr('Cancel'), callback = cancelReset },
+      }, cancelReset, cancelReset)
 end
 
 function openWorkCopyVersion(version)
+   if activeVersion then
+      local released, err = releaseActiveWorkCopy()
+      if not released then
+         displayErrorBox(tr('Assets Editor'), err)
+         return false
+      end
+   end
    destroyWindow()
-   activeVersion = nil
-   activeAssetPath = nil
-   activeWorkRoot = nil
    if not loadAssets(version) then
       createWindow()
-      return
+      return false
    end
    currentPage = 'editor'
    createWindow()
    window:recursiveGetChildById('versionComboBox'):setCurrentOptionByData(version, true)
    setStatus(tr('Working copy ready for client %s.', formatClientVersion(version)))
+   return true
 end
 
 function applyAppearanceSearch()
@@ -2539,7 +2934,7 @@ function editSprite(forceDiscard)
    launchSpriteInEditor(editorPath, pngPath)
 end
 
-function applyEditedSprite(forceDiscard, confirmed)
+function applyEditedSprite(forceDiscard, confirmed, closeAfterApply)
    if hasAppearanceChanges() and not forceDiscard then
       confirmUnsavedChanges(tr('Save changes before applying the edited sprite?'), function()
          applyEditedSprite(true)
@@ -2598,6 +2993,9 @@ function applyEditedSprite(forceDiscard, confirmed)
    pcall(g_platform.removeFile, edit.path)
    updateSpriteReplacementTarget()
    setStatus(tr('Sprite %d was updated in the work copy. All appearances sharing this sprite use the edited image.', edit.spriteId))
+   if closeAfterApply then
+      requestClose(true, true)
+   end
 end
 
 function createAppearance(forceDiscard)
@@ -2755,46 +3153,85 @@ function saveAppearanceProperties()
    setAppearanceStatus(tr('Appearance %d saved to the work copy.', selectedAppearanceId))
 end
 
-function exportWorkCopy(forceContinue)
+function exportWorkCopy(forceContinue, confirmed)
    if hasAppearanceChanges() and not forceContinue then
       local messageBox
       local function saveAndExport()
          messageBox:ok()
          saveAppearanceProperties()
          if not hasAppearanceChanges() then
-            exportWorkCopy(true)
+            exportWorkCopy(true, false)
          end
       end
       local function cancelMessageBox()
          messageBox:cancel()
       end
       messageBox = displayGeneralBox(tr('Unsaved appearance properties'), tr('Save or discard the pending changes before exporting the work copy.'), {
-         { text = tr('Save and export'), callback = saveAndExport },
-         { text = tr('Discard and export'), callback = function()
+         { text = tr('Save and continue'), callback = saveAndExport },
+         { text = tr('Discard edits'), callback = function()
             messageBox:ok()
             resetAppearanceDraft()
-            exportWorkCopy(true)
+            exportWorkCopy(true, false)
          end },
          { text = tr('Cancel'), callback = cancelMessageBox },
       }, saveAndExport, cancelMessageBox)
       return
    end
    if not activeVersion or g_game.isOnline() then
-      window:recursiveGetChildById('exportStatus'):setText(tr('Open a 15.x work copy before exporting.'))
+      window:recursiveGetChildById('exportStatus'):setText(tr('Load an offline 15.x work copy before exporting.'))
       return
    end
-   local destination = window:recursiveGetChildById('exportPathEdit'):getText()
-   if destination == '' then
-      window:recursiveGetChildById('exportStatus'):setText(tr('Enter an absolute destination folder.'))
+   if not confirmed then
+      local messageBox
+      local function cancelInstall()
+         messageBox:cancel()
+      end
+      local function confirmInstall()
+         messageBox:ok()
+         exportWorkCopy(true, true)
+      end
+      messageBox = displayGeneralBox(tr('Replace installed client assets?'),
+         tr('This installs the full working copy into data/things/%d. The current package is first preserved in data/things/backup, then the editor reloads appearances and static data. Use this copy when you next enter a world.', activeVersion), {
+            { text = tr('Export and replace'), callback = confirmInstall },
+            { text = tr('Cancel'), callback = cancelInstall },
+         }, cancelInstall, cancelInstall)
       return
    end
-   local ok, result = pcall(g_spriteAppearances.exportWorkCopy, activeVersion, destination)
+
+   local mountedRoot = activeWorkRoot
+   local unmountOk, wasMounted = unmountWorkRoot(mountedRoot)
+   if not unmountOk then
+      window:recursiveGetChildById('exportStatus'):setText(tr('Could not unmount the working copy before installing assets.'))
+      return
+   end
+
+   local ok, backupPath = pcall(g_spriteAppearances.installWorkCopy, activeVersion)
+   local remountOk = restoreWorkRoot(mountedRoot, wasMounted)
+   if not remountOk then
+      local message = ok and tr('Assets were installed, but the working copy could not be remounted. Backup: %s', backupPath) or
+         tr('%s The working copy could not be remounted.', getUserFacingError(backupPath))
+      window:recursiveGetChildById('exportStatus'):setText(message)
+      displayErrorBox(tr('Assets Editor'), message)
+      return
+   end
    if not ok then
-      window:recursiveGetChildById('exportStatus'):setText(getUserFacingError(result))
+      window:recursiveGetChildById('exportStatus'):setText(getUserFacingError(backupPath))
       return
    end
-   window:recursiveGetChildById('exportStatus'):setText(tr('Asset package exported to %s.', result))
-   setStatus(tr('Exported client %s to a separate asset package.', formatClientVersion(activeVersion)))
+   if not reloadAssets() then
+      local message = tr('Assets were installed, but the editor could not reload them. Backup: %s', backupPath)
+      window:recursiveGetChildById('exportStatus'):setText(message)
+      displayErrorBox(tr('Assets Editor'), message)
+      return
+   end
+
+   refreshAppearanceCatalog(selectedAppearanceCategory)
+   if selectedAppearanceId then
+      loadAppearanceRecord(selectedAppearanceCategory, selectedAppearanceId, true, true)
+   end
+   local status = tr('Assets installed and reloaded. Backup: %s', backupPath)
+   window:recursiveGetChildById('exportStatus'):setText(status)
+   setStatus(tr('Client %s is installed and reloaded.', formatClientVersion(activeVersion)))
 end
 
 function reloadPackage()
@@ -2822,15 +3259,49 @@ function reloadPackageNow()
    setStatus(tr('Work copy reloaded from disk.'))
 end
 
-function requestClose(forceDiscard)
+function requestClose(forceDiscard, pendingEditConfirmed)
    if not window then
       return
    end
    if hasAppearanceChanges() and not forceDiscard then
       confirmUnsavedChanges(tr('Save changes to the working copy before closing?'), function()
-         requestClose(true)
+         requestClose(true, pendingEditConfirmed)
       end)
       return
+   end
+   if pendingSpriteEdit and not pendingEditConfirmed then
+      local edit = pendingSpriteEdit
+      local messageBox
+      local function keepEditing()
+         messageBox:cancel()
+      end
+      local function applyEditAndClose()
+         messageBox:ok()
+         applyEditedSprite(true, true, true)
+      end
+      local function discardEditAndClose()
+         messageBox:ok()
+         if pendingSpriteEdit then
+            pcall(g_platform.removeFile, pendingSpriteEdit.path)
+            pendingSpriteEdit = nil
+            updateSpriteReplacementTarget()
+         end
+         requestClose(true, true)
+      end
+      messageBox = displayGeneralBox(tr('Pending sprite edit'),
+         tr('Sprite %d has a temporary PNG open in the external editor. Save it there before applying, or discard the temporary edit before closing.', edit.spriteId), {
+            { text = tr('Apply edit and close'), callback = applyEditAndClose },
+            { text = tr('Discard edit and close'), callback = discardEditAndClose },
+            { text = tr('Keep editing'), callback = keepEditing },
+         }, keepEditing, keepEditing)
+      return
+   end
+   if activeVersion then
+      local released, err = releaseActiveWorkCopy()
+      if not released then
+         displayErrorBox(tr('Assets Editor'), err)
+         return
+      end
    end
    destroyWindow()
 end

@@ -143,7 +143,10 @@ void Client::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_spriteAppearances", "saveSheetToFileBySprite", &SpriteAppearances::saveSheetToFileBySprite, &g_spriteAppearances);
 #ifdef FRAMEWORK_EDITOR
     g_lua.bindSingletonFunction("g_spriteAppearances", "createWorkCopy", &SpriteAppearances::createWorkCopy, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "workCopyExists", &SpriteAppearances::workCopyExists, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "resetWorkCopy", &SpriteAppearances::resetWorkCopy, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "exportWorkCopy", &SpriteAppearances::exportWorkCopy, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "installWorkCopy", &SpriteAppearances::installWorkCopy, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "importSpriteFromFile", &SpriteAppearances::importSpriteFromFile, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "importSpriteForAppearance", &SpriteAppearances::importSpriteForAppearance, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "getSpriteRanges", &SpriteAppearances::getSpriteRanges, &g_spriteAppearances);

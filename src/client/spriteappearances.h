@@ -137,7 +137,10 @@ public:
 
 #ifdef FRAMEWORK_EDITOR
     std::string createWorkCopy(int version);
+    bool workCopyExists(int version);
+    std::string resetWorkCopy(int version);
     std::string exportWorkCopy(int version, const std::string& destination);
+    std::string installWorkCopy(int version);
     void saveSpriteToWorkCopy(int id, const ImagePtr& image, int version);
     int importSpriteFromFile(int id, const std::string& fileName, int version);
     int importSpriteForAppearance(int referenceSpriteId, const std::string& fileName, int version);
