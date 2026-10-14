@@ -1,29 +1,23 @@
-# Offline Assets Editor
+# Offline Assets Editor 15.x
 
-The optional Assets Editor manages modern client assets without logging in. It is available from the top menu in builds compiled with `TOGGLE_FRAMEWORK_EDITOR=ON`. Artwork is prepared in an external sprite editor and imported as PNG; the OTClient canvas is a read-only preview with zoom and pan.
+The optional Assets Editor edits modern 15.x client assets while the client is offline. It is available in builds compiled with `TOGGLE_FRAMEWORK_EDITOR=ON`.
 
-## Open and edit a work copy
+## Work copy
 
-1. Start the client offline and open **Assets** from the top menu.
-2. Select an installed asset version in the 15.x range and open its work copy.
-3. Load an appearance by category and ID to preview its linked sprites. The appearance properties window edits its name, description, boolean flags, and numeric flag values.
-4. Select a linked frame and choose **Replace**. Use another existing sprite ID to change only this frame's link, or import a PNG to allocate a new sprite ID and link it here. A replacement PNG must match the selected sprite's dimensions.
-5. To create an appearance, choose a category, name, optional description, and PNG path. New entries receive a new sprite ID and use one static 32 x 32 sprite. The editor creates one appearance in the selected category and opens its properties for flag edits.
-6. Choose **Edit** to export the selected sprite as a temporary PNG and open it in the configured external editor. Save the PNG there, return to OTClient, and choose **Apply** to update that sprite in the work copy. All appearances sharing the sprite ID use the edited image. **Editor...** stores the executable or launcher path in the user's OTClient settings.
-7. Use **Reload work copy** to reload the catalog and appearances from disk.
+Opening the editor creates or resumes a working copy at `<client write directory>/sprite-editor/data/things/<version>/`. The editor mounts that copy for editing; the installed `data/things/<version>/` package stays unchanged until installation.
 
-The editor copies the selected asset package into `<client write directory>/sprite-editor/data/things/<version>/` and mounts `<client write directory>/sprite-editor` as a resource search path. Runtime assets continue to load through `/data/things/<version>/`. Saves are restricted to this work copy; installed packages are never selected as a write destination.
+Use **Load assets** to select an installed version. If a working copy already exists, the editor asks before replacing it with a fresh copy of the installed assets. This discards the old working copy and its saved edits.
 
-New sprite images are stored in 32 x 32 sprite sheets appended to the copied `catalog-content.json`. The editor reuses its own appended sheet until its 144 slots are full. Appearance data is written to the copied protobuf file. Existing metadata not edited in the form, including animation and repeated fields, is preserved.
+## Edit appearances and sprites
 
-The package copy is created through a temporary sibling directory and renamed after completion. Sprite-sheet writes are prepared in a temporary file and validated by decompressing and comparing the full bitmap before replacement. Appearance writes are serialized to a temporary protobuf file, parsed again, and replaced with a same-directory backup and rollback. Incomplete work copies are rejected; remove that version's directory under `sprite-editor/data/things/` to recreate it.
+Choose a category and appearance from the left panel. The center preview shows the selected sprite or animation frame. The Properties page edits the available flags, values, and animation settings for that appearance.
 
-## Build gate and scope
+On the Import page, replace the selected frame with another sprite ID by selecting or dragging a sprite from the right panel onto the preview. To import artwork, choose a PNG file and import it; the editor creates a sprite ID and links it to the selected frame. The file browser opens in `data/things/pngs/` by default, and also supports navigating to another folder. PNGs placed in `data/things/pngs/` are ignored by Git.
 
-The work-copy write APIs and preview widget are compiled only when `FRAMEWORK_EDITOR` is enabled. Normal player builds do not register the preview widget or expose the import and appearance-write functions.
+To edit a sprite in another application, choose **Edit sprite**. The editor exports a temporary PNG to the user's client profile and launches the configured external editor as a separate desktop window. Save the image in that application, return to OTClient, and apply the edit. The image must keep the sprite's original dimensions. Every appearance that shares this sprite ID uses the updated image.
 
-The editor supports modern directory-based asset packages in client versions 15.x only. Existing sprite replacement supports the sprite's current dimensions, up to 384 x 384 pixels. Creating a new appearance currently uses a single 32 x 32 image; animation groups, multi-pattern outfits, repeated NPC sale metadata, and deletion are not edited. Transparent pixels use the modern sheet's magenta/alpha convention. Packages that contain symbolic links or non-regular files are rejected and must resolve to a local directory.
+## Install edited assets
 
-Enter an absolute path to a PNG image. The image is limited to 4 MiB and 384 x 384 pixels. Use the wheel to zoom and middle-drag to pan the preview.
+The Export page installs the working copy into the standard runtime location, `data/things/<version>/`. After confirmation, the current package is moved to `data/things/backup/<version>-<timestamp>/`, the working copy replaces it, and the client reloads appearances and static data. The backup directory is ignored by Git.
 
-The external editor receives the temporary PNG path as its only argument. Editors must accept a file path as a positional argument; [LibreSprite supports positional file inputs](https://github.com/LibreSprite/LibreSprite/blob/master/src/app/app_options.cpp). The temporary image is validated against the original sprite dimensions before it is written to the work copy.
+When the editor closes, it unmounts the working copy and restores the installed package as the runtime source. The editor only supports directory-based client assets in the 15.x range; it does not modify older `.dat`/`.spr` clients.
