@@ -41,7 +41,7 @@ local settingSpritePath = false
 local spritePickerRanges = {}
 local spritePickerIds
 local spritePickerCount = 0
-local spritePickerCells = {}
+local spritePickerCells = { replace = {}, create = {} }
 local spritePickerSourceId
 local spritePickerQuery = ''
 local selectedReplacementSpriteId
@@ -2258,7 +2258,7 @@ local function destroyWindow()
       canvas = nil
    end
    appearanceRows = {}
-   spritePickerCells = {}
+   spritePickerCells = { replace = {}, create = {} }
    spritePickerRanges = {}
    spritePickerIds = nil
    spritePickerCount = 0
@@ -2559,8 +2559,11 @@ refreshSpritePicker = function()
       cumulativeCount = cumulativeCount + math.max(0, range[2] - range[1] + 1)
       range[3] = cumulativeCount
    end
-   for _, cell in ipairs(spritePickerCells) do
-      cell.spriteId = nil
+   for _, cells in pairs(spritePickerCells) do
+      for _, cell in ipairs(cells) do
+         cell.spriteId = nil
+         cell.thumbnailSpriteId = nil
+      end
    end
    applySpritePickerFilter()
 end
@@ -2584,21 +2587,19 @@ renderSpritePickerRows = function(scrollY)
    local cellHeight = 60
    local columnGap = 3
    local columnCount = math.max(1, math.floor((list:getWidth() + columnGap) / (cellWidth + columnGap)))
+   local cells = spritePickerCells[currentImportSection]
    local totalRows = math.ceil(spritePickerCount / columnCount)
    content:setHeight(math.max(1, totalRows * cellHeight))
 
    local firstRow = math.floor(math.max(0, scrollY or 0) / cellHeight)
    local viewportHeight = math.max(list:getHeight(), cellHeight)
    local poolSize = (math.ceil(viewportHeight / cellHeight) + 2) * columnCount
-   while #spritePickerCells < poolSize do
-      table.insert(spritePickerCells, g_ui.createWidget('SpritePickerCell', content))
+   while #cells < poolSize do
+      table.insert(cells, g_ui.createWidget('SpritePickerCell', content))
    end
 
    local updatedThumbnails = false
-   for slot, cell in ipairs(spritePickerCells) do
-      if cell:getParent() ~= content then
-         cell:setParent(content)
-      end
+   for slot, cell in ipairs(cells) do
       local index = firstRow * columnCount + slot
       local spriteId = index <= spritePickerCount and getSpritePickerIdAt(index) or nil
       cell:setVisible(spriteId ~= nil)
