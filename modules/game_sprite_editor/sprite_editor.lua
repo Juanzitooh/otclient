@@ -45,16 +45,36 @@ local spritePickerCells = {}
 local spritePickerSourceId
 local spritePickerQuery = ''
 local selectedReplacementSpriteId
+local selectedCreateSpriteId
 local spriteSearchEvent
 local currentImportSection = 'replace'
 local currentReplaceMode = 'sprite'
+local currentNewAppearanceSourceMode = 'sprite'
 local filePickerWindow
 local filePickerDirectory
 local filePickerSelection
 local filePickerTarget
 
+local SPRITE_PICKER_WIDGET_IDS = {
+   replace = {
+      search = 'spriteSearchEdit',
+      count = 'spritePickerCountLabel',
+      list = 'spritePickerList',
+      content = 'spritePickerContent',
+      selection = 'selectedReplacementSpriteLabel',
+   },
+   create = {
+      search = 'newAppearanceSpriteSearchEdit',
+      count = 'newAppearanceSpritePickerCountLabel',
+      list = 'newAppearanceSpritePickerList',
+      content = 'newAppearanceSpritePickerContent',
+      selection = 'newAppearanceSelectedSpriteLabel',
+   },
+}
+
 local EXTERNAL_EDITOR_SETTING = 'offline-assets-editor-external-editor'
 
+local MAX_SPRITE_ID = 2147483647
 local APPEARANCE_ROW_HEIGHT = 52
 local PREVIEW_CONTROLS_BOTTOM_MARGIN = 14
 local PREVIEW_CANVAS_BOTTOM_MARGIN = 4
@@ -100,10 +120,33 @@ local refreshSpritePicker
 local renderSpritePickerRows
 local applySpritePickerFilter
 local importPngAsNewSprite
-local selectReplacementSprite
+local selectSpritePickerSprite
 local linkSpriteToSelectedFrame
 local replaceSelectedFrameWithSprite
 local updateSpriteReplacementTarget
+
+local function getSpritePickerWidget(name)
+   if not window then
+      return nil
+   end
+   local ids = SPRITE_PICKER_WIDGET_IDS[currentImportSection]
+   return ids and window:recursiveGetChildById(ids[name]) or nil
+end
+
+local function getSelectedSpritePickerId()
+   if currentImportSection == 'create' then
+      return selectedCreateSpriteId
+   end
+   return selectedReplacementSpriteId
+end
+
+local function setSelectedSpritePickerId(spriteId)
+   if currentImportSection == 'create' then
+      selectedCreateSpriteId = spriteId
+   else
+      selectedReplacementSpriteId = spriteId
+   end
+end
 
 local function setStatus(message)
    if window then
@@ -579,26 +622,48 @@ updateSpriteReplacementTarget = function()
    end
    local hasTarget = selectedSpriteId ~= nil
    local canReplace = hasTarget and activeVersion ~= nil and not g_game.isOnline()
+   local canEditAssets = activeVersion ~= nil and not g_game.isOnline()
+   local showImport = currentPage == 'import'
+   local showReplace = showImport and currentImportSection == 'replace'
+   local showCreate = showImport and currentImportSection == 'create'
    if spritePickerSourceId ~= selectedSpriteId then
       spritePickerSourceId = selectedSpriteId
       selectedReplacementSpriteId = nil
    end
    local targetPanel = window:recursiveGetChildById('replaceFramePanel')
-   local showSpriteTools = currentPage == 'import' and currentImportSection == 'replace'
-   targetPanel:setVisible(showSpriteTools)
-   window:recursiveGetChildById('replaceSourceModes'):setVisible(hasTarget)
+   targetPanel:setVisible(showReplace)
+   window:recursiveGetChildById('newAppearancePanel'):setVisible(showCreate)
+   window:recursiveGetChildById('replaceSourceModes'):setVisible(showReplace and hasTarget)
    window:recursiveGetChildById('selectedSpriteTargetLabel'):setText(
       hasTarget and tr('Current frame | Sprite %d', selectedSpriteId) or tr('Select a sprite frame to continue'))
-   window:recursiveGetChildById('spriteIdReplacePanel'):setVisible(hasTarget and currentReplaceMode == 'sprite')
-   window:recursiveGetChildById('pngReplacePanel'):setVisible(hasTarget and currentReplaceMode == 'png')
-   window:recursiveGetChildById('editCurrentSpritePanel'):setVisible(hasTarget or pendingSpriteEdit ~= nil)
+   window:recursiveGetChildById('spriteIdReplacePanel'):setVisible(showReplace and hasTarget and currentReplaceMode == 'sprite')
+   window:recursiveGetChildById('pngReplacePanel'):setVisible(showReplace and hasTarget and currentReplaceMode == 'png')
+   window:recursiveGetChildById('editCurrentSpritePanel'):setVisible(showReplace and (hasTarget or pendingSpriteEdit ~= nil))
    window:recursiveGetChildById('spriteIdModeButton'):setOn(currentReplaceMode == 'sprite')
    window:recursiveGetChildById('pngModeButton'):setOn(currentReplaceMode == 'png')
    window:recursiveGetChildById('spriteSearchEdit'):setEnabled(canReplace)
+   window:recursiveGetChildById('newAppearanceSourceModes'):setVisible(showCreate)
+   window:recursiveGetChildById('newAppearanceSpriteModeButton'):setOn(currentNewAppearanceSourceMode == 'sprite')
+   window:recursiveGetChildById('newAppearancePngModeButton'):setOn(currentNewAppearanceSourceMode == 'png')
+   window:recursiveGetChildById('newAppearanceSpritePanel'):setVisible(
+      showCreate and currentNewAppearanceSourceMode == 'sprite')
+   window:recursiveGetChildById('newAppearancePngPanel'):setVisible(
+      showCreate and currentNewAppearanceSourceMode == 'png')
+   window:recursiveGetChildById('newAppearanceSpriteSearchEdit'):setEnabled(canEditAssets)
+   window:recursiveGetChildById('newAppearanceCategory'):setEnabled(canEditAssets)
    local pngPathEdit = window:recursiveGetChildById('previewSpritePathEdit')
    pngPathEdit:setEnabled(canReplace)
    window:recursiveGetChildById('browsePngButton'):setEnabled(canReplace and g_platform.isDesktop())
    window:recursiveGetChildById('importPngReplaceButton'):setEnabled(canReplace and pngPathEdit:getText() ~= '')
+   local newAppearancePngPathEdit = window:recursiveGetChildById('newAppearancePngPathEdit')
+   newAppearancePngPathEdit:setEnabled(canEditAssets)
+   window:recursiveGetChildById('browseNewAppearancePngButton'):setEnabled(canEditAssets and g_platform.isDesktop())
+   window:recursiveGetChildById('createAppearanceButton'):setEnabled(canEditAssets and (
+      (currentNewAppearanceSourceMode == 'sprite' and selectedCreateSpriteId ~= nil) or
+      (currentNewAppearanceSourceMode == 'png' and newAppearancePngPathEdit:getText() ~= '')))
+   window:recursiveGetChildById('newAppearanceSourceHintLabel'):setText(
+      currentNewAppearanceSourceMode == 'sprite' and tr('Choose the category above, then create the appearance.') or
+      tr('The PNG will be added as a new sprite ID when you create the appearance.'))
    window:recursiveGetChildById('spriteEditHelpLabel'):setText(pendingSpriteEdit and
       tr('Temporary PNG: %s', pendingSpriteEdit.path) or
       tr('Edit the current sprite in an external app, then apply it to the work copy.'))
@@ -609,14 +674,21 @@ updateSpriteReplacementTarget = function()
    applyButton:setText(tr('Apply edit'))
    applyButton:setTooltip(pendingSpriteEdit and tr('Apply the edited PNG to sprite %d in the work copy.', pendingSpriteEdit.spriteId) or '')
    window:recursiveGetChildById('configureSpriteEditorButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
+   window:recursiveGetChildById('newAppearanceSpriteModeButton'):setEnabled(canEditAssets)
+   window:recursiveGetChildById('newAppearancePngModeButton'):setEnabled(canEditAssets)
    window:recursiveGetChildById('duplicateAppearanceButton'):setEnabled(
       selectedAppearanceId ~= nil and activeVersion ~= nil and not g_game.isOnline())
+   window:recursiveGetChildById('createAppearanceShortcutButton'):setEnabled(
+      activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('previewHintLabel'):setText(
-      showSpriteTools and currentReplaceMode == 'sprite' and
+      showReplace and currentReplaceMode == 'sprite' and
          tr('Drop a sprite here to replace this frame | Wheel over preview: zoom | Middle-drag: pan') or
          tr('Wheel over preview: zoom | Middle-drag: pan | Checkerboard: transparency'))
    if hasTarget then updatePreviewTitle() end
-   if renderSpritePickerRows then renderSpritePickerRows() end
+   if renderSpritePickerRows then
+      local pickerList = getSpritePickerWidget('list')
+      renderSpritePickerRows(pickerList and pickerList:getVirtualOffset().y or 0)
+   end
 end
 
 local function setPreviewControlsVisible(visible, panelHeight)
@@ -2082,7 +2154,7 @@ local function createWindow()
          return false
       end
 
-      selectReplacementSprite(spriteId)
+      selectSpritePickerSprite(spriteId)
       replaceSelectedFrameWithSprite(spriteId)
       return true
    end
@@ -2104,6 +2176,11 @@ local function createWindow()
    categoryBox.onOptionChange = function(_, _, category)
       changeAppearanceCategory(category)
    end
+   local newAppearanceCategoryBox = window:recursiveGetChildById('newAppearanceCategory')
+   for _, category in ipairs(categories) do
+      newAppearanceCategoryBox:addOption(tr(category.name), category.data)
+   end
+   newAppearanceCategoryBox:setCurrentOptionByData(selectedAppearanceCategory, true)
    local searchEdit = window:recursiveGetChildById('appearanceSearch')
    searchEdit.onTextChange = function()
       applyAppearanceFilter()
@@ -2112,8 +2189,7 @@ local function createWindow()
    list.onScrollChange = function(_, offset)
       renderAppearanceRows(offset.y)
    end
-   local spriteSearchEdit = window:recursiveGetChildById('spriteSearchEdit')
-   spriteSearchEdit.onTextChange = function()
+   local function scheduleSpritePickerFilter()
       if spriteSearchEvent then
          removeEvent(spriteSearchEvent)
       end
@@ -2122,9 +2198,18 @@ local function createWindow()
          applySpritePickerFilter()
       end, 120)
    end
-   local spritePickerList = window:recursiveGetChildById('spritePickerList')
-   spritePickerList.onScrollChange = function(_, offset)
-      renderSpritePickerRows(offset.y)
+   for _, searchId in ipairs({ 'spriteSearchEdit', 'newAppearanceSpriteSearchEdit' }) do
+      window:recursiveGetChildById(searchId).onTextChange = scheduleSpritePickerFilter
+   end
+   for _, listId in ipairs({ 'spritePickerList', 'newAppearanceSpritePickerList' }) do
+      window:recursiveGetChildById(listId).onScrollChange = function(_, offset)
+         renderSpritePickerRows(offset.y)
+      end
+   end
+   window:recursiveGetChildById('newAppearancePngPathEdit').onTextChange = function(widget)
+      window:recursiveGetChildById('createAppearanceButton'):setEnabled(
+         activeVersion ~= nil and not g_game.isOnline() and currentNewAppearanceSourceMode == 'png' and
+         widget:getText() ~= '')
    end
 
    local versionBox = window:recursiveGetChildById('versionComboBox')
@@ -2179,6 +2264,7 @@ local function destroyWindow()
    spritePickerCount = 0
    spritePickerSourceId = nil
    selectedReplacementSpriteId = nil
+   selectedCreateSpriteId = nil
    spritePickerQuery = ''
    appearanceEntries = {}
    filteredAppearanceEntries = {}
@@ -2404,9 +2490,9 @@ applySpritePickerFilter = function()
       return
    end
 
-   local query = window:recursiveGetChildById('spriteSearchEdit'):getText():lower():match('^%s*(.-)%s*$')
+   local query = getSpritePickerWidget('search'):getText():lower():match('^%s*(.-)%s*$')
    if query ~= spritePickerQuery then
-      selectedReplacementSpriteId = nil
+      setSelectedSpritePickerId(nil)
       spritePickerQuery = query
    end
    spritePickerIds = nil
@@ -2425,7 +2511,7 @@ applySpritePickerFilter = function()
       spritePickerCount = #spritePickerRanges > 0 and spritePickerRanges[#spritePickerRanges][3] or 0
    end
 
-   local list = window:recursiveGetChildById('spritePickerList')
+   local list = getSpritePickerWidget('list')
    list:setVirtualOffset({ x = 0, y = 0 })
    renderSpritePickerRows(0)
    list:updateScrollBars()
@@ -2479,13 +2565,12 @@ refreshSpritePicker = function()
    applySpritePickerFilter()
 end
 
-selectReplacementSprite = function(spriteId)
+selectSpritePickerSprite = function(spriteId)
    if not window or not spriteId then
       return
    end
-   selectedReplacementSpriteId = spriteId
-   local list = window:recursiveGetChildById('spritePickerList')
-   renderSpritePickerRows(list:getVirtualOffset().y)
+   setSelectedSpritePickerId(spriteId)
+   updateSpriteReplacementTarget()
 end
 
 renderSpritePickerRows = function(scrollY)
@@ -2493,8 +2578,8 @@ renderSpritePickerRows = function(scrollY)
       return
    end
 
-   local list = window:recursiveGetChildById('spritePickerList')
-   local content = window:recursiveGetChildById('spritePickerContent')
+   local list = getSpritePickerWidget('list')
+   local content = getSpritePickerWidget('content')
    local cellWidth = 70
    local cellHeight = 60
    local columnGap = 3
@@ -2511,16 +2596,20 @@ renderSpritePickerRows = function(scrollY)
 
    local updatedThumbnails = false
    for slot, cell in ipairs(spritePickerCells) do
+      if cell:getParent() ~= content then
+         cell:setParent(content)
+      end
       local index = firstRow * columnCount + slot
       local spriteId = index <= spritePickerCount and getSpritePickerIdAt(index) or nil
       cell:setVisible(spriteId ~= nil)
       if spriteId then
          cell.isSpritePickerCell = true
-         cell:setDraggable(activeVersion ~= nil and not g_game.isOnline() and selectedSpriteId ~= nil)
+         cell:setDraggable(currentImportSection == 'replace' and activeVersion ~= nil and
+            not g_game.isOnline() and selectedSpriteId ~= nil)
          cell:setMarginTop(math.floor((index - 1) / columnCount) * cellHeight)
          cell:setMarginLeft(((index - 1) % columnCount) * (cellWidth + columnGap))
          cell:recursiveGetChildById('spritePickerId'):setText(tostring(spriteId))
-         cell:setOn(spriteId == selectedReplacementSpriteId)
+         cell:setOn(spriteId == getSelectedSpritePickerId())
          cell.spriteId = spriteId
          if cell.thumbnailSpriteId ~= spriteId then
             local thumbnail = cell:recursiveGetChildById('thumbnail')
@@ -2543,13 +2632,13 @@ renderSpritePickerRows = function(scrollY)
             end
          end
          cell.onClick = function()
-            selectReplacementSprite(spriteId)
+            selectSpritePickerSprite(spriteId)
          end
          cell.onDragEnter = function(widget)
             if not widget.spriteId or not activeVersion or g_game.isOnline() or not selectedSpriteId then
                return false
             end
-            selectReplacementSprite(widget.spriteId)
+            selectSpritePickerSprite(widget.spriteId)
             return true
          end
          cell.onDragMove = function(widget, mousePos)
@@ -2577,12 +2666,18 @@ renderSpritePickerRows = function(scrollY)
       end
    end
 
-   local countLabel = window:recursiveGetChildById('spritePickerCountLabel')
+   local countLabel = getSpritePickerWidget('count')
    countLabel:setText(spritePickerCount == 1 and tr('%d sprite', spritePickerCount) or
       tr('%d sprites', spritePickerCount))
-   window:recursiveGetChildById('selectedReplacementSpriteLabel'):setText(
-      selectedReplacementSpriteId and tr('Drag sprite %d onto the preview.', selectedReplacementSpriteId) or
+   local selectionLabel = getSpritePickerWidget('selection')
+   local selectedSprite = getSelectedSpritePickerId()
+   if currentImportSection == 'create' then
+      selectionLabel:setText(selectedSprite and tr('Selected sprite ID %d.', selectedSprite) or
+         tr('Choose a sprite from the list.'))
+   else
+      selectionLabel:setText(selectedSprite and tr('Drag sprite %d onto the preview.', selectedSprite) or
          tr('Select or drag a sprite onto the preview.'))
+   end
 
    if updatedThumbnails and g_spriteAppearances.releaseDecodedSpriteSheets then
       g_spriteAppearances.releaseDecodedSpriteSheets()
@@ -2593,12 +2688,19 @@ function setImportSection(section)
    if section ~= 'replace' and section ~= 'create' then
       return
    end
+   local search = getSpritePickerWidget('search')
+   local query = search and search:getText() or ''
+   if section ~= currentImportSection and section == 'create' then
+      selectedCreateSpriteId = nil
+   end
    currentImportSection = section
    if window then
+      getSpritePickerWidget('search'):setText(query)
       window:recursiveGetChildById('replaceFramePanel'):setVisible(section == 'replace')
       window:recursiveGetChildById('newAppearancePanel'):setVisible(section == 'create')
       window:recursiveGetChildById('replaceFrameTabButton'):setOn(section == 'replace')
       window:recursiveGetChildById('newAppearanceTabButton'):setOn(section == 'create')
+      applySpritePickerFilter()
    end
    updateSpriteReplacementTarget()
 end
@@ -2608,6 +2710,14 @@ function setReplaceMode(mode)
       return
    end
    currentReplaceMode = mode
+   updateSpriteReplacementTarget()
+end
+
+function setNewAppearanceSourceMode(mode)
+   if mode ~= 'sprite' and mode ~= 'png' then
+      return
+   end
+   currentNewAppearanceSourceMode = mode
    updateSpriteReplacementTarget()
 end
 
@@ -2665,6 +2775,17 @@ function showImportPage()
    setActivePage('import')
    setImportSection(currentImportSection)
    if refreshSpritePicker then refreshSpritePicker() end
+end
+
+function openNewAppearance()
+   if not activeVersion or g_game.isOnline() then
+      setStatus(tr('Load an offline 15.x work copy before creating an appearance.'))
+      return
+   end
+
+   showImportPage()
+   setImportSection('create')
+   window:recursiveGetChildById('newAppearanceCategory'):setCurrentOptionByData(selectedAppearanceCategory, true)
 end
 
 function selectPreviewDirection(directionIndex)
@@ -3009,31 +3130,48 @@ function createAppearance(forceDiscard)
       setStatus(tr('Open a 15.x work copy before creating an appearance.'))
       return
    end
-   local category = selectedOption(window:recursiveGetChildById('appearanceCategory'))
-   local name = window:recursiveGetChildById('newAppearanceName'):getText()
-   local description = window:recursiveGetChildById('newAppearanceDescription'):getText()
-   local path = window:recursiveGetChildById('newAppearancePngPathEdit'):getText()
-   if not category or name == '' or path == '' then
-      setStatus(tr('Choose a category, enter a name, and provide an absolute PNG path.'))
+   local category = selectedOption(window:recursiveGetChildById('newAppearanceCategory'))
+   local sourceMode = currentNewAppearanceSourceMode
+   if not category then
+      setStatus(tr('Choose an appearance category.'))
       return
    end
 
-   local imported, spriteId = pcall(g_spriteAppearances.importSpriteFromFile, 0, path, activeVersion)
-   if not imported then
-      setStatus(getUserFacingError(spriteId))
-      return
-   end
-   if not reloadAssets() then
-      displayErrorBox(tr('Assets Editor'), tr('Sprite %d was imported, but the work copy could not be reloaded.', spriteId))
+   local spriteId
+   local importedNewSprite = false
+   if sourceMode == 'png' then
+      local path = window:recursiveGetChildById('newAppearancePngPathEdit'):getText()
+      if path == '' then
+         setStatus(tr('Choose a PNG file first.'))
+         return
+      end
+      local imported, result = pcall(g_spriteAppearances.importSpriteFromFile, 0, path, activeVersion)
+      if not imported then
+         setStatus(getUserFacingError(result))
+         return
+      end
+      spriteId = result
+      importedNewSprite = true
+      if not reloadAssets() then
+         displayErrorBox(tr('Assets Editor'), tr('Sprite %d was imported, but the work copy could not be reloaded.', spriteId))
+         return
+      end
+   elseif sourceMode == 'sprite' then
+      spriteId = selectedCreateSpriteId
+      if not spriteId or spriteId < 1 or spriteId > MAX_SPRITE_ID then
+         setStatus(tr('Search for a sprite ID and select its thumbnail first.'))
+         return
+      end
+   else
+      setStatus(tr('Choose a PNG file or an existing sprite ID.'))
       return
    end
 
    local created, appearanceId = pcall(g_things.createAppearanceFromSprite,
-      activeVersion, category, spriteId, name, description)
+      activeVersion, category, spriteId)
    if not created then
-      reloadAssets()
-      setStatus(tr('Sprite %d was imported, but the appearance could not be created: %s',
-         spriteId, getUserFacingError(appearanceId)))
+      if importedNewSprite then reloadAssets() end
+      setStatus(tr('Sprite %d is ready, but the appearance could not be created: %s', spriteId, getUserFacingError(appearanceId)))
       return
    end
    if not reloadAssets() then
@@ -3041,8 +3179,10 @@ function createAppearance(forceDiscard)
       return
    end
 
-   window:recursiveGetChildById('newAppearanceName'):setText('')
-   window:recursiveGetChildById('newAppearanceDescription'):setText('')
+   window:recursiveGetChildById('newAppearancePngPathEdit'):setText('')
+   selectedCreateSpriteId = nil
+   window:recursiveGetChildById('newAppearanceCategory'):setCurrentOptionByData(category, true)
+   updateSpriteReplacementTarget()
    refreshAppearanceCatalog(category)
    loadAppearanceRecord(category, appearanceId, true)
    selectSprite(spriteId)
