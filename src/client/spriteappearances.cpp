@@ -36,6 +36,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -133,6 +134,59 @@ std::filesystem::path getEditorCatalogPath(const int version)
         std::filesystem::weakly_canonical(catalog.parent_path()) != std::filesystem::weakly_canonical(package))
         throw stdext::exception("sprite editing is allowed only inside the active work copy");
     return catalog;
+}
+
+std::filesystem::path getEditorWorkPackagePath(const int version)
+{
+    if (version < 1500 || version >= 1600)
+        throw stdext::exception("the sprite editor supports only client versions 15.x");
+
+    const std::filesystem::path writeDirectory(g_resources.getWriteDir());
+    if (writeDirectory.empty())
+        throw stdext::exception("the client has no writable user directory");
+
+    const auto normalizedWriteDirectory = std::filesystem::weakly_canonical(writeDirectory);
+    const auto package = normalizedWriteDirectory / "sprite-editor" / "data" / "things" / std::to_string(version);
+    ensureNoSymlinkPath(normalizedWriteDirectory, package);
+    return package;
+}
+
+std::filesystem::path findInstalledAssetPackage(const int version, const std::filesystem::path& workPackage)
+{
+    namespace fs = std::filesystem;
+    std::error_code error;
+    const auto catalog = fs::path(g_resources.getRealPath(
+        fmt::format("/data/things/{}/catalog-content.json", version))).lexically_normal();
+    const auto catalogStatus = fs::symlink_status(catalog, error);
+    if (error)
+        throw stdext::exception("unable to locate installed assets for client version {}: {}", version, error.message());
+    if (fs::is_symlink(catalogStatus) || !fs::is_regular_file(catalogStatus))
+        throw stdext::exception("installed assets for client version {} were not found", version);
+
+    const auto packageStatus = fs::symlink_status(catalog.parent_path(), error);
+    if (error || fs::is_symlink(packageStatus) || !fs::is_directory(packageStatus))
+        throw stdext::exception("installed assets for client version {} were not found", version);
+    const auto assetRoot = catalog.parent_path().parent_path().parent_path().parent_path();
+    ensureNoSymlinkPath(assetRoot, catalog.parent_path());
+
+    const auto installedPackage = fs::weakly_canonical(catalog.parent_path(), error);
+    if (error)
+        throw stdext::exception("unable to resolve installed assets: {}", error.message());
+    if (installedPackage == fs::weakly_canonical(workPackage))
+        throw stdext::exception("unmount the working copy before locating installed assets");
+
+    validateAssetDirectory(installedPackage);
+    return installedPackage;
+}
+
+void verifyAssetCopy(const std::filesystem::path& source, const std::filesystem::path& copy)
+{
+    namespace fs = std::filesystem;
+    const auto sourceCatalog = source / "catalog-content.json";
+    const auto copiedCatalog = copy / "catalog-content.json";
+    if (!fs::is_regular_file(copiedCatalog) || fs::file_size(sourceCatalog) != fs::file_size(copiedCatalog))
+        throw stdext::exception("sprite editor asset copy verification failed");
+    validateAssetDirectory(copy);
 }
 
 ImagePtr loadPreparedSprite(const std::string& fileName, const Size& expectedSize = Size(32, 32))
@@ -829,6 +883,96 @@ std::string SpriteAppearances::createWorkCopy(const int version)
     return workRoot.generic_string();
 }
 
+bool SpriteAppearances::workCopyExists(const int version)
+{
+    namespace fs = std::filesystem;
+    const auto packagePath = getEditorWorkPackagePath(version);
+    std::error_code error;
+    const auto status = fs::symlink_status(packagePath, error);
+    if (error == std::errc::no_such_file_or_directory)
+        return false;
+    if (error)
+        throw stdext::exception("unable to inspect the sprite editor work copy: {}", error.message());
+    if (fs::is_symlink(status))
+        throw stdext::exception("sprite editor work copies cannot be symbolic links");
+    if (!fs::is_directory(status))
+        return false;
+
+    validateAssetDirectory(packagePath);
+    const auto catalog = packagePath / "catalog-content.json";
+    if (!fs::is_regular_file(catalog) || fs::file_size(catalog) == 0)
+        throw stdext::exception("the existing sprite editor work copy is incomplete");
+    return true;
+}
+
+std::string SpriteAppearances::resetWorkCopy(const int version)
+{
+    namespace fs = std::filesystem;
+    const fs::path writeDirectory(g_resources.getWriteDir());
+    if (writeDirectory.empty())
+        throw stdext::exception("the client has no writable user directory");
+
+    const auto normalizedWriteDirectory = fs::weakly_canonical(writeDirectory);
+    const auto packagePath = getEditorWorkPackagePath(version);
+    const auto sourcePackage = findInstalledAssetPackage(version, packagePath);
+    if (sourcePackage == fs::weakly_canonical(packagePath))
+        throw stdext::exception("the installed asset folder cannot be used as the work copy");
+    validateAssetDirectory(sourcePackage);
+
+    const auto temporaryPackage = fs::path(packagePath.generic_string() + ".sprite-editor.reset.tmp");
+    const auto previousPackage = fs::path(packagePath.generic_string() + ".sprite-editor.reset.bak");
+    ensureNoSymlinkPath(normalizedWriteDirectory, temporaryPackage);
+    ensureNoSymlinkPath(normalizedWriteDirectory, previousPackage);
+
+    std::error_code error;
+    for (const auto& stalePath : { temporaryPackage, previousPackage }) {
+        const auto status = fs::symlink_status(stalePath, error);
+        if (!error && fs::exists(status))
+            throw stdext::exception("a previous work copy reset was interrupted; inspect '{}' before retrying", stalePath.generic_string());
+        if (error == std::errc::no_such_file_or_directory)
+            error.clear();
+        else if (error)
+            throw stdext::exception("unable to validate sprite editor reset path: {}", error.message());
+    }
+
+    fs::create_directories(packagePath.parent_path(), error);
+    if (error)
+        throw stdext::exception("unable to create sprite editor work copy folders: {}", error.message());
+
+    try {
+        copyAssetDirectory(sourcePackage, temporaryPackage);
+        verifyAssetCopy(sourcePackage, temporaryPackage);
+    } catch (...) {
+        fs::remove_all(temporaryPackage, error);
+        throw;
+    }
+
+    bool movedPrevious = false;
+    try {
+        if (fs::exists(packagePath)) {
+            validateAssetDirectory(packagePath);
+            fs::rename(packagePath, previousPackage);
+            movedPrevious = true;
+        }
+        fs::rename(temporaryPackage, packagePath);
+    } catch (...) {
+        fs::remove_all(temporaryPackage, error);
+        if (movedPrevious) {
+            try {
+                fs::rename(previousPackage, packagePath);
+            } catch (const std::exception& rollbackError) {
+                throw stdext::exception("work copy reset failed and the prior copy could not be restored; it remains at '{}': {}",
+                    previousPackage.generic_string(), rollbackError.what());
+            }
+        }
+        throw;
+    }
+
+    if (movedPrevious)
+        fs::remove_all(previousPackage, error);
+    return (normalizedWriteDirectory / "sprite-editor").generic_string();
+}
+
 std::string SpriteAppearances::exportWorkCopy(const int version, const std::string& destination)
 {
     namespace fs = std::filesystem;
@@ -906,6 +1050,90 @@ std::string SpriteAppearances::exportWorkCopy(const int version, const std::stri
     }
 
     return normalizedDestination.generic_string();
+}
+
+std::string SpriteAppearances::installWorkCopy(const int version)
+{
+    namespace fs = std::filesystem;
+    const auto workPackage = getEditorWorkPackagePath(version);
+    const auto catalog = workPackage / "catalog-content.json";
+    if (!fs::is_regular_file(catalog))
+        throw stdext::exception("the selected sprite editor work copy is incomplete");
+    validateAssetDirectory(workPackage);
+
+    const auto installedPackage = findInstalledAssetPackage(version, workPackage);
+    validateAssetDirectory(installedPackage);
+    const auto thingsDirectory = installedPackage.parent_path();
+    const auto backupDirectory = thingsDirectory / "backup";
+    ensureNoSymlinkPath(thingsDirectory, backupDirectory);
+
+    const auto temporaryPackage = fs::path(installedPackage.generic_string() + ".sprite-editor.tmp");
+    ensureNoSymlinkPath(thingsDirectory.parent_path().parent_path(), temporaryPackage);
+    std::error_code error;
+    const auto temporaryStatus = fs::symlink_status(temporaryPackage, error);
+    if (!error && fs::exists(temporaryStatus))
+        throw stdext::exception("an earlier asset export left a temporary folder; inspect '{}' before retrying", temporaryPackage.generic_string());
+    if (error != std::errc::no_such_file_or_directory && error)
+        throw stdext::exception("unable to validate the asset export folder: {}", error.message());
+
+    try {
+        copyAssetDirectory(workPackage, temporaryPackage);
+        verifyAssetCopy(workPackage, temporaryPackage);
+    } catch (...) {
+        fs::remove_all(temporaryPackage, error);
+        throw;
+    }
+
+    fs::path backupPath;
+    try {
+        fs::create_directories(backupDirectory, error);
+        if (error)
+            throw stdext::exception("unable to create the Things backup folder: {}", error.message());
+        ensureNoSymlinkPath(thingsDirectory, backupDirectory);
+
+        const auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        for (int suffix = 0; ; ++suffix) {
+            backupPath = backupDirectory / (suffix == 0 ?
+                fmt::format("{}-{}", version, timestamp) : fmt::format("{}-{}-{}", version, timestamp, suffix));
+            const auto backupStatus = fs::symlink_status(backupPath, error);
+            if (error == std::errc::no_such_file_or_directory) {
+                error.clear();
+                break;
+            }
+            if (error)
+                throw stdext::exception("unable to validate the Things backup path: {}", error.message());
+            if (!fs::exists(backupStatus))
+                break;
+        }
+        ensureNoSymlinkPath(thingsDirectory, backupPath);
+    } catch (...) {
+        std::error_code cleanupError;
+        fs::remove_all(temporaryPackage, cleanupError);
+        throw;
+    }
+
+    try {
+        fs::rename(installedPackage, backupPath);
+    } catch (const std::exception& exception) {
+        fs::remove_all(temporaryPackage, error);
+        throw stdext::exception("unable to move the current asset package to backup: {}", exception.what());
+    }
+
+    try {
+        fs::rename(temporaryPackage, installedPackage);
+    } catch (const std::exception& exception) {
+        try {
+            fs::rename(backupPath, installedPackage);
+        } catch (const std::exception& rollbackError) {
+            throw stdext::exception("asset export failed and rollback could not restore the original package; backup remains at '{}': {}",
+                backupPath.generic_string(), rollbackError.what());
+        }
+        fs::remove_all(temporaryPackage, error);
+        throw stdext::exception("asset export failed; the original package was restored: {}", exception.what());
+    }
+
+    return backupPath.generic_string();
 }
 
 void SpriteAppearances::saveSpriteToWorkCopy(const int id, const ImagePtr& image, const int version)

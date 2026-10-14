@@ -1,0 +1,122 @@
+SpriteEditorFileEntry < Button
+  height: 22
+  text-align: left
+  text-offset: 5 2
+  text-wrap: false
+
+  $hover:
+    background-color: #4a4a4a
+
+  $focus:
+    background-color: #603bb0
+
+MainWindow
+  id: spriteEditorFilePickerWindow
+  size: 560 500
+  !text: tr('Choose a PNG file')
+  anchors.centerIn: parent
+
+  @onEscape: modules.game_sprite_editor.closePngFilePicker()
+
+  Label
+    id: filePickerHintLabel
+    !text: tr('Browse folders and select a PNG image.')
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: parent.top
+    height: 18
+    text-wrap: false
+
+  TextEdit
+    id: filePickerPathEdit
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: filePickerHintLabel.bottom
+    margin-top: 4
+    margin-right: 112
+    height: 22
+
+  Button
+    id: filePickerGoButton
+    !text: tr('Go')
+    anchors.right: parent.right
+    anchors.top: filePickerPathEdit.top
+    margin-right: 56
+    width: 52
+    height: 22
+
+  Button
+    id: filePickerParentButton
+    !text: tr('Up')
+    anchors.right: parent.right
+    anchors.top: filePickerPathEdit.top
+    width: 52
+    height: 22
+    !tooltip: tr('Open the parent folder')
+
+  TextEdit
+    id: filePickerFilterEdit
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: filePickerPathEdit.bottom
+    margin-top: 5
+    height: 22
+    !placeholder: tr('Filter PNG files by name')
+
+  TextList
+    id: filePickerEntries
+    anchors.left: parent.left
+    anchors.right: filePickerScroll.left
+    anchors.top: filePickerFilterEdit.bottom
+    anchors.bottom: filePickerCountLabel.top
+    margin-top: 5
+    margin-bottom: 4
+    padding: 1
+    focusable: true
+    vertical-scrollbar: filePickerScroll
+
+  VerticalScrollBar
+    id: filePickerScroll
+    anchors.top: filePickerFilterEdit.bottom
+    anchors.bottom: filePickerCountLabel.top
+    anchors.right: parent.right
+    margin-top: 5
+    margin-bottom: 4
+    step: 22
+    pixels-scroll: true
+
+  Label
+    id: filePickerCountLabel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: filePickerSelectedLabel.top
+    height: 17
+    text-wrap: false
+
+  Label
+    id: filePickerSelectedLabel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: filePickerUseButton.top
+    margin-bottom: 5
+    height: 30
+    text-wrap: true
+    !text: tr('Choose a PNG file.')
+
+  Button
+    id: filePickerUseButton
+    !text: tr('Use PNG')
+    anchors.right: filePickerCancelButton.left
+    anchors.bottom: parent.bottom
+    margin-right: 5
+    width: 100
+    height: 24
+    enabled: false
+
+  Button
+    id: filePickerCancelButton
+    !text: tr('Cancel')
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    width: 90
+    height: 24

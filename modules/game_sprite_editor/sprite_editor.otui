@@ -84,6 +84,10 @@ AppearanceSectionHeader < Label
   text-offset: 5 3
   text-wrap: false
 
+AppearanceCenteredSectionHeader < AppearanceSectionHeader
+  text-align: center
+  text-offset: 0 3
+
 AppearanceFieldLabel < Label
   height: 18
   text-offset: 0 2
@@ -158,44 +162,20 @@ SpriteEditorWindow < MainWindow
   @onEscape: modules.game_sprite_editor.requestClose()
 
   Label
-    id: assetsLabel
-    !text: tr('Source version')
-    anchors.left: parent.left
-    anchors.top: parent.top
-
-  ComboBox
-    id: versionComboBox
-    anchors.left: assetsLabel.right
-    anchors.verticalCenter: assetsLabel.verticalCenter
-    margin-left: 8
-    width: 140
-    height: 22
-
-  Button
-    id: openWorkCopyButton
-    !text: tr('Open working copy')
-    !tooltip: tr('Create or resume a work copy; installed assets stay unchanged.')
-    anchors.left: versionComboBox.right
-    anchors.verticalCenter: versionComboBox.verticalCenter
-    margin-left: 8
-    width: 142
-    @onClick: modules.game_sprite_editor.openWorkCopy()
-
-  Label
     id: statusLabel
-    !text: tr('Choose an installed 15.x version, then open its safe working copy.')
-    anchors.left: openWorkCopyButton.right
+    !text: tr('Loading the work copy…')
+    anchors.left: appearancesPanel.right
     anchors.right: pageNavigation.left
-    anchors.verticalCenter: openWorkCopyButton.verticalCenter
+    anchors.verticalCenter: pageNavigation.verticalCenter
     margin-left: 12
     margin-right: 12
     text-wrap: true
 
   Panel
     id: pageNavigation
-    anchors.left: rightPanel.left
-    anchors.right: rightPanel.right
-    anchors.verticalCenter: openWorkCopyButton.verticalCenter
+    anchors.right: parent.right
+    anchors.top: parent.top
+    width: 320
     height: 22
     layout: horizontalBox
     spacing: 4
@@ -233,12 +213,40 @@ SpriteEditorWindow < MainWindow
     margin-bottom: 33
     width: 190
 
+    Label
+      id: assetsLabel
+      !text: tr('Assets version')
+      anchors.left: parent.left
+      anchors.top: parent.top
+      width: 90
+      height: 22
+
+    ComboBox
+      id: versionComboBox
+      anchors.left: assetsLabel.right
+      anchors.right: parent.right
+      anchors.verticalCenter: assetsLabel.verticalCenter
+      margin-left: 4
+      height: 22
+
+    AppearanceActionButton
+      id: loadAssetsButton
+      !text: tr('Load assets')
+      !tooltip: tr('Copy the selected installed version into a working copy, or reset its existing working copy from the installed assets.')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: assetsLabel.bottom
+      margin-top: 3
+      height: 24
+      @onClick: modules.game_sprite_editor.loadSelectedAssets()
+
     AppearanceSectionHeader
       id: appearanceCategoryLabel
       !text: tr('Appearance category')
       anchors.left: parent.left
       anchors.right: parent.right
-      anchors.top: parent.top
+      anchors.top: loadAssetsButton.bottom
+      margin-top: 7
       height: 23
       font: Verdana Bold-11px
       text-align: center
@@ -276,22 +284,11 @@ SpriteEditorWindow < MainWindow
       id: appearanceSearch
       anchors.left: parent.left
       anchors.right: parent.right
-      anchors.bottom: duplicateAppearanceButton.top
-      margin-bottom: 4
+      anchors.bottom: parent.bottom
       height: 23
       !placeholder: tr('Name or exact ID')
       !tooltip: tr('Numbers match an exact appearance ID. Text matches part of the name.')
       @onEnter: modules.game_sprite_editor.applyAppearanceSearch()
-
-    AppearanceActionButton
-      id: duplicateAppearanceButton
-      !text: tr('Duplicate selected appearance')
-      !tooltip: tr('Copy flags, values, animation, and sprite links to a new ID. Sprite IDs stay shared until replaced.')
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.bottom: parent.bottom
-      height: 25
-      @onClick: modules.game_sprite_editor.duplicateSelectedAppearance()
 
     VerticalScrollBar
       id: appearanceListScroll
@@ -791,7 +788,7 @@ SpriteEditorWindow < MainWindow
 
   Panel
     id: rightPanel
-    anchors.top: openWorkCopyButton.bottom
+    anchors.top: pageNavigation.bottom
     anchors.right: parent.right
     anchors.bottom: parent.bottom
     margin-top: 8
@@ -942,7 +939,7 @@ SpriteEditorWindow < MainWindow
       anchors.fill: parent
       visible: false
 
-      AppearanceSectionHeader
+      AppearanceCenteredSectionHeader
         !text: tr('Import and edit sprites')
         anchors.left: parent.left
         anchors.right: parent.right
@@ -1103,16 +1100,27 @@ SpriteEditorWindow < MainWindow
             anchors.right: parent.right
             anchors.top: replacePngHelpLabel.bottom
             margin-top: 4
+            margin-right: 86
             height: 22
-            !placeholder: tr('Absolute path to a prepared PNG')
-            !tooltip: tr('Import the PNG as a new sprite ID, then link it to the selected frame.')
+            !placeholder: tr('Path to a prepared PNG')
+            !tooltip: tr('Choose a PNG file or enter its path, then import it as a new sprite ID for this frame.')
+
+          AppearanceActionButton
+            id: browsePngButton
+            !text: tr('Browse...')
+            anchors.right: parent.right
+            anchors.top: replacePngHelpLabel.bottom
+            margin-top: 4
+            width: 82
+            height: 22
+            @onClick: modules.game_sprite_editor.openPngFilePicker()
 
           AppearanceActionButton
             id: importPngReplaceButton
             !text: tr('Import PNG and replace frame')
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.top: previewSpritePathEdit.bottom
+            anchors.top: browsePngButton.bottom
             margin-top: 5
             height: 24
             @onClick: modules.game_sprite_editor.importPngAndReplace()
@@ -1127,7 +1135,7 @@ SpriteEditorWindow < MainWindow
           border-width: 1
           border-color: #4a4a4a
 
-          AppearanceSectionHeader
+          AppearanceCenteredSectionHeader
             !text: tr('Edit current sprite')
             anchors.left: parent.left
             anchors.right: parent.right
@@ -1189,7 +1197,7 @@ SpriteEditorWindow < MainWindow
         margin-top: 5
         visible: false
 
-        AppearanceSectionHeader
+        AppearanceCenteredSectionHeader
           !text: tr('Create a new appearance from PNG')
           anchors.left: parent.left
           anchors.right: parent.right
@@ -1222,6 +1230,7 @@ SpriteEditorWindow < MainWindow
           margin-top: 4
 
         AppearanceFieldLabel
+          id: newAppearancePngPathLabel
           !text: tr('Prepared PNG path')
           anchors.left: parent.left
           anchors.top: newAppearanceDescription.bottom
@@ -1231,9 +1240,19 @@ SpriteEditorWindow < MainWindow
           id: newAppearancePngPathEdit
           anchors.left: parent.left
           anchors.right: parent.right
-          anchors.top: prev.bottom
+          anchors.top: newAppearancePngPathLabel.bottom
           margin-top: 4
+          margin-right: 86
           !placeholder: tr('Paste the absolute path to a prepared PNG')
+
+        AppearanceActionButton
+          id: browseNewAppearancePngButton
+          !text: tr('Browse...')
+          anchors.right: parent.right
+          anchors.top: newAppearancePngPathEdit.top
+          width: 82
+          height: 22
+          @onClick: modules.game_sprite_editor.openPngFilePicker('create')
 
         AppearanceActionButton
           id: createAppearanceButton
@@ -1258,26 +1277,26 @@ SpriteEditorWindow < MainWindow
       anchors.fill: parent
       visible: false
 
-      AppearanceSectionHeader
-        !text: tr('Export the edited client assets')
+      AppearanceCenteredSectionHeader
+        !text: tr('Install the edited client assets')
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
 
       Label
-        !text: tr('Export creates data/things/<version> inside the destination root. It leaves installed assets untouched and never overwrites an existing package.')
+        !text: tr('Install replaces the selected package in data/things. The previous package is moved to data/things/backup first. The editor then reloads appearances and static data for offline testing.')
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: prev.bottom
         margin-top: 8
-        height: 42
+        height: 54
         text-wrap: true
 
       AppearanceFieldLabel
-        !text: tr('Current work copy')
+        !text: tr('Working copy')
         anchors.left: parent.left
         anchors.top: prev.bottom
-        margin-top: 12
+        margin-top: 10
 
       AppearanceFieldLabel
         id: activeWorkCopyLabel
@@ -1289,36 +1308,38 @@ SpriteEditorWindow < MainWindow
         text-wrap: true
 
       AppearanceFieldLabel
-        !text: tr('New destination root')
+        !text: tr('Install location')
         anchors.left: parent.left
         anchors.top: activeWorkCopyLabel.bottom
         margin-top: 8
 
-      AppearanceTextEdit
-        id: exportPathEdit
+      AppearanceFieldLabel
+        id: installTargetLabel
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: prev.bottom
         margin-top: 4
-        !placeholder: tr('Choose or enter an absolute folder path')
+        height: 24
+        text-wrap: false
 
       AppearanceActionButton
         id: exportButton
-        !text: tr('Export to new folder')
+        !text: tr('Export and replace assets')
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.top: exportPathEdit.bottom
+        anchors.top: installTargetLabel.bottom
         margin-top: 7
+        height: 25
         @onClick: modules.game_sprite_editor.exportWorkCopy()
 
       Label
         id: exportStatus
-        !text: tr('Choose a new destination folder. Existing folders are not overwritten.')
+        !text: tr('The installed package will be backed up before it is replaced.')
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: exportButton.bottom
         margin-top: 8
-        height: 46
+        height: 58
         text-wrap: true
 
   AppearanceActionButton
@@ -1328,8 +1349,18 @@ SpriteEditorWindow < MainWindow
     anchors.bottom: parent.bottom
     width: 130
     height: 25
-    !tooltip: tr('Reload saved changes from the work copy, not installed assets.')
+    !tooltip: tr('Reload the saved working copy from disk, including appearances and static data. This does not reset it from installed assets.')
     @onClick: modules.game_sprite_editor.reloadPackage()
+
+  AppearanceActionButton
+    id: duplicateAppearanceButton
+    !text: tr('Duplicate selected appearance')
+    !tooltip: tr('Copy flags, values, animation, and sprite links to a new ID. Sprite IDs stay shared until replaced.')
+    anchors.left: appearancesPanel.left
+    anchors.bottom: parent.bottom
+    width: 190
+    height: 25
+    @onClick: modules.game_sprite_editor.duplicateSelectedAppearance()
 
   Button
     id: closeButton
