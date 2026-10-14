@@ -664,14 +664,13 @@ bool ThingTypeManager::replaceAppearanceSprite(const int version, const int cate
 #endif
 }
 
-int ThingTypeManager::createAppearanceFromSprite(const int version, const int category, const int spriteId,
-                                                 const std::string& name, const std::string& description)
+int ThingTypeManager::createAppearanceFromSprite(const int version, const int category, const int spriteId)
 {
 #ifdef FRAMEWORK_PROTOBUF
     if (version < 1500 || version >= 1600)
         throw stdext::exception("appearance creation is supported only for client versions 15.x");
-    if (spriteId < 1 || name.empty() || name.size() > 128 || description.size() > 512)
-        throw stdext::exception("enter a sprite ID, a name up to 128 characters, and a description up to 512 characters");
+    if (spriteId < 1)
+        throw stdext::exception("enter a valid sprite ID");
     if (!g_spriteAppearances.getSheetBySpriteId(spriteId, false))
         throw stdext::exception("sprite {} is not part of the active work copy", spriteId);
 
@@ -688,9 +687,6 @@ int ThingTypeManager::createAppearanceFromSprite(const int version, const int ca
     const uint32_t id = maximumId + 1;
     auto* appearance = bank->Add();
     appearance->set_id(id);
-    appearance->set_name(name);
-    appearance->set_description(description);
-
     auto* frameGroup = appearance->mutable_frame_group()->Add();
     frameGroup->set_fixed_frame_group(category == ThingCategoryCreature
         ? appearances::FIXED_FRAME_GROUP_OUTFIT_IDLE

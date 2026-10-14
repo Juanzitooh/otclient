@@ -238,6 +238,19 @@ ImagePtr loadPreparedSprite(const std::string& fileName, const Size& expectedSiz
     return image;
 }
 
+SpriteLayout getSpriteLayout(const Size& spriteSize)
+{
+    const auto firstLayout = static_cast<int>(SpriteLayout::SIZE_32_32);
+    const auto lastLayout = static_cast<int>(SpriteLayout::SIZE_384_384);
+    for (int value = firstLayout; value <= lastLayout; ++value) {
+        const auto layout = static_cast<SpriteLayout>(value);
+        if (SpriteSheet(0, 0, layout, {}).getSpriteSize() == spriteSize)
+            return layout;
+    }
+
+    throw stdext::exception("new sprite PNG dimensions must match a supported sprite size (32, 64, 96, 128, 192, or 384 pixels per side)");
+}
+
 uint32_t validateSpriteSheetBitmap(const std::vector<uint8_t>& bitmap)
 {
     if (bitmap.size() < 54 || bitmap[0] != 'B' || bitmap[1] != 'M')
@@ -1250,7 +1263,9 @@ int SpriteAppearances::importSpriteFromFile(const int id, const std::string& fil
     if (id < 0)
         throw stdext::exception("sprite ID must be zero to allocate a new sprite");
 
-    return importNewSpriteFromFile(fileName, version, SpriteLayout::SIZE_32_32);
+    const auto image = loadPreparedSprite(fileName, Size(0, 0));
+    const auto spriteLayout = getSpriteLayout(image->getSize());
+    return importNewSprite(image, version, spriteLayout);
 }
 
 int SpriteAppearances::importSpriteForAppearance(const int referenceSpriteId, const std::string& fileName,
@@ -1261,14 +1276,15 @@ int SpriteAppearances::importSpriteForAppearance(const int referenceSpriteId, co
     const auto referenceSheet = getSheetBySpriteId(referenceSpriteId);
     if (!referenceSheet)
         throw stdext::exception("reference sprite {} is not available in the loaded asset package", referenceSpriteId);
-    return importNewSpriteFromFile(fileName, version, referenceSheet->spriteLayout);
+    const auto image = loadPreparedSprite(fileName, referenceSheet->getSpriteSize());
+    return importNewSprite(image, version, referenceSheet->spriteLayout);
 }
 
-int SpriteAppearances::importNewSpriteFromFile(const std::string& fileName, const int version,
-                                               const SpriteLayout spriteLayout)
+int SpriteAppearances::importNewSprite(const ImagePtr& image, const int version, const SpriteLayout spriteLayout)
 {
     const SpriteSheet layoutTemplate(0, 0, spriteLayout, {});
-    const auto image = loadPreparedSprite(fileName, layoutTemplate.getSpriteSize());
+    if (!image || image->getSize() != layoutTemplate.getSpriteSize())
+        throw stdext::exception("new sprite dimensions do not match the selected sprite layout");
 
     const auto catalogPath = getEditorCatalogPath(version);
     const auto package = catalogPath.parent_path();

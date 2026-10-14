@@ -150,7 +150,7 @@ public:
 
 private:
 #ifdef FRAMEWORK_EDITOR
-    int importNewSpriteFromFile(const std::string& fileName, int version, SpriteLayout spriteLayout);
+    int importNewSprite(const ImagePtr& image, int version, SpriteLayout spriteLayout);
 #endif
     uint32_t m_spritesCount{ 0 };
     std::vector<SpriteSheetPtr> m_sheets;
