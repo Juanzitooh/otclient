@@ -165,6 +165,29 @@ AppearanceTimelineFrame < Button
     image-clip: 0 20 43 20
     text-offset: 1 1
 
+AppearanceTimelineMarker < Label
+  width: 28
+  height: 10
+  text: '^'
+  text-align: center
+  text-wrap: false
+  color: #d9c7ff
+  phantom: true
+  visible: false
+
+AppearanceTimelineCell < Panel
+  size: 28 34
+
+  AppearanceTimelineFrame
+    id: previewTimelineFrameButton
+    anchors.left: parent.left
+    anchors.top: parent.top
+
+  AppearanceTimelineMarker
+    id: previewTimelineMarker
+    anchors.horizontalCenter: parent.horizontalCenter
+    anchors.top: previewTimelineFrameButton.bottom
+
 PreviewDirectionButton < Button
   size: 48 21
   checkable: true
@@ -626,7 +649,7 @@ SpriteEditorWindow < MainWindow
       margin-left: 8
       margin-right: 8
       margin-top: 6
-      height: 74
+      height: 86
 
       Label
         id: previewTimelineLabel
@@ -634,7 +657,7 @@ SpriteEditorWindow < MainWindow
         anchors.left: parent.left
         anchors.top: parent.top
         width: 50
-        height: 22
+        height: 34
         text-align: center
         text-wrap: false
         color: #dfdfdf
@@ -646,7 +669,7 @@ SpriteEditorWindow < MainWindow
         anchors.top: parent.top
         margin-left: 6
         margin-right: 4
-        height: 22
+        height: 34
         horizontal-scrollbar: previewTimelineScroll
         auto-focus: none
 
@@ -654,7 +677,7 @@ SpriteEditorWindow < MainWindow
           id: previewTimelineFrames
           anchors.left: parent.left
           anchors.top: parent.top
-          height: 22
+          height: 34
           layout: horizontalBox
           spacing: 2
 
@@ -662,9 +685,16 @@ SpriteEditorWindow < MainWindow
         id: previewPhaseActions
         anchors.right: parent.right
         anchors.top: parent.top
-        size: 54 22
+        size: 104 22
         layout: horizontalBox
-        spacing: 3
+        spacing: 2
+
+        AppearanceActionButton
+          id: previewPlayButton
+          !text: tr('Play')
+          size: 48 22
+          !tooltip: tr('Play the animation preview from the selected frame.')
+          @onClick: modules.game_sprite_editor.togglePreviewAnimation()
 
         AppearanceActionButton
           id: removeAnimationFrameButton

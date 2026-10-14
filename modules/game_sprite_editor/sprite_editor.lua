@@ -32,6 +32,13 @@ local previewMoving = false
 local previewIdleGroupIndex
 local previewMovingGroupIndex
 local previewHasMovementToggle = false
+local previewPlaybackEvent
+local previewIsPlaying = false
+local previewPlaybackDirection = 1
+local previewPlaybackCycles = 0
+local previewPlaybackAppearanceId
+local previewPlaybackGroupIndex
+local timelineScrubbing = false
 local selectedSpriteContext
 local gameStartCallback
 local gameEndCallback
@@ -80,8 +87,9 @@ local PREVIEW_CONTROLS_BOTTOM_MARGIN = 14
 local PREVIEW_CANVAS_BOTTOM_MARGIN = 4
 local PREVIEW_HINT_BOTTOM_MARGIN = 8
 local MAX_PREVIEW_TIMELINE_FRAMES = 20
-local PREVIEW_TIMELINE_HEIGHT = 74
-local PREVIEW_TIMELINE_ONLY_HEIGHT = 36
+local PREVIEW_TIMELINE_HEIGHT = 86
+local PREVIEW_TIMELINE_ONLY_HEIGHT = 42
+local PREVIEW_TIMELINE_TRACK_HEIGHT = 34
 local PREVIEW_FRAME_SELECTION_WIDTH = 164
 local PREVIEW_DURATION_GROUP_GAP = 6
 local PREVIEW_DIRECTION_BUTTON_WIDTH = 48
@@ -126,6 +134,10 @@ local selectSprite
 local renderAppearanceRows
 local configurePreviewControls
 local updateAnimationEditor
+local stopPreviewAnimation
+local updatePreviewTimelineSelection
+local selectPreviewPhase
+local schedulePreviewPlayback
 local updatePreviewPatternControls
 local refreshAppearancePreview
 local collectAnimationWidgetChanges
@@ -723,6 +735,7 @@ local function updatePreviewTimelineLayout(phaseCount, hasFrameControls, hasAnim
    local timeline = window:recursiveGetChildById('previewTimeline')
    local timelineScroll = window:recursiveGetChildById('previewTimelineScroll')
    local phaseActions = window:recursiveGetChildById('previewPhaseActions')
+   local playButton = window:recursiveGetChildById('previewPlayButton')
    local frameRow = window:recursiveGetChildById('previewAnimationFrameRow')
    local frameSelectionGroup = window:recursiveGetChildById('previewFrameSelectionGroup')
    local durationGroup = window:recursiveGetChildById('previewDurationGroup')
@@ -734,6 +747,10 @@ local function updatePreviewTimelineLayout(phaseCount, hasFrameControls, hasAnim
    timeline:setVisible(showFrameButtons)
    timelineScroll:setVisible(showFrameButtons and phaseCount * 30 > timeline:getWidth())
    phaseActions:setVisible(hasFrameControls)
+   local showPlayButton = hasAnimation and phaseCount > 1
+   playButton:setVisible(showPlayButton)
+   playButton:setEnabled(showPlayButton)
+   phaseActions:setWidth(showPlayButton and 104 or 54)
    frameRow:setVisible(showAnimationFrameRow)
    frameRow:setMarginBottom(showFrameButtons and showAnimationFrameRow and 11 or 0)
    frameSelectionGroup:setVisible(showNumericFrameSelector)
@@ -991,6 +1008,194 @@ local function currentPreviewGroup()
    return previewFrameGroups[previewFrameGroupIndex]
 end
 
+stopPreviewAnimation = function()
+   if previewPlaybackEvent then
+      removeEvent(previewPlaybackEvent)
+      previewPlaybackEvent = nil
+   end
+   previewIsPlaying = false
+   previewPlaybackDirection = 1
+   previewPlaybackCycles = 0
+   previewPlaybackAppearanceId = nil
+   previewPlaybackGroupIndex = nil
+   if window then
+      local playButton = window:recursiveGetChildById('previewPlayButton')
+      if playButton then
+         playButton:setText(tr('Play'))
+         playButton:setTooltip(tr('Play the animation preview from the selected frame.'))
+         playButton:setOn(false)
+      end
+   end
+end
+
+updatePreviewTimelineSelection = function(phaseCount)
+   if not window then
+      return
+   end
+   local frameList = window:recursiveGetChildById('previewTimelineFrames')
+   for index, frameCell in ipairs(frameList:getChildren()) do
+      local selected = index - 1 == previewPhase
+      local frameButton = frameCell:getChildById('previewTimelineFrameButton')
+      frameButton:setOn(selected)
+      frameButton:setColor(selected and '#d9c7ff' or '#dfdfdf')
+      local marker = frameCell:getChildById('previewTimelineMarker')
+      if marker then
+         marker:setVisible(selected)
+      end
+   end
+
+   local phaseStepper = window:recursiveGetChildById('previewPhaseStepper')
+   if phaseStepper then
+      local onValueChange = phaseStepper.onValueChange
+      phaseStepper.onValueChange = nil
+      phaseStepper:setValue(previewPhase + 1, true)
+      phaseStepper.onValueChange = onValueChange
+   end
+   if phaseCount then
+      local phaseCountLabel = window:recursiveGetChildById('previewPhaseCount')
+      phaseCountLabel:setText(tr('of %d', phaseCount))
+   end
+   local selectedPhase = previewPhase
+   local timelineWindow = window
+   addEvent(function()
+      if not window or window ~= timelineWindow or not window:isVisible() then
+         return
+      end
+      local timeline = window:recursiveGetChildById('previewTimeline')
+      local frameCell = window:recursiveGetChildById('previewTimelineFrames'):getChildByIndex(selectedPhase + 1)
+      local ensureChildVisible = UIScrollArea and UIScrollArea.ensureChildVisible
+      if timeline and frameCell and ensureChildVisible then
+         ensureChildVisible(timeline, frameCell)
+      end
+   end)
+end
+
+local function updatePreviewPhaseDurationFields(group)
+   if not group or not group.animation or not group.animation.enabled then
+      return
+   end
+   local phase = group.animation.phases[previewPhase + 1]
+   if not phase then
+      return
+   end
+   local groupChanges = appearanceChanges.animation.groups[tostring(group.index)] or {}
+   local phaseChanges = groupChanges.phases and groupChanges.phases[tostring(previewPhase)] or {}
+   local minEdit = window:recursiveGetChildById('animationDurationMin')
+   local maxEdit = window:recursiveGetChildById('animationDurationMax')
+   local wasBuildingProperties = buildingAppearanceProperties
+   buildingAppearanceProperties = true
+   minEdit:setText(tostring(phaseChanges.durationMin ~= nil and phaseChanges.durationMin or phase.durationMin))
+   maxEdit:setText(tostring(phaseChanges.durationMax ~= nil and phaseChanges.durationMax or phase.durationMax))
+   buildingAppearanceProperties = wasBuildingProperties
+   animationWidgets.phaseIndex = previewPhase
+end
+
+selectPreviewPhase = function(phaseIndex, playbackTick)
+   local group = currentPreviewGroup()
+   if not group then
+      return false
+   end
+   if not playbackTick then
+      stopPreviewAnimation()
+   end
+   if not collectAnimationWidgetChanges() then
+      return false
+   end
+
+   previewPhase = math.max(0, math.min(phaseIndex, math.max(0, (group.phaseCount or 1) - 1)))
+   updatePreviewTimelineSelection(group.phaseCount)
+   updatePreviewPhaseDurationFields(group)
+   return refreshAppearancePreview()
+end
+
+local function getPreviewPhaseDuration(group, phaseIndex)
+   local phase = group.animation.phases[phaseIndex + 1]
+   local groupChanges = appearanceChanges.animation.groups[tostring(group.index)] or {}
+   local phaseChanges = groupChanges.phases and groupChanges.phases[tostring(phaseIndex)] or {}
+   local minimum = phaseChanges.durationMin ~= nil and phaseChanges.durationMin or phase.durationMin
+   local maximum = phaseChanges.durationMax ~= nil and phaseChanges.durationMax or phase.durationMax
+   if minimum == 0 and maximum == 0 then
+      for _, candidate in ipairs(group.animation.phases) do
+         if candidate.durationMin > 0 or candidate.durationMax > 0 then
+            minimum = candidate.durationMin
+            maximum = candidate.durationMax
+            break
+         end
+      end
+   end
+   return math.max(1, math.floor((minimum + maximum) / 2))
+end
+
+schedulePreviewPlayback = function()
+   if not previewIsPlaying or not window or not window:isVisible() then
+      stopPreviewAnimation()
+      return
+   end
+   local group = currentPreviewGroup()
+   if not group or group.index ~= previewPlaybackGroupIndex or selectedAppearanceId ~= previewPlaybackAppearanceId then
+      stopPreviewAnimation()
+      return
+   end
+
+   local phaseCount = math.max(1, group.phaseCount or 1)
+   local groupChanges = appearanceChanges.animation.groups[tostring(group.index)] or {}
+   local loopType = groupChanges.loopType ~= nil and groupChanges.loopType or group.animation.loopType
+   local loopCount = groupChanges.loopCount ~= nil and groupChanges.loopCount or group.animation.loopCount
+   previewPlaybackEvent = scheduleEvent(function()
+      previewPlaybackEvent = nil
+      if not previewIsPlaying then
+         return
+      end
+
+      local nextPhase = previewPhase + previewPlaybackDirection
+      if loopType == -1 then
+         if nextPhase < 0 or nextPhase >= phaseCount then
+            previewPlaybackDirection = -previewPlaybackDirection
+            nextPhase = previewPhase + previewPlaybackDirection
+         end
+      elseif nextPhase >= phaseCount then
+         previewPlaybackCycles = previewPlaybackCycles + 1
+         if loopType == 1 and loopCount > 0 and previewPlaybackCycles >= loopCount then
+            stopPreviewAnimation()
+            return
+         end
+         nextPhase = 0
+      end
+
+      if not selectPreviewPhase(nextPhase, true) then
+         stopPreviewAnimation()
+         return
+      end
+      schedulePreviewPlayback()
+   end, getPreviewPhaseDuration(group, previewPhase))
+end
+
+function togglePreviewAnimation()
+   if previewIsPlaying then
+      stopPreviewAnimation()
+      return
+   end
+
+   local group = currentPreviewGroup()
+   if not window or not group or not group.animation or not group.animation.enabled or (group.phaseCount or 1) < 2 then
+      return
+   end
+   if not collectAnimationWidgetChanges() then
+      return
+   end
+
+   previewIsPlaying = true
+   previewPlaybackDirection = 1
+   previewPlaybackCycles = 0
+   previewPlaybackAppearanceId = selectedAppearanceId
+   previewPlaybackGroupIndex = group.index
+   local playButton = window:recursiveGetChildById('previewPlayButton')
+   playButton:setText(tr('Pause'))
+   playButton:setTooltip(tr('Pause the animation preview.'))
+   playButton:setOn(true)
+   schedulePreviewPlayback()
+end
+
 local function setAnimationChange(groupIndex, field, value, phaseIndex)
    local group = previewFrameGroups[groupIndex + 1]
    if not group or not group.animation.enabled then
@@ -1151,6 +1356,7 @@ local function updatePreviewAnimationPhaseCount(groupIndex, phaseCount)
 end
 
 local function changeAnimationPhaseCount(delta)
+   stopPreviewAnimation()
    local group = currentPreviewGroup()
    if not group or not collectAnimationWidgetChanges() then
       return false
@@ -1466,6 +1672,7 @@ local function restorePreviewSelection(selection)
 end
 
 configurePreviewControls = function(frameGroups)
+   stopPreviewAnimation()
    previewFrameGroups = frameGroups or {}
    previewFrameGroupIndex = math.min(math.max(1, previewFrameGroupIndex), math.max(1, #previewFrameGroups))
    previewIdleGroupIndex = nil
@@ -1502,6 +1709,7 @@ configurePreviewControls = function(frameGroups)
    local frameGroupBox = window:recursiveGetChildById('previewFrameGroup')
    frameGroupBox.onOptionChange = function(_, _, frameGroupIndex)
       if frameGroupIndex then
+         stopPreviewAnimation()
          if not collectAnimationWidgetChanges() then
             frameGroupBox:setCurrentOptionByData(previewFrameGroupIndex, true)
             return
@@ -1534,13 +1742,13 @@ configurePreviewControls = function(frameGroups)
          return
       end
       previewPhase = (value or 1) - 1
-      updateAnimationEditor()
-      refreshAppearancePreview()
+      selectPreviewPhase(previewPhase, false)
    end
    window:recursiveGetChildById('previewMoving').onCheckChange = function(widget)
       if not previewHasMovementToggle then
          return
       end
+      stopPreviewAnimation()
       if not collectAnimationWidgetChanges() then
          setCheckBoxState(widget, not widget:isChecked())
          return
@@ -1579,6 +1787,7 @@ updateAnimationEditor = function()
    local phaseStepper = window:recursiveGetChildById('previewPhaseStepper')
    local addFrameButton = window:recursiveGetChildById('addAnimationFrameButton')
    local removeFrameButton = window:recursiveGetChildById('removeAnimationFrameButton')
+   local playButton = window:recursiveGetChildById('previewPlayButton')
    local phaseCountLabel = window:recursiveGetChildById('previewPhaseCount')
    local minLabel = window:recursiveGetChildById('animationDurationMinLabel')
    local minEdit = window:recursiveGetChildById('animationDurationMin')
@@ -1604,6 +1813,14 @@ updateAnimationEditor = function()
    maxLabel:setVisible(isAnimated)
    maxEdit:setVisible(isAnimated)
    settingsRow:setVisible(isAnimated)
+   local showPlayButton = isAnimated and phaseCount > 1
+   playButton:setVisible(showPlayButton)
+   playButton:setEnabled(showPlayButton)
+   window:recursiveGetChildById('previewPhaseActions'):setWidth(showPlayButton and 104 or 54)
+   playButton:setText(previewIsPlaying and tr('Pause') or tr('Play'))
+   playButton:setTooltip(previewIsPlaying and tr('Pause the animation preview.') or
+      tr('Play the animation preview from the selected frame.'))
+   playButton:setOn(previewIsPlaying)
    local canEditFrames = group ~= nil and activeVersion ~= nil and not g_game.isOnline()
    addFrameButton:setEnabled(canEditFrames and phaseCount < math.floor(2147483647 /
       (math.max(1, group.layers or 1) * math.max(1, group.patternWidth or 1) *
@@ -1752,20 +1969,42 @@ updateAnimationEditor = function()
    if showFrameButtons then
       for phaseIndex = 0, phaseCount - 1 do
          local currentPhaseIndex = phaseIndex
-         local frameButton = g_ui.createWidget('AppearanceTimelineFrame', frameList)
+         local frameCell = g_ui.createWidget('AppearanceTimelineCell', frameList)
+         local frameButton = frameCell:getChildById('previewTimelineFrameButton')
          frameButton:setText(tostring(currentPhaseIndex + 1))
          frameButton:setTooltip(tr('Frame %d', currentPhaseIndex + 1))
-         frameButton:setOn(currentPhaseIndex == previewPhase)
-         frameButton:setColor(currentPhaseIndex == previewPhase and '#d9c7ff' or '#dfdfdf')
-         frameButton.onClick = function()
-            if not collectAnimationWidgetChanges() then
-               return
+         frameButton.onMousePress = function(_, _, mouseButton)
+            if mouseButton ~= MouseLeftButton then
+               return false
             end
-            previewPhase = currentPhaseIndex
-            updateAnimationEditor()
-            refreshAppearancePreview()
+            stopPreviewAnimation()
+            timelineScrubbing = true
+            selectPreviewPhase(currentPhaseIndex, true)
+            return true
          end
-
+         frameButton.onMouseMove = function(_, mousePos)
+            if not timelineScrubbing then
+               return false
+            end
+            for index, candidate in ipairs(frameList:getChildren()) do
+               local rect = candidate:getRect()
+               if mousePos.x >= rect.x and mousePos.x < rect.x + rect.width and
+                     mousePos.y >= rect.y and mousePos.y <= rect.y + PREVIEW_TIMELINE_TRACK_HEIGHT then
+                  if index - 1 ~= previewPhase then
+                     selectPreviewPhase(index - 1, true)
+                  end
+                  return true
+               end
+            end
+            return true
+         end
+         frameButton.onMouseRelease = function(_, _, mouseButton)
+            if mouseButton == MouseLeftButton then
+               timelineScrubbing = false
+               return true
+            end
+            return false
+         end
          if currentPhaseIndex == previewPhase then
             local phaseToReveal = currentPhaseIndex
             addEvent(function()
@@ -1785,6 +2024,7 @@ updateAnimationEditor = function()
       end
    end
    frameList:setWidth(showFrameButtons and math.max(1, phaseCount * 30 - 2) or 1)
+   updatePreviewTimelineSelection(phaseCount)
    buildingAppearanceProperties = wasBuildingProperties
 end
 
@@ -2012,6 +2252,7 @@ local function loadAppearanceRecord(category, id, forceDiscard, forceReload)
 end
 
 selectAppearance = function(category, id, forceDiscard)
+   stopPreviewAnimation()
    loadAppearanceRecord(category, id, forceDiscard)
 end
 
@@ -2019,6 +2260,7 @@ local function changeAppearanceCategory(category, forceDiscard)
    if not category then
       return
    end
+   stopPreviewAnimation()
    if hasAppearanceChanges() and not forceDiscard then
       window:recursiveGetChildById('appearanceCategory'):setCurrentOptionByData(selectedAppearanceCategory, true)
       confirmUnsavedChanges(tr('Save changes before switching categories?'), function()
@@ -2291,6 +2533,8 @@ local function createWindow()
 end
 
 local function destroyWindow()
+   stopPreviewAnimation()
+   timelineScrubbing = false
    destroyPngFilePicker()
    if spriteSearchEvent then
       removeEvent(spriteSearchEvent)
@@ -3451,6 +3695,7 @@ function requestClose(forceDiscard, pendingEditConfirmed)
    if not window then
       return
    end
+   stopPreviewAnimation()
    if hasAppearanceChanges() and not forceDiscard then
       confirmUnsavedChanges(tr('Save changes to the working copy before closing?'), function()
          requestClose(true, pendingEditConfirmed)
