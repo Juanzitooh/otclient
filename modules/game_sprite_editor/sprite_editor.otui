@@ -135,6 +135,24 @@ AppearanceValueRow < Panel
     margin-left: 5
     height: 20
 
+AppearanceValueSelectRow < Panel
+  height: 24
+
+  AppearanceFieldLabel
+    id: propertyLabel
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    width: 145
+    text-wrap: false
+
+  ComboBox
+    id: propertySelection
+    anchors.left: propertyLabel.right
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 5
+    height: 20
+
 AppearanceTimelineFrame < Button
   size: 28 22
   text-wrap: false

@@ -452,8 +452,24 @@ bool ThingTypeManager::saveAppearanceEditorData(const int version, const int cat
         }
 
         auto* flags = appearance->mutable_flags();
-        for (auto field = it->begin(); field != it->end(); ++field)
+        for (auto field = it->begin(); field != it->end(); ++field) {
+            if (field.key() == "clothes.slot") {
+                const auto& slotValue = field.value();
+                if (!slotValue.is_number_unsigned() && (!slotValue.is_number_integer() || slotValue.get<int64_t>() < 0))
+                    throw stdext::exception("appearance equipment slot must be between 0 and 10");
+                const auto slot = slotValue.get<uint64_t>();
+                if (slot > 10)
+                    throw stdext::exception("appearance equipment slot must be between 0 and 10");
+                if (slot == 0) {
+                    const auto* clothesField = flags->GetDescriptor()->FindFieldByName("clothes");
+                    if (!clothesField || clothesField->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE)
+                        throw stdext::exception("appearance equipment slot field is unavailable");
+                    flags->GetReflection()->ClearField(flags, clothesField);
+                    continue;
+                }
+            }
             setAppearanceScalar(*flags, field.key(), field.value());
+        }
     }
 
     const auto animationChanges = updates.find("animation");
