@@ -1,20 +1,52 @@
 SpriteEditorFileEntry < Button
-  height: 22
-  text-align: left
-  text-offset: 5 2
-  text-wrap: false
+  size: 66 62
+  text: ''
+  checkable: true
+  draggable: false
 
-  $hover:
-    background-color: #4a4a4a
+  Panel
+    id: filePickerPreviewBackground
+    anchors.fill: parent
+    margin: 2
+    background-color: #363636
+    phantom: true
 
-  $focus:
-    background-color: #603bb0
+  Panel
+    id: filePickerThumbnail
+    anchors.centerIn: parent
+    size: 46 46
+    image-size: 46 46
+    image-fixed-ratio: true
+    image-smooth: false
+    phantom: true
+
+  Label
+    id: filePickerFolderLabel
+    anchors.centerIn: parent
+    width: 52
+    height: 18
+    text-align: center
+    text-wrap: false
+    text: 'Folder'
+    phantom: true
+    visible: false
+
+  $on:
+    image-clip: 0 20 43 20
+
+  $pressed:
+    image-clip: 0 20 43 20
+
+  $dragging:
+    opacity: 0.8
 
 MainWindow
   id: spriteEditorFilePickerWindow
-  size: 560 500
+  size: 360 500
   !text: tr('Choose a PNG file')
-  anchors.centerIn: parent
+  anchors.right: parent.right
+  anchors.verticalCenter: parent.verticalCenter
+  margin-right: 8
 
   @onEscape: modules.game_sprite_editor.closePngFilePicker()
 
@@ -63,7 +95,7 @@ MainWindow
     height: 22
     !placeholder: tr('Filter files or folders by name')
 
-  TextList
+  UIScrollArea
     id: filePickerEntries
     anchors.left: parent.left
     anchors.right: filePickerScroll.left
@@ -71,9 +103,16 @@ MainWindow
     anchors.bottom: filePickerCountLabel.top
     margin-top: 5
     margin-bottom: 4
-    padding: 1
-    focusable: true
     vertical-scrollbar: filePickerScroll
+    auto-focus: none
+
+    Panel
+      id: filePickerContent
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      height: 1
+      focusable: false
 
   VerticalScrollBar
     id: filePickerScroll
@@ -82,7 +121,7 @@ MainWindow
     anchors.right: parent.right
     margin-top: 5
     margin-bottom: 4
-    step: 22
+    step: 62
     pixels-scroll: true
 
   Label
@@ -96,22 +135,24 @@ MainWindow
   Label
     id: filePickerSelectedLabel
     anchors.left: parent.left
-    anchors.right: parent.right
+    anchors.right: filePickerUseButton.left
     anchors.bottom: filePickerUseButton.top
+    margin-right: 6
     margin-bottom: 5
     height: 30
     text-wrap: true
-    !text: tr('Choose a PNG file.')
+    !text: tr('Click a PNG to select it.')
 
   Button
     id: filePickerUseButton
-    !text: tr('Use PNG')
+    !text: tr('Use folder')
     anchors.right: filePickerCancelButton.left
     anchors.bottom: parent.bottom
     margin-right: 5
-    width: 100
+    width: 94
     height: 24
     enabled: false
+    visible: false
 
   Button
     id: filePickerCancelButton

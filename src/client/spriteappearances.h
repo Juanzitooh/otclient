@@ -139,6 +139,18 @@ public:
     std::string createWorkCopy(int version);
     bool workCopyExists(int version);
     std::string resetWorkCopy(int version);
+    std::string getWorkCopyHistoryState(int version);
+    void beginWorkCopyEdit(int version);
+    bool commitWorkCopyEdit(int version, const std::string& label);
+    std::string undoWorkCopyEdit(int version);
+    std::string redoWorkCopyEdit(int version);
+    std::string getInstalledAssetBackups(int version);
+    std::string getInstalledAssetBackupHistory(int version, const std::string& backupName);
+    std::string restoreInstalledAssetBackup(int version, const std::string& backupName);
+    std::string getAssetEditHistory(int version);
+    std::string appendAssetEditHistory(int version, const std::string& entry);
+    std::string getSpriteImagePngBase64(int version, int spriteId);
+    void restoreSpriteImageFromPngBase64(int version, int spriteId, const std::string& encodedPng);
     std::string exportWorkCopy(int version, const std::string& destination);
     std::string installWorkCopy(int version);
     std::string installWorkCopyAsNewVersion(int sourceVersion, int targetVersion);

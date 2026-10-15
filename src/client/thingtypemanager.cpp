@@ -46,6 +46,7 @@
 #include "framework/graphics/apngloader.h"
 #include "framework/graphics/image.h"
 #include "framework/otml/otmldocument.h"
+#include "framework/util/crypt.h"
 #ifdef FRAMEWORK_PROTOBUF
 #include <appearances.pb.h>
 #include <staticdata.pb.h>
@@ -628,6 +629,69 @@ std::string ThingTypeManager::getAppearanceEditorData(const int version, const i
     return result.dump();
 #else
     throw stdext::exception("protobuf support is required to edit appearances");
+#endif
+}
+
+std::string ThingTypeManager::getAppearanceEditorSnapshot(const int version, const int category, const int id)
+{
+#ifdef FRAMEWORK_PROTOBUF
+    if (id < 1)
+        throw stdext::exception("appearance ID must be positive");
+    const auto path = getAppearanceEditorFile(m_catalogContentPath, version);
+    appearances::Appearances library;
+    readAppearancesFile(path, library);
+    const auto* appearance = findAppearance(library, category, id);
+    if (!appearance)
+        throw stdext::exception("appearance {} was not found", id);
+    std::string serialized;
+    if (!appearance->SerializeToString(&serialized))
+        throw stdext::exception("could not save the appearance state for asset history");
+    return g_crypt.base64Encode(serialized);
+#else
+    throw stdext::exception("protobuf support is required to edit appearances");
+#endif
+}
+
+bool ThingTypeManager::restoreAppearanceEditorSnapshot(const int version, const int category, const int id,
+                                                        const bool present, const std::string& snapshot)
+{
+#ifdef FRAMEWORK_PROTOBUF
+    if (version < 1500 || version >= 1600 || id < 1)
+        throw stdext::exception("appearance history restore is supported only for valid 15.x IDs");
+    const auto path = getAppearanceEditorFile(m_catalogContentPath, version);
+    appearances::Appearances library;
+    readAppearancesFile(path, library);
+    auto* bank = getAppearanceBank(library, category);
+    int existingIndex = -1;
+    for (int index = 0; index < bank->size(); ++index) {
+        if (bank->Get(index).id() == static_cast<uint32_t>(id)) {
+            existingIndex = index;
+            break;
+        }
+    }
+
+    if (!present) {
+        if (existingIndex < 0)
+            return false;
+        bank->DeleteSubrange(existingIndex, 1);
+    } else {
+        if (snapshot.empty() || snapshot.size() > 8 * 1024 * 1024)
+            throw stdext::exception("the saved appearance state is missing or too large");
+        const auto decoded = g_crypt.base64Decode(snapshot);
+        appearances::Appearance restored;
+        if (!restored.ParseFromArray(decoded.data(), static_cast<int>(decoded.size())) ||
+            restored.id() != static_cast<uint32_t>(id))
+            throw stdext::exception("the saved appearance state is invalid or belongs to another ID");
+        if (existingIndex < 0)
+            *bank->Add() = std::move(restored);
+        else
+            bank->Mutable(existingIndex)->CopyFrom(restored);
+    }
+
+    writeAppearancesFile(path, library);
+    return true;
+#else
+    throw stdext::exception("protobuf support is required to restore appearance history");
 #endif
 }
 

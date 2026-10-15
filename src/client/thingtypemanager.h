@@ -89,6 +89,8 @@ public:
 #ifdef FRAMEWORK_EDITOR
     void invalidateTextureCache();
     std::string getAppearanceEditorData(int version, int category, int id);
+    std::string getAppearanceEditorSnapshot(int version, int category, int id);
+    bool restoreAppearanceEditorSnapshot(int version, int category, int id, bool present, const std::string& snapshot);
     bool saveAppearanceEditorData(int version, int category, int id, const std::string& changes);
     bool replaceAppearanceSprite(int version, int category, int appearanceId,
                                  int frameGroupIndex, int spriteIndex, int spriteId);
