@@ -1,0 +1,424 @@
+Panel
+  id: importPanel
+  anchors.fill: parent
+  visible: false
+
+  AppearanceCenteredSectionHeader
+    !text: tr('Import and edit sprites')
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: parent.top
+
+  Panel
+    id: importActionTabs
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: prev.bottom
+    margin-top: 5
+    height: 24
+    layout: horizontalBox
+    spacing: 5
+
+    AppearanceNavigationButton
+      id: replaceFrameTabButton
+      !text: tr('Replace frame')
+      width: 148
+      height: 24
+      @onClick: modules.game_sprite_editor.setImportSection('replace')
+
+    AppearanceNavigationButton
+      id: newAppearanceTabButton
+      !text: tr('New appearance')
+      width: 148
+      height: 24
+      @onClick: modules.game_sprite_editor.setImportSection('create')
+
+  Panel
+    id: replaceFramePanel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: importActionTabs.bottom
+    anchors.bottom: parent.bottom
+    margin-top: 5
+    visible: false
+
+    AppearanceFieldLabel
+      id: selectedSpriteTargetLabel
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      margin-top: 2
+      height: 18
+      text-wrap: false
+
+    Panel
+      id: replaceSourceModes
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: selectedSpriteTargetLabel.bottom
+      margin-top: 3
+      height: 23
+      layout: horizontalBox
+      spacing: 4
+
+      AppearanceNavigationButton
+        id: spriteIdModeButton
+        !text: tr('Sprite ID')
+        width: 94
+        height: 23
+        @onClick: modules.game_sprite_editor.setReplaceMode('sprite')
+
+      AppearanceNavigationButton
+        id: pngModeButton
+        !text: tr('Import PNG')
+        width: 94
+        height: 23
+        @onClick: modules.game_sprite_editor.setReplaceMode('png')
+
+    Panel
+      id: spriteIdReplacePanel
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: replaceSourceModes.bottom
+      anchors.bottom: editCurrentSpritePanel.top
+      margin-top: 4
+      margin-bottom: 8
+      visible: false
+
+      AppearanceTextEdit
+        id: spriteSearchEdit
+        anchors.left: parent.left
+        anchors.right: spritePickerCountLabel.left
+        anchors.top: parent.top
+        margin-right: 5
+        height: 22
+        !placeholder: tr('Search sprite ID')
+
+      AppearanceFieldLabel
+        id: spritePickerCountLabel
+        anchors.right: parent.right
+        anchors.top: parent.top
+        width: 104
+        height: 22
+        text-align: right
+
+      UIScrollArea
+        id: spritePickerList
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: spriteSearchEdit.bottom
+        anchors.bottom: selectedReplacementSpriteLabel.top
+        margin-top: 4
+        margin-bottom: 3
+        vertical-scrollbar: spritePickerScroll
+        auto-focus: none
+
+        Panel
+          id: spritePickerContent
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
+          height: 1
+          focusable: false
+
+      AppearanceFieldLabel
+        id: selectedReplacementSpriteLabel
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 23
+        text-wrap: false
+        !text: tr('Drag a sprite onto the preview to replace this frame.')
+        !tooltip: tr('Drag a sprite from this list onto the center preview to replace the selected frame.')
+
+      VerticalScrollBar
+        id: spritePickerScroll
+        anchors.top: spritePickerList.top
+        anchors.bottom: spritePickerList.bottom
+        anchors.right: spritePickerList.right
+        step: 60
+        pixels-scroll: true
+
+    Panel
+      id: pngReplacePanel
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: replaceSourceModes.bottom
+      anchors.bottom: editCurrentSpritePanel.top
+      margin-top: 4
+      margin-bottom: 8
+      visible: false
+
+      Label
+        id: replacePngHelpLabel
+        !text: tr('The PNG is added as a new sprite ID and linked to this frame only.')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 34
+        text-wrap: true
+
+      AppearanceTextEdit
+        id: previewSpritePathEdit
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: replacePngHelpLabel.bottom
+        margin-top: 4
+        margin-right: 86
+        height: 22
+        !placeholder: tr('Path to a prepared PNG')
+        !tooltip: tr('Choose a PNG file or enter its path, then import it as a new sprite ID for this frame.')
+
+      AppearanceActionButton
+        id: browsePngButton
+        !text: tr('Browse...')
+        anchors.right: parent.right
+        anchors.top: replacePngHelpLabel.bottom
+        margin-top: 4
+        width: 82
+        height: 22
+        @onClick: modules.game_sprite_editor.openPngFilePicker()
+
+      AppearanceActionButton
+        id: importPngReplaceButton
+        !text: tr('Import PNG and replace frame')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: browsePngButton.bottom
+        margin-top: 5
+        height: 24
+        @onClick: modules.game_sprite_editor.importPngAndReplace()
+
+    Panel
+      id: editCurrentSpritePanel
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      height: 91
+      background-color: #363636
+      border-width: 1
+      border-color: #4a4a4a
+
+      AppearanceCenteredSectionHeader
+        !text: tr('Edit current sprite')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+
+      Label
+        id: spriteEditHelpLabel
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: prev.bottom
+        margin-left: 5
+        margin-right: 5
+        margin-top: 3
+        height: 27
+        text-wrap: true
+
+      Panel
+        id: spriteEditActionRow
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        margin-left: 5
+        margin-right: 5
+        margin-bottom: 4
+        height: 23
+        layout: horizontalBox
+        spacing: 4
+
+        AppearanceActionButton
+          id: editAppearanceSpriteButton
+          !text: tr('Edit sprite')
+          !tooltip: tr('Open a safe PNG copy of this sprite in the configured editor.')
+          width: 88
+          height: 23
+          @onClick: modules.game_sprite_editor.editSprite()
+
+        AppearanceActionButton
+          id: applyEditedSpriteButton
+          !text: tr('Apply edit')
+          width: 88
+          height: 23
+          visible: false
+          @onClick: modules.game_sprite_editor.applyEditedSprite()
+
+        AppearanceActionButton
+          id: configureSpriteEditorButton
+          !text: tr('Choose app')
+          !tooltip: tr('Choose the external editor executable or launcher.')
+          width: 88
+          height: 23
+          @onClick: modules.game_sprite_editor.configureSpriteEditor()
+
+  Panel
+    id: newAppearancePanel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: importActionTabs.bottom
+    anchors.bottom: parent.bottom
+    margin-top: 5
+    visible: false
+
+    AppearanceCenteredSectionHeader
+      !text: tr('Create a new appearance')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+
+    AppearanceFieldLabel
+      !text: tr('Category')
+      anchors.left: parent.left
+      anchors.top: prev.bottom
+      margin-top: 8
+
+    ComboBox
+      id: newAppearanceCategory
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: prev.bottom
+      margin-top: 4
+      height: 22
+
+    Panel
+      id: newAppearanceSourceModes
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: newAppearanceCategory.bottom
+      margin-top: 7
+      height: 23
+      layout: horizontalBox
+      spacing: 4
+
+      AppearanceNavigationButton
+        id: newAppearanceSpriteModeButton
+        !text: tr('Sprite ID')
+        width: 148
+        height: 23
+        @onClick: modules.game_sprite_editor.setNewAppearanceSourceMode('sprite')
+
+      AppearanceNavigationButton
+        id: newAppearancePngModeButton
+        !text: tr('Import PNG')
+        width: 148
+        height: 23
+        @onClick: modules.game_sprite_editor.setNewAppearanceSourceMode('png')
+
+    Panel
+      id: newAppearanceSpritePanel
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: newAppearanceSourceModes.bottom
+      anchors.bottom: newAppearanceSourceHintLabel.top
+      margin-top: 5
+      margin-bottom: 3
+      visible: false
+
+      AppearanceTextEdit
+        id: newAppearanceSpriteSearchEdit
+        anchors.left: parent.left
+        anchors.right: newAppearanceSpritePickerCountLabel.left
+        anchors.top: parent.top
+        margin-right: 5
+        height: 22
+        !placeholder: tr('Search sprite ID')
+
+      AppearanceFieldLabel
+        id: newAppearanceSpritePickerCountLabel
+        anchors.right: parent.right
+        anchors.top: parent.top
+        width: 104
+        height: 22
+        text-align: right
+
+      UIScrollArea
+        id: newAppearanceSpritePickerList
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: newAppearanceSpriteSearchEdit.bottom
+        anchors.bottom: newAppearanceSelectedSpriteLabel.top
+        margin-top: 4
+        margin-bottom: 3
+        vertical-scrollbar: newAppearanceSpritePickerScroll
+        auto-focus: none
+
+        Panel
+          id: newAppearanceSpritePickerContent
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
+          height: 1
+          focusable: false
+
+      AppearanceFieldLabel
+        id: newAppearanceSelectedSpriteLabel
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 23
+        text-wrap: false
+
+      VerticalScrollBar
+        id: newAppearanceSpritePickerScroll
+        anchors.top: newAppearanceSpritePickerList.top
+        anchors.bottom: newAppearanceSpritePickerList.bottom
+        anchors.right: newAppearanceSpritePickerList.right
+        step: 60
+        pixels-scroll: true
+
+    Panel
+      id: newAppearancePngPanel
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: newAppearanceSourceModes.bottom
+      anchors.bottom: newAppearanceSourceHintLabel.top
+      margin-top: 8
+      margin-bottom: 3
+      visible: false
+
+      Label
+        !text: tr('A prepared PNG is added as a new sprite ID for this appearance.')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 36
+        text-wrap: true
+
+      AppearanceTextEdit
+        id: newAppearancePngPathEdit
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: prev.bottom
+        margin-top: 5
+        margin-right: 86
+        height: 22
+        !placeholder: tr('Choose a prepared PNG')
+
+      AppearanceActionButton
+        id: browseNewAppearancePngButton
+        !text: tr('Browse...')
+        anchors.right: parent.right
+        anchors.top: newAppearancePngPathEdit.top
+        width: 82
+        height: 22
+        @onClick: modules.game_sprite_editor.openPngFilePicker('create')
+
+    Label
+      id: newAppearanceSourceHintLabel
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: createAppearanceButton.top
+      margin-bottom: 4
+      height: 30
+      text-wrap: true
+
+    AppearanceActionButton
+      id: createAppearanceButton
+      !text: tr('Create appearance')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      margin-bottom: 2
+      height: 24
+      @onClick: modules.game_sprite_editor.createAppearance()

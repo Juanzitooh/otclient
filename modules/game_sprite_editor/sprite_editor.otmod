@@ -8,6 +8,6 @@ Module
     - client_topmenu
     - game_features
     - game_things
-  scripts: [ sprite_editor ]
+  scripts: [ components/png_file_picker, components/sprite_picker, components/appearance_catalog, components/appearance_properties, services/work_copy, sprite_editor ]
   @onLoad: init()
   @onUnload: terminate()

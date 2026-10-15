@@ -1,21 +1,17 @@
 local window
 local topMenuButton
 local canvas
-local mountedRoots = {}
+local workCopyService
 local activeVersion
 local activeAssetPath
 local activeWorkRoot
 local selectedAppearanceCategory = 0
 local selectedAppearanceId
 local selectedSpriteId
-local appearanceEntries = {}
-local filteredAppearanceEntries = {}
-local categoryAppearanceCounts = {}
-local appearanceRows = {}
+local appearanceCatalog
+local appearanceProperties
 local appearanceOriginal
 local appearanceChanges = { bools = {}, values = {}, strings = {}, animation = { groups = {} } }
-local appearanceValueWidgets = {}
-local appearanceStringWidgets = {}
 local animationWidgets = {}
 local buildingAppearanceProperties = false
 local currentPage = 'editor'
@@ -45,22 +41,14 @@ local gameEndCallback
 local pendingSpriteEdit
 local preparedSpritePath = ''
 local settingSpritePath = false
-local spritePickerRanges = {}
-local spritePickerIds
-local spritePickerCount = 0
-local spritePickerCells = { replace = {}, create = {} }
 local spritePickerSourceId
-local spritePickerQuery = ''
 local selectedReplacementSpriteId
 local selectedCreateSpriteId
-local spriteSearchEvent
+local spritePicker
 local currentImportSection = 'replace'
 local currentReplaceMode = 'sprite'
 local currentNewAppearanceSourceMode = 'sprite'
-local filePickerWindow
-local filePickerDirectory
-local filePickerSelection
-local filePickerTarget
+local pngFilePicker
 
 local SPRITE_PICKER_WIDGET_IDS = {
    replace = {
@@ -82,7 +70,6 @@ local SPRITE_PICKER_WIDGET_IDS = {
 local EXTERNAL_EDITOR_SETTING = 'offline-assets-editor-external-editor'
 
 local MAX_SPRITE_ID = 2147483647
-local APPEARANCE_ROW_HEIGHT = 52
 local PREVIEW_CONTROLS_BOTTOM_MARGIN = 14
 local PREVIEW_CANVAS_BOTTOM_MARGIN = 4
 local PREVIEW_HINT_BOTTOM_MARGIN = 8
@@ -116,20 +103,6 @@ local categories = {
    { name = 'Missiles', singular = 'Missile', data = 3 },
 }
 
-local EQUIPMENT_SLOT_OPTIONS = {
-   { label = 'Not equippable', data = 0 },
-   { label = 'Head', data = 1 },
-   { label = 'Necklace', data = 2 },
-   { label = 'Backpack', data = 3 },
-   { label = 'Armor', data = 4 },
-   { label = 'Right hand', data = 5 },
-   { label = 'Left hand', data = 6 },
-   { label = 'Legs', data = 7 },
-   { label = 'Feet', data = 8 },
-   { label = 'Ring', data = 9 },
-   { label = 'Ammo', data = 10 },
-}
-
 local selectAppearance
 local selectSprite
 local renderAppearanceRows
@@ -146,17 +119,26 @@ local updateDirectionPadLayout
 local refreshSpritePicker
 local renderSpritePickerRows
 local applySpritePickerFilter
+local refreshAppearanceCatalog
+local applyAppearanceFilter
+local updateCategoryOptions
 local importPngAsNewSprite
 local selectSpritePickerSprite
 local linkSpriteToSelectedFrame
 local replaceSelectedFrameWithSprite
 local updateSpriteReplacementTarget
+local getAppearancePropertiesEditor
 
 local function getSpritePickerWidget(name)
    if not window then
       return nil
    end
-   local ids = SPRITE_PICKER_WIDGET_IDS[currentImportSection]
+   local section = currentImportSection
+   if name:sub(1, 7) == 'create_' then
+      section = 'create'
+      name = name:sub(8)
+   end
+   local ids = SPRITE_PICKER_WIDGET_IDS[section]
    return ids and window:recursiveGetChildById(ids[name]) or nil
 end
 
@@ -179,6 +161,96 @@ local function setStatus(message)
    if window then
       window:recursiveGetChildById('statusLabel'):setText(message)
    end
+end
+
+local function getWorkCopyService()
+   if not workCopyService then
+      workCopyService = SpriteEditorWorkCopyService.new()
+   end
+   return workCopyService
+end
+
+local function getAppearanceCatalogComponent()
+   if appearanceCatalog then
+      return appearanceCatalog
+   end
+
+   appearanceCatalog = SpriteEditorAppearanceCatalog.new(categories, {
+      get_widget = function(id)
+         return window and window:recursiveGetChildById(id) or nil
+      end,
+      get_window = function() return window end,
+      get_active_version = function() return activeVersion end,
+      get_selected_category = function() return selectedAppearanceCategory end,
+      get_selected_appearance_id = function() return selectedAppearanceId end,
+      select_appearance = function(category, id)
+         selectAppearance(category, id)
+      end,
+   })
+   return appearanceCatalog
+end
+
+renderAppearanceRows = function(scrollY)
+   getAppearanceCatalogComponent():render_rows(scrollY)
+end
+
+refreshAppearanceCatalog = function(category)
+   getAppearanceCatalogComponent():refresh(category)
+end
+
+applyAppearanceFilter = function()
+   getAppearanceCatalogComponent():apply_filter()
+end
+
+updateCategoryOptions = function()
+   getAppearanceCatalogComponent():update_category_options()
+end
+
+local function getFilteredAppearanceEntry(index)
+   return getAppearanceCatalogComponent():get_filtered_entry(index)
+end
+
+local function getAppearanceEntryCount()
+   return getAppearanceCatalogComponent():get_entry_count()
+end
+
+local function getSpritePickerComponent()
+   if spritePicker then
+      return spritePicker
+   end
+
+   spritePicker = SpriteEditorSpritePicker.new({
+      get_widget = getSpritePickerWidget,
+      get_window = function() return window end,
+      get_active_version = function() return activeVersion end,
+      get_section = function() return currentImportSection end,
+      get_selected_id = getSelectedSpritePickerId,
+      get_selected_frame_sprite_id = function() return selectedSpriteId end,
+      get_canvas = function() return canvas end,
+      clear_selection = function() setSelectedSpritePickerId(nil) end,
+      select_sprite = function(spriteId)
+         setSelectedSpritePickerId(spriteId)
+         updateSpriteReplacementTarget()
+      end,
+      set_status = function(message) setStatus(message) end,
+   })
+   return spritePicker
+end
+
+refreshSpritePicker = function()
+   getSpritePickerComponent():refresh()
+end
+
+renderSpritePickerRows = function(scrollY)
+   getSpritePickerComponent():render_rows(scrollY)
+end
+
+applySpritePickerFilter = function()
+   getSpritePickerComponent():apply_filter()
+end
+
+selectSpritePickerSprite = function(spriteId)
+   getSpritePickerComponent():select(spriteId)
 end
 
 local function setAppearanceStatus(message)
@@ -214,54 +286,6 @@ local function formatClientVersion(version)
    return string.format('%d.%02d', math.floor(version / 100), version % 100)
 end
 
-local function getCategoryAppearanceCount(category)
-   if categoryAppearanceCounts[category.data] ~= nil then
-      return categoryAppearanceCounts[category.data]
-   end
-
-   local count = 0
-   for _, thing in pairs(g_things.getThingTypes(category.data)) do
-      if thing and thing:getId() > 0 then
-         count = count + 1
-      end
-   end
-   categoryAppearanceCounts[category.data] = count
-   return count
-end
-
-local function updateCategoryOptions()
-   if not window then
-      return
-   end
-   local comboBox = window:recursiveGetChildById('appearanceCategory')
-   local onOptionChange = comboBox.onOptionChange
-   comboBox.onOptionChange = nil
-   comboBox:clearOptions()
-   for _, category in ipairs(categories) do
-      local label = tr(category.name)
-      if activeVersion then
-         label = string.format('%s (%d)', label, getCategoryAppearanceCount(category))
-      end
-      comboBox:addOption(label, category.data)
-   end
-   comboBox.onOptionChange = onOptionChange
-   comboBox:setCurrentOptionByData(selectedAppearanceCategory, true)
-end
-
-local function getThumbnailAnimationSprites(thing)
-   local sprites = thing:getThumbnailAnimationSprites()
-   if #sprites <= MAX_APPEARANCE_THUMBNAIL_FRAMES then
-      return sprites
-   end
-
-   local sampled = {}
-   for index = 0, MAX_APPEARANCE_THUMBNAIL_FRAMES - 1 do
-      local sourceIndex = math.floor(index * (#sprites - 1) / (MAX_APPEARANCE_THUMBNAIL_FRAMES - 1)) + 1
-      table.insert(sampled, sprites[sourceIndex])
-   end
-   return sampled
-end
-
 local function hasAppearanceChanges()
    if next(appearanceChanges.bools) ~= nil or
          next(appearanceChanges.values) ~= nil or
@@ -274,17 +298,8 @@ local function hasAppearanceChanges()
       return false
    end
 
-   for key, edit in pairs(appearanceStringWidgets) do
-      if edit:getText() ~= (appearanceOriginal[key] or '') then
-         return true
-      end
-   end
-
-   for key, edit in pairs(appearanceValueWidgets) do
-      local value = tonumber(edit:getText())
-      if value == nil or value ~= appearanceOriginal.values[key] then
-         return true
-      end
+   if appearanceProperties and appearanceProperties:has_widget_changes() then
+      return true
    end
 
    local groupIndex = animationWidgets.groupIndex
@@ -317,20 +332,6 @@ local function clearAppearanceChanges()
    appearanceChanges = { bools = {}, values = {}, strings = {}, animation = { groups = {} } }
 end
 
-local function sortedKeys(values)
-   local keys = {}
-   for key in pairs(values) do
-      table.insert(keys, key)
-   end
-   table.sort(keys)
-   return keys
-end
-
-local function propertyLabel(key)
-   local label = key:gsub('%.', ' / '):gsub('_', ' ')
-   return label:sub(1, 1):upper() .. label:sub(2)
-end
-
 local function selectedOption(comboBox)
    local option = comboBox and comboBox:getCurrentOption()
    return option and option.data
@@ -350,6 +351,25 @@ local function updateAppearanceSaveButton()
    end
 end
 
+getAppearancePropertiesEditor = function()
+   if appearanceProperties then
+      return appearanceProperties
+   end
+
+   appearanceProperties = SpriteEditorAppearanceProperties.new({
+      get_widget = function(id)
+         return window and window:recursiveGetChildById(id) or nil
+      end,
+      get_category = function() return selectedAppearanceCategory end,
+      get_original = function() return appearanceOriginal end,
+      get_changes = function() return appearanceChanges end,
+      is_building = function() return buildingAppearanceProperties end,
+      update = updateAppearanceSaveButton,
+      set_status = setAppearanceStatus,
+   })
+   return appearanceProperties
+end
+
 local function setSpritePath(path)
    if not window then
       return
@@ -359,154 +379,9 @@ local function setSpritePath(path)
    settingSpritePath = false
 end
 
-local function normalizeDirectoryPath(path)
-   path = (path or ''):trim():gsub('\\', '/')
-   if path == '' then
-      path = g_platform.getCurrentDir()
-   end
-   if path:match('^%a:/$') or path == '/' then
-      return path
-   end
-   return path:gsub('/+$', '')
-end
-
-local function getParentDirectory(path)
-   path = normalizeDirectoryPath(path)
-   if path == '/' or path:match('^%a:/$') then
-      return nil
-   end
-
-   local parent = path:gsub('/+$', ''):match('^(.*)/[^/]+$')
-   if not parent or parent == '' then
-      return '/'
-   end
-   if parent:match('^%a:$') then
-      return parent .. '/'
-   end
-   return parent
-end
-
-local function getPathName(path)
-   return path:gsub('/+$', ''):match('([^/]+)$') or path
-end
-
-local function getDefaultPngDirectory()
-   local baseDirectory
-   local ok, realDirectory = pcall(g_resources.getRealDir, '/data/things/README.md')
-   if ok and realDirectory and realDirectory ~= '' then
-      baseDirectory = realDirectory
-   else
-      baseDirectory = g_platform.getCurrentDir()
-   end
-   baseDirectory = baseDirectory:gsub('\\', '/'):gsub('/+$', '')
-   return normalizeDirectoryPath(baseDirectory .. '/data/things/pngs')
-end
-
-local function renderPngFilePicker()
-   if not filePickerWindow then
-      return
-   end
-
-   local previousSelection = filePickerSelection
-   filePickerDirectory = normalizeDirectoryPath(filePickerDirectory)
-   filePickerSelection = nil
-   local list = filePickerWindow:recursiveGetChildById('filePickerEntries')
-   list:destroyChildren()
-   filePickerWindow:recursiveGetChildById('filePickerPathEdit'):setText(filePickerDirectory)
-   filePickerWindow:recursiveGetChildById('filePickerSelectedLabel'):setText(tr('Choose a PNG file.'))
-   filePickerWindow:recursiveGetChildById('filePickerUseButton'):setEnabled(false)
-
-   local ok, entries = pcall(g_platform.listDirectoryEntries, filePickerDirectory)
-   if not ok then
-      entries = {}
-   end
-
-   local visibleEntries = {}
-   for _, path in ipairs(entries or {}) do
-      local isDirectory = path:ends('/')
-      if isDirectory or path:lower():ends('.png') then
-         table.insert(visibleEntries, { path = path, isDirectory = isDirectory })
-      end
-   end
-   table.sort(visibleEntries, function(a, b)
-      if a.isDirectory ~= b.isDirectory then
-         return a.isDirectory
-      end
-      return a.path:lower() < b.path:lower()
-   end)
-
-   local filter = filePickerWindow:recursiveGetChildById('filePickerFilterEdit'):getText():trim():lower()
-   local shown = 0
-   for _, entry in ipairs(visibleEntries) do
-      local name = getPathName(entry.path)
-      if filter == '' or name:lower():find(filter, 1, true) then
-         local row = g_ui.createWidget('SpriteEditorFileEntry', list)
-         row:setText(entry.isDirectory and tr('[Folder] %s', name) or name)
-         row.filePickerPath = entry.path
-         row.filePickerIsDirectory = entry.isDirectory
-         if not entry.isDirectory and entry.path == previousSelection then
-            filePickerSelection = entry.path
-         end
-         row.onClick = function(widget)
-            if widget.filePickerIsDirectory then
-               filePickerSelection = nil
-               filePickerWindow:recursiveGetChildById('filePickerUseButton'):setEnabled(false)
-               filePickerWindow:recursiveGetChildById('filePickerSelectedLabel'):setText(
-                  tr('Double-click to open %s', getPathName(widget.filePickerPath)))
-            else
-               filePickerSelection = widget.filePickerPath
-               filePickerWindow:recursiveGetChildById('filePickerUseButton'):setEnabled(true)
-               local label = filePickerWindow:recursiveGetChildById('filePickerSelectedLabel')
-               label:setText(widget.filePickerPath)
-               label:setTooltip(widget.filePickerPath)
-            end
-         end
-         row.onDoubleClick = function(widget)
-            if widget.filePickerIsDirectory then
-               filePickerDirectory = widget.filePickerPath
-               renderPngFilePicker()
-            else
-               filePickerSelection = widget.filePickerPath
-               modules.game_sprite_editor.useSelectedPngFile()
-            end
-         end
-         shown = shown + 1
-      end
-   end
-
-   local parentButton = filePickerWindow:recursiveGetChildById('filePickerParentButton')
-   parentButton:setEnabled(getParentDirectory(filePickerDirectory) ~= nil)
-   filePickerWindow:recursiveGetChildById('filePickerCountLabel'):setText(
-      tr('%d PNG files and folders', shown))
-   if filePickerSelection then
-      local label = filePickerWindow:recursiveGetChildById('filePickerSelectedLabel')
-      label:setText(filePickerSelection)
-      label:setTooltip(filePickerSelection)
-      filePickerWindow:recursiveGetChildById('filePickerUseButton'):setEnabled(true)
-   end
-   if shown == 0 then
-      filePickerWindow:recursiveGetChildById('filePickerSelectedLabel'):setText(
-         tr('No PNG files or folders match this location and filter.'))
-   end
-end
-
 local function destroyPngFilePicker()
-   local picker = filePickerWindow
-   filePickerWindow = nil
-   filePickerSelection = nil
-   filePickerTarget = nil
-
-   if not picker then
-      return
-   end
-
-   local ok, err = pcall(function()
-      if not picker:isDestroyed() then
-         picker:destroy()
-      end
-   end)
-   if not ok then
-      g_logger.error('[game_sprite_editor] Unable to close PNG file browser: ' .. tostring(err))
+   if pngFilePicker then
+      pngFilePicker:destroy()
    end
 end
 
@@ -514,46 +389,22 @@ function closePngFilePicker()
    destroyPngFilePicker()
 end
 
-function navigatePngFilePicker()
-   if not filePickerWindow then
-      return
-   end
-   filePickerDirectory = normalizeDirectoryPath(
-      filePickerWindow:recursiveGetChildById('filePickerPathEdit'):getText())
-   renderPngFilePicker()
-end
+local function createPngFilePicker()
+   pngFilePicker = SpriteEditorPngFilePicker.new({
+      on_status = setStatus,
+      on_selected = function(target, path)
+         if target == 'create' then
+            window:recursiveGetChildById('newAppearancePngPathEdit'):setText(path)
+            setStatus(tr('PNG selected for the new appearance: %s', path:match('([^/]+)$') or path))
+            return
+         end
 
-function goToParentPngFilePicker()
-   if not filePickerWindow then
-      return
-   end
-   filePickerDirectory = getParentDirectory(filePickerDirectory)
-   if filePickerDirectory then
-      renderPngFilePicker()
-   end
-end
-
-function filterPngFilePicker()
-   renderPngFilePicker()
-end
-
-function useSelectedPngFile()
-   if not filePickerWindow or not filePickerSelection then
-      return
-   end
-   local path = filePickerSelection
-   local target = filePickerTarget
-   filePickerDirectory = getParentDirectory(path) or filePickerDirectory
-   if target == 'create' then
-      window:recursiveGetChildById('newAppearancePngPathEdit'):setText(path)
-      setStatus(tr('PNG selected for the new appearance: %s', getPathName(path)))
-   else
-      preparedSpritePath = path
-      setSpritePath(path)
-      updateSpriteReplacementTarget()
-      setStatus(tr('PNG selected: %s', getPathName(path)))
-   end
-   destroyPngFilePicker()
+         preparedSpritePath = path
+         setSpritePath(path)
+         updateSpriteReplacementTarget()
+         setStatus(tr('PNG selected: %s', path:match('([^/]+)$') or path))
+      end,
+   })
 end
 
 function openPngFilePicker(target)
@@ -572,53 +423,13 @@ function openPngFilePicker(target)
       setStatus(tr('Restart the client to enable PNG file browsing.'))
       return
    end
-   destroyPngFilePicker()
-   filePickerTarget = target
+   if not pngFilePicker then
+      createPngFilePicker()
+   end
+
    local pathEditId = target == 'create' and 'newAppearancePngPathEdit' or 'previewSpritePathEdit'
-   local existingPath = window:recursiveGetChildById(pathEditId):getText():gsub('\\', '/')
-   if existingPath ~= '' and existingPath:lower():ends('.png') then
-      filePickerDirectory = getParentDirectory(existingPath) or g_platform.getCurrentDir()
-      filePickerSelection = g_platform.fileExists(existingPath) and existingPath or nil
-   elseif not filePickerDirectory then
-      filePickerDirectory = getDefaultPngDirectory()
-   end
-   local opened, picker = pcall(g_ui.displayUI, 'sprite_editor_file_picker')
-   if not opened or not picker then
-      filePickerWindow = nil
-      if not opened then
-         g_logger.error('[game_sprite_editor] Unable to open PNG file browser: ' .. tostring(picker))
-      end
-      setStatus(tr('Could not open the PNG file browser. Check the client log.'))
-      return
-   end
-   filePickerWindow = picker
-   local initialized, err = pcall(function()
-      filePickerWindow:recursiveGetChildById('filePickerGoButton').onClick = navigatePngFilePicker
-      filePickerWindow:recursiveGetChildById('filePickerParentButton').onClick = goToParentPngFilePicker
-      filePickerWindow:recursiveGetChildById('filePickerUseButton').onClick = useSelectedPngFile
-      filePickerWindow:recursiveGetChildById('filePickerCancelButton').onClick = closePngFilePicker
-      local pathEdit = filePickerWindow:recursiveGetChildById('filePickerPathEdit')
-      pathEdit.onEnter = navigatePngFilePicker
-      pathEdit.onTextChange = function()
-         filePickerSelection = nil
-         filePickerWindow:recursiveGetChildById('filePickerUseButton'):setEnabled(false)
-      end
-      local filterEdit = filePickerWindow:recursiveGetChildById('filePickerFilterEdit')
-      filterEdit.onTextChange = filterPngFilePicker
-      renderPngFilePicker()
-      if filePickerSelection then
-         filePickerWindow:recursiveGetChildById('filePickerSelectedLabel'):setText(filePickerSelection)
-         filePickerWindow:recursiveGetChildById('filePickerSelectedLabel'):setTooltip(filePickerSelection)
-         filePickerWindow:recursiveGetChildById('filePickerUseButton'):setEnabled(true)
-      end
-      filePickerWindow:raise()
-      filePickerWindow:focus()
-   end)
-   if not initialized then
-      g_logger.error('[game_sprite_editor] Unable to initialize PNG file browser: ' .. tostring(err))
-      destroyPngFilePicker()
-      setStatus(tr('Could not initialize the PNG file browser. Check the client log.'))
-   end
+   local existingPath = window:recursiveGetChildById(pathEditId):getText()
+   pngFilePicker:open(target, existingPath)
 end
 
 local function updatePreviewTitle()
@@ -799,36 +610,7 @@ local function setPropertiesTab(tab)
    window:recursiveGetChildById('valuesTabButton'):setOn(valuesVisible)
 end
 
-local function buildEquipmentSlotEditor(valuesList, data)
-   local slot = data.values['clothes.slot'] or 0
-   local row = g_ui.createWidget('AppearanceValueSelectRow', valuesList)
-   row:setWidth(285)
-   row:recursiveGetChildById('propertyLabel'):setText(tr('Equipment slot'))
-   local comboBox = row:recursiveGetChildById('propertySelection')
-   for _, option in ipairs(EQUIPMENT_SLOT_OPTIONS) do
-      comboBox:addOption(tr(option.label), option.data)
-   end
-   comboBox:setCurrentOptionByData(slot, true)
-   comboBox.onOptionChange = function(_, _, value)
-      if buildingAppearanceProperties then
-         return
-      end
-      if value == slot then
-         appearanceChanges.values['clothes.slot'] = nil
-      else
-         appearanceChanges.values['clothes.slot'] = value
-      end
-      updateAppearanceSaveButton()
-   end
-end
-
 local function buildAppearanceProperties(data)
-   local flagsList = window:recursiveGetChildById('appearanceFlagsList')
-   local valuesList = window:recursiveGetChildById('appearanceValuesList')
-   flagsList:destroyChildren()
-   valuesList:destroyChildren()
-   appearanceValueWidgets = {}
-   appearanceStringWidgets = {}
    clearAppearanceChanges()
    appearanceOriginal = data
    data.values = data.values or {}
@@ -836,76 +618,7 @@ local function buildAppearanceProperties(data)
       data.values['clothes.slot'] = data.values['clothes.slot'] or 0
    end
    buildingAppearanceProperties = true
-
-   local nameEdit = window:recursiveGetChildById('appearanceName')
-   local descriptionEdit = window:recursiveGetChildById('appearanceDescription')
-   nameEdit:setEnabled(true)
-   descriptionEdit:setEnabled(true)
-   nameEdit:setText(data.name or '')
-   descriptionEdit:setText(data.description or '')
-   appearanceStringWidgets.name = nameEdit
-   appearanceStringWidgets.description = descriptionEdit
-   for _, key in ipairs({ 'name', 'description' }) do
-      appearanceStringWidgets[key].onTextChange = function(widget)
-         if buildingAppearanceProperties then
-            return
-         end
-         local value = widget:getText()
-         if value == (appearanceOriginal[key] or '') then
-            appearanceChanges.strings[key] = nil
-         else
-            appearanceChanges.strings[key] = value
-         end
-         updateAppearanceSaveButton()
-      end
-   end
-
-   for _, key in ipairs(sortedKeys(data.bools)) do
-      local checkbox = g_ui.createWidget('AppearanceFlagCheckBox', flagsList)
-      checkbox:setWidth(285)
-      checkbox:setText(propertyLabel(key))
-      checkbox:setChecked(data.bools[key])
-      checkbox.onCheckChange = function(widget)
-         if buildingAppearanceProperties then
-            return
-         end
-         local checked = widget:isChecked()
-         if checked == data.bools[key] then
-            appearanceChanges.bools[key] = nil
-         else
-            appearanceChanges.bools[key] = checked
-         end
-         updateAppearanceSaveButton()
-      end
-   end
-
-   if selectedAppearanceCategory == 0 then
-      buildEquipmentSlotEditor(valuesList, data)
-   end
-
-   for _, key in ipairs(sortedKeys(data.values)) do
-      if key ~= 'clothes.slot' or selectedAppearanceCategory ~= 0 then
-         local row = g_ui.createWidget('AppearanceValueRow', valuesList)
-         row:setWidth(285)
-         row:recursiveGetChildById('propertyLabel'):setText(propertyLabel(key))
-         local edit = row:recursiveGetChildById('propertyValue')
-         edit:setText(tostring(data.values[key]))
-         appearanceValueWidgets[key] = edit
-         edit.onTextChange = function(widget)
-            if buildingAppearanceProperties then
-               return
-            end
-            local value = tonumber(widget:getText())
-            if value and value >= 0 and value % 1 == 0 and value ~= data.values[key] then
-               appearanceChanges.values[key] = value
-            else
-               appearanceChanges.values[key] = nil
-            end
-            updateAppearanceSaveButton()
-         end
-      end
-   end
-
+   getAppearancePropertiesEditor():build_fields(data)
    configurePreviewControls(data.frameGroups or {})
    updateAnimationEditor()
    buildingAppearanceProperties = false
@@ -919,21 +632,15 @@ local function clearAppearanceProperties()
    setAppearanceStatus(tr('Open a work copy and select an appearance to edit.'))
    selectedAppearanceId = nil
    appearanceOriginal = nil
-   window:recursiveGetChildById('appearanceName'):setText('')
-   window:recursiveGetChildById('appearanceDescription'):setText('')
-   window:recursiveGetChildById('appearanceFlagsList'):destroyChildren()
-   window:recursiveGetChildById('appearanceValuesList'):destroyChildren()
+   getAppearancePropertiesEditor():clear_fields()
+   getAppearancePropertiesEditor():set_enabled(false)
    window:recursiveGetChildById('previewTimelineFrames'):destroyChildren()
    setPreviewMessage(tr('Select an appearance to see its sprite.'))
-   window:recursiveGetChildById('appearanceName'):setEnabled(false)
-   window:recursiveGetChildById('appearanceDescription'):setEnabled(false)
    selectedSpriteId = nil
    selectedSpriteContext = nil
    canvas:setVisible(false)
    setSpritePath(preparedSpritePath)
    updateSpriteReplacementTarget()
-   appearanceValueWidgets = {}
-   appearanceStringWidgets = {}
    animationWidgets = {}
    configurePreviewControls({})
    updateAnimationEditor()
@@ -2087,153 +1794,6 @@ local function refreshSelectedAppearance()
    end
 end
 
-local function getThingEntries(category)
-   local entries = {}
-   for _, thing in pairs(g_things.getThingTypes(category)) do
-      local id = thing:getId()
-      if id and id > 0 then
-         local sprites = thing:getSprites()
-         local name = thing:getName()
-         local seenSpriteIds = {}
-         local spriteId
-         local minSpriteId
-         local maxSpriteId
-         local linkedSpriteCount = 0
-         for _, linkedSpriteId in ipairs(sprites or {}) do
-            if linkedSpriteId > 0 then
-               spriteId = spriteId or linkedSpriteId
-               if not seenSpriteIds[linkedSpriteId] then
-                  seenSpriteIds[linkedSpriteId] = true
-                  minSpriteId = not minSpriteId and linkedSpriteId or math.min(minSpriteId, linkedSpriteId)
-                  maxSpriteId = not maxSpriteId and linkedSpriteId or math.max(maxSpriteId, linkedSpriteId)
-                  linkedSpriteCount = linkedSpriteCount + 1
-               end
-            end
-         end
-         table.insert(entries, {
-            id = id,
-            category = category,
-            name = name ~= '' and name or nil,
-            spriteId = spriteId,
-            minSpriteId = minSpriteId,
-            maxSpriteId = maxSpriteId,
-            linkedSpriteCount = linkedSpriteCount,
-         })
-      end
-   end
-   table.sort(entries, function(a, b) return a.id < b.id end)
-   return entries
-end
-
-local function getAppearanceTooltip(entry)
-   local lines = {}
-   if entry.name then
-      table.insert(lines, entry.name)
-   end
-
-   if entry.linkedSpriteCount == 1 then
-      table.insert(lines, tr('Sprite ID: %d', entry.minSpriteId))
-   elseif entry.linkedSpriteCount > 1 then
-      table.insert(lines, tr('Sprite ID span: %d-%d (%d linked)',
-         entry.minSpriteId, entry.maxSpriteId, entry.linkedSpriteCount))
-   else
-      table.insert(lines, tr('No linked sprites'))
-   end
-   return table.concat(lines, '\n')
-end
-
-renderAppearanceRows = function(scrollY)
-   if not window or not activeVersion then
-      return
-   end
-   local list = window:recursiveGetChildById('appearanceList')
-   local content = window:recursiveGetChildById('appearanceListContent')
-   content:setHeight(math.max(1, #filteredAppearanceEntries * APPEARANCE_ROW_HEIGHT))
-   local firstIndex = math.floor(math.max(0, scrollY or 0) / APPEARANCE_ROW_HEIGHT) + 1
-   local viewportHeight = math.max(list:getHeight(), 1)
-   local poolSize = math.ceil(math.max(viewportHeight, 400) / APPEARANCE_ROW_HEIGHT) + 2
-   local thumbnailsUpdated = false
-   while #appearanceRows < poolSize do
-      local row = g_ui.createWidget('AppearanceResultRow', content)
-      table.insert(appearanceRows, row)
-   end
-
-   for slot, row in ipairs(appearanceRows) do
-      local index = firstIndex + slot - 1
-      local entry = filteredAppearanceEntries[index]
-      row:setVisible(entry ~= nil)
-      if entry then
-         row:setMarginTop((index - 1) * APPEARANCE_ROW_HEIGHT)
-         row:setText('')
-         row:recursiveGetChildById('appearanceId'):setText(tostring(entry.id))
-         row:setTooltip(getAppearanceTooltip(entry))
-         local thumbnail = row:recursiveGetChildById('thumbnail')
-         thumbnail:setVisible(entry.spriteId ~= nil)
-         local lastVisibleIndex = math.floor(((scrollY or 0) + viewportHeight) / APPEARANCE_ROW_HEIGHT) + 1
-         if entry.spriteId and index <= lastVisibleIndex and row.thumbnailEntry ~= entry then
-            local loaded
-            local thing = g_things.getThingType(entry.id, entry.category)
-            local animationSprites = getThumbnailAnimationSprites(thing)
-            if #animationSprites > 1 then
-               loaded = thumbnail:setSpriteAnimationIds(animationSprites)
-            else
-               loaded = thumbnail:setThumbnailSpriteId(entry.spriteId)
-            end
-            if not loaded and #animationSprites > 1 then
-               loaded = thumbnail:setThumbnailSpriteId(entry.spriteId)
-            end
-            if loaded then
-               thumbnailsUpdated = true
-               row.thumbnailEntry = entry
-            else
-               row.thumbnailEntry = nil
-            end
-         end
-         local selected = entry.id == selectedAppearanceId and entry.category == selectedAppearanceCategory
-         row:setOn(selected)
-         row.onClick = function()
-            selectAppearance(entry.category, entry.id)
-         end
-      end
-   end
-
-   if thumbnailsUpdated and g_spriteAppearances.releaseDecodedSpriteSheets then
-      g_spriteAppearances.releaseDecodedSpriteSheets()
-   end
-end
-
-local function applyAppearanceFilter()
-   if not window then
-      return
-   end
-   local search = window:recursiveGetChildById('appearanceSearch'):getText():lower():match('^%s*(.-)%s*$')
-   local exactId = search:match('^%d+$') and tonumber(search) or nil
-   filteredAppearanceEntries = {}
-   for _, entry in ipairs(appearanceEntries) do
-      local nameText = entry.name and entry.name:lower() or ''
-      if search == '' or (exactId and entry.id == exactId) or
-            (not exactId and nameText:find(search, 1, true)) then
-         table.insert(filteredAppearanceEntries, entry)
-      end
-   end
-   local list = window:recursiveGetChildById('appearanceList')
-   list:setVirtualOffset({ x = 0, y = 0 })
-   renderAppearanceRows(0)
-   list:updateScrollBars()
-end
-
-local function refreshAppearanceCatalog(category)
-   if not window or not activeVersion then
-      appearanceEntries = {}
-      filteredAppearanceEntries = {}
-      return
-   end
-   appearanceEntries = getThingEntries(category)
-   categoryAppearanceCounts[category] = #appearanceEntries
-   updateCategoryOptions()
-   applyAppearanceFilter()
-end
-
 local function loadAppearanceRecord(category, id, forceDiscard, forceReload)
    if not window or not activeVersion or g_game.isOnline() then
       setStatus(tr('Open a 15.x work copy before editing appearances.'))
@@ -2306,11 +1866,13 @@ local function changeAppearanceCategory(category, forceDiscard)
       searchEdit:setText('')
    end
    refreshAppearanceCatalog(category)
-   if filteredAppearanceEntries[1] then
-      loadAppearanceRecord(category, filteredAppearanceEntries[1].id, true)
+   local firstEntry = getFilteredAppearanceEntry(1)
+   if firstEntry then
+      loadAppearanceRecord(category, firstEntry.id, true)
    else
       clearAppearanceProperties()
-      setStatus(#appearanceEntries > 0 and tr('No appearances match this search.') or tr('No appearances in this category.'))
+      setStatus(getAppearanceEntryCount() > 0 and tr('No appearances match this search.') or
+         tr('No appearances in this category.'))
    end
 end
 
@@ -2318,33 +1880,10 @@ local function reloadAssets()
    if not activeAssetPath then
       return false
    end
-   g_things.invalidateTextureCache()
-   if not g_things.loadAppearances(activeAssetPath) or not g_things.loadStaticData(activeAssetPath) then
+   if not getWorkCopyService():reload(activeAssetPath) then
       return false
    end
    if refreshSpritePicker then refreshSpritePicker() end
-   return true
-end
-
-local function unmountWorkRoot(root)
-   if not root or not mountedRoots[root] then
-      return true, false
-   end
-   if not g_resources.removeSearchPath(root) then
-      return false, false
-   end
-   mountedRoots[root] = nil
-   return true, true
-end
-
-local function restoreWorkRoot(root, wasMounted)
-   if not wasMounted then
-      return true
-   end
-   if not g_resources.addSearchPath(root, true) then
-      return false
-   end
-   mountedRoots[root] = true
    return true
 end
 
@@ -2353,40 +1892,9 @@ local function releaseActiveWorkCopy()
       return true
    end
 
-   local version = activeVersion
-   local root = activeWorkRoot
-   local workAssetPath = activeAssetPath
-   local unmounted = true
-   if root then
-      unmounted = unmountWorkRoot(root)
-   end
-   if not unmounted then
-      return false, tr('Could not unmount the sprite editor working copy.')
-   end
-
-   local installedAssetPath = resolvepath(string.format('/data/things/%d/', version))
-   local reloaded, loaded = pcall(function()
-      g_things.invalidateTextureCache()
-      if not g_things.loadAppearances(installedAssetPath) then
-         return false
-      end
-      return g_things.loadStaticData(installedAssetPath)
-   end)
-   if not reloaded or not loaded then
-      local remounted = not root or mountedRoots[root] or g_resources.addSearchPath(root, true)
-      if remounted and root then
-         mountedRoots[root] = true
-      end
-      if remounted and workAssetPath then
-         pcall(function()
-            g_things.invalidateTextureCache()
-            g_things.loadAppearances(workAssetPath)
-            g_things.loadStaticData(workAssetPath)
-         end)
-      end
-      local detail = not reloaded and getUserFacingError(loaded) or
-         tr('The installed client assets could not be reloaded.')
-      return false, detail
+   local released, err = getWorkCopyService():release(activeVersion, activeWorkRoot, activeAssetPath)
+   if not released then
+      return false, getUserFacingError(err)
    end
 
    activeVersion = nil
@@ -2444,6 +1952,24 @@ local function createWindow()
       return false
    end
 
+   local rightPanel = window:recursiveGetChildById('rightPanel')
+   if not rightPanel then
+      window:destroy()
+      window = nil
+      displayErrorBox(tr('Assets Editor'), tr('The editor side panel could not be initialized.'))
+      return false
+   end
+   for _, panelName in ipairs({ 'sprite_editor_properties', 'sprite_editor_import', 'sprite_editor_export' }) do
+      local loaded, panel = pcall(g_ui.loadUI, panelName, rightPanel)
+      if not loaded or not panel then
+         g_logger.error('[game_sprite_editor] Unable to load panel ' .. panelName .. ': ' .. tostring(panel))
+         window:destroy()
+         window = nil
+         displayErrorBox(tr('Assets Editor'), tr('Could not load the editor side panel. Check the client log.'))
+         return false
+      end
+   end
+
    canvas = window:recursiveGetChildById('canvas')
    if not canvas then
       window:destroy()
@@ -2499,31 +2025,8 @@ local function createWindow()
       newAppearanceCategoryBox:addOption(tr(category.name), category.data)
    end
    newAppearanceCategoryBox:setCurrentOptionByData(selectedAppearanceCategory, true)
-   local searchEdit = window:recursiveGetChildById('appearanceSearch')
-   searchEdit.onTextChange = function()
-      applyAppearanceFilter()
-   end
-   local list = window:recursiveGetChildById('appearanceList')
-   list.onScrollChange = function(_, offset)
-      renderAppearanceRows(offset.y)
-   end
-   local function scheduleSpritePickerFilter()
-      if spriteSearchEvent then
-         removeEvent(spriteSearchEvent)
-      end
-      spriteSearchEvent = scheduleEvent(function()
-         spriteSearchEvent = nil
-         applySpritePickerFilter()
-      end, 120)
-   end
-   for _, searchId in ipairs({ 'spriteSearchEdit', 'newAppearanceSpriteSearchEdit' }) do
-      window:recursiveGetChildById(searchId).onTextChange = scheduleSpritePickerFilter
-   end
-   for _, listId in ipairs({ 'spritePickerList', 'newAppearanceSpritePickerList' }) do
-      window:recursiveGetChildById(listId).onScrollChange = function(_, offset)
-         renderSpritePickerRows(offset.y)
-      end
-   end
+   getAppearanceCatalogComponent():attach_window()
+   getSpritePickerComponent():attach_window()
    window:recursiveGetChildById('newAppearancePngPathEdit').onTextChange = function(widget)
       window:recursiveGetChildById('createAppearanceButton'):setEnabled(
          activeVersion ~= nil and not g_game.isOnline() and currentNewAppearanceSourceMode == 'png' and
@@ -2552,8 +2055,9 @@ local function createWindow()
    if activeVersion then
       refreshAppearanceCatalog(selectedAppearanceCategory)
       refreshSpritePicker()
-      if filteredAppearanceEntries[1] then
-         loadAppearanceRecord(selectedAppearanceCategory, filteredAppearanceEntries[1].id, true)
+      local firstEntry = getFilteredAppearanceEntry(1)
+      if firstEntry then
+         loadAppearanceRecord(selectedAppearanceCategory, firstEntry.id, true)
       end
    else
       clearAppearanceProperties()
@@ -2565,29 +2069,24 @@ local function destroyWindow()
    stopPreviewAnimation()
    timelineScrubbing = false
    destroyPngFilePicker()
-   if spriteSearchEvent then
-      removeEvent(spriteSearchEvent)
-      spriteSearchEvent = nil
+   if spritePicker then
+      spritePicker:destroy()
    end
-   appearanceValueWidgets = {}
-   appearanceStringWidgets = {}
+   if appearanceProperties then
+      appearanceProperties:destroy()
+   end
    animationWidgets = {}
    if window then
       window:destroy()
       window = nil
       canvas = nil
    end
-   appearanceRows = {}
-   spritePickerCells = { replace = {}, create = {} }
-   spritePickerRanges = {}
-   spritePickerIds = nil
-   spritePickerCount = 0
+   if appearanceCatalog then
+      appearanceCatalog:destroy()
+   end
    spritePickerSourceId = nil
    selectedReplacementSpriteId = nil
    selectedCreateSpriteId = nil
-   spritePickerQuery = ''
-   appearanceEntries = {}
-   filteredAppearanceEntries = {}
    selectedAppearanceId = nil
    selectedSpriteId = nil
    appearanceOriginal = nil
@@ -2602,34 +2101,18 @@ local function loadAssets(version)
       displayErrorBox(tr('Assets Editor'), tr('Disconnect before opening the offline assets editor.'))
       return false
    end
-   local ok, workRoot = pcall(g_spriteAppearances.createWorkCopy, version)
-   if not ok then
+   local loaded, workRoot, assetPath = getWorkCopyService():load(version)
+   if not loaded then
       displayErrorBox(tr('Assets Editor'), getUserFacingError(workRoot))
-      return false
-   end
-
-   if not mountedRoots[workRoot] then
-      if not g_resources.addSearchPath(workRoot, true) then
-         displayErrorBox(tr('Assets Editor'), tr('Could not mount the work copy.'))
-         return false
-      end
-      mountedRoots[workRoot] = true
-   end
-
-   g_things.invalidateTextureCache()
-   if g_game.getClientVersion() ~= version then
-      g_game.setClientVersion(version)
-   end
-   local assetPath = resolvepath(string.format('/data/things/%d/', version))
-   if not g_things.loadAppearances(assetPath) or not g_things.loadStaticData(assetPath) then
-      displayErrorBox(tr('Assets Editor'), tr('Could not load the selected work copy. Check the client log for details.'))
       return false
    end
 
    activeVersion = version
    activeAssetPath = assetPath
    activeWorkRoot = workRoot
-   categoryAppearanceCounts = {}
+   if appearanceCatalog then
+      appearanceCatalog:clear_category_counts()
+   end
    selectedAppearanceCategory = 0
    return true
 end
@@ -2638,6 +2121,7 @@ function init()
    if not g_spriteAppearances.createWorkCopy then
       return
    end
+   g_ui.importStyle('sprite_editor_widgets')
    gameStartCallback = function()
       if topMenuButton then topMenuButton:setVisible(false) end
    end
@@ -2700,7 +2184,7 @@ function loadSelectedAssets()
       return
    end
 
-   local ok, hasWorkCopy = pcall(g_spriteAppearances.workCopyExists, version)
+   local ok, hasWorkCopy = getWorkCopyService():exists(version)
    if not ok then
       displayErrorBox(tr('Assets Editor'), getUserFacingError(hasWorkCopy))
       return
@@ -2722,20 +2206,13 @@ function loadSelectedAssets()
    end
    local function resetAndLoad()
       messageBox:ok()
-      local mountedRoot = activeWorkRoot
-      local unmountOk, wasMounted = unmountWorkRoot(mountedRoot)
-      if not unmountOk then
-         displayErrorBox(tr('Assets Editor'), tr('Could not unmount the working copy before reloading assets.'))
-         return
-      end
-
-      local resetOk, result = pcall(g_spriteAppearances.resetWorkCopy, version)
+      local resetOk, result, remountFailed = getWorkCopyService():reset(version, activeWorkRoot)
       if not resetOk then
-         if not restoreWorkRoot(mountedRoot, wasMounted) then
-            displayErrorBox(tr('Assets Editor'), tr('%s The working copy could not be remounted.', getUserFacingError(result)))
-            return
+         local message = getUserFacingError(result)
+         if remountFailed then
+            message = tr('%s The working copy could not be remounted.', message)
          end
-         displayErrorBox(tr('Assets Editor'), getUserFacingError(result))
+         displayErrorBox(tr('Assets Editor'), message)
          return
       end
       openWorkCopyVersion(version)
@@ -2773,236 +2250,6 @@ end
 
 function showEditorPage()
    setActivePage('editor')
-end
-
-local function getSpritePickerIdAt(index)
-   if spritePickerIds then
-      return spritePickerIds[index]
-   end
-
-   local first = 1
-   local last = #spritePickerRanges
-   while first <= last do
-      local middle = math.floor((first + last) / 2)
-      if index <= spritePickerRanges[middle][3] then
-         last = middle - 1
-      else
-         first = middle + 1
-      end
-   end
-   local range = spritePickerRanges[first]
-   if not range then return nil end
-   local previousCount = first > 1 and spritePickerRanges[first - 1][3] or 0
-   return range[1] + index - previousCount - 1
-end
-
-local function getSpriteSizeTier(width, height)
-   local size = math.max(width, height)
-   local tier = 32
-   while tier < size do
-      tier = tier * 2
-   end
-   return tier
-end
-
-applySpritePickerFilter = function()
-   if not window then
-      return
-   end
-
-   local query = getSpritePickerWidget('search'):getText():lower():match('^%s*(.-)%s*$')
-   if query ~= spritePickerQuery then
-      setSelectedSpritePickerId(nil)
-      spritePickerQuery = query
-   end
-   spritePickerIds = nil
-   if query ~= '' then
-      spritePickerIds = {}
-      for _, range in ipairs(spritePickerRanges) do
-         local firstId = math.max(1, range[1])
-         for spriteId = firstId, range[2] do
-            if tostring(spriteId):find(query, 1, true) then
-               table.insert(spritePickerIds, spriteId)
-            end
-         end
-      end
-      spritePickerCount = #spritePickerIds
-   else
-      spritePickerCount = #spritePickerRanges > 0 and spritePickerRanges[#spritePickerRanges][3] or 0
-   end
-
-   local list = getSpritePickerWidget('list')
-   list:setVirtualOffset({ x = 0, y = 0 })
-   renderSpritePickerRows(0)
-   list:updateScrollBars()
-end
-
-refreshSpritePicker = function()
-   if not window or not activeVersion then
-      spritePickerRanges = {}
-      spritePickerIds = nil
-      spritePickerCount = 0
-      return
-   end
-
-   local ok, encoded = pcall(g_spriteAppearances.getSpriteRanges)
-   local decoded, ranges = false, nil
-   if ok then decoded, ranges = pcall(json.decode, encoded) end
-   if not decoded or type(ranges) ~= 'table' then
-      spritePickerRanges = {}
-      spritePickerIds = nil
-      spritePickerCount = 0
-      setStatus(tr('The sprite list could not be loaded.'))
-      return
-   end
-
-   local validRanges = {}
-   for _, range in ipairs(ranges) do
-      local firstId = tonumber(range[1])
-      local lastId = tonumber(range[2])
-      if firstId and lastId and firstId % 1 == 0 and lastId % 1 == 0 and lastId >= firstId then
-         table.insert(validRanges, { math.max(1, firstId), lastId })
-      end
-   end
-   table.sort(validRanges, function(a, b) return a[1] < b[1] end)
-   spritePickerRanges = {}
-   for _, range in ipairs(validRanges) do
-      local previous = spritePickerRanges[#spritePickerRanges]
-      if previous and range[1] <= previous[2] + 1 then
-         previous[2] = math.max(previous[2], range[2])
-      else
-         table.insert(spritePickerRanges, { range[1], range[2] })
-      end
-   end
-   local cumulativeCount = 0
-   for _, range in ipairs(spritePickerRanges) do
-      cumulativeCount = cumulativeCount + math.max(0, range[2] - range[1] + 1)
-      range[3] = cumulativeCount
-   end
-   for _, cells in pairs(spritePickerCells) do
-      for _, cell in ipairs(cells) do
-         cell.spriteId = nil
-         cell.thumbnailSpriteId = nil
-      end
-   end
-   applySpritePickerFilter()
-end
-
-selectSpritePickerSprite = function(spriteId)
-   if not window or not spriteId then
-      return
-   end
-   setSelectedSpritePickerId(spriteId)
-   updateSpriteReplacementTarget()
-end
-
-renderSpritePickerRows = function(scrollY)
-   if not window then
-      return
-   end
-
-   local list = getSpritePickerWidget('list')
-   local content = getSpritePickerWidget('content')
-   local cellWidth = 70
-   local cellHeight = 60
-   local columnGap = 3
-   local columnCount = math.max(1, math.floor((list:getWidth() + columnGap) / (cellWidth + columnGap)))
-   local cells = spritePickerCells[currentImportSection]
-   local totalRows = math.ceil(spritePickerCount / columnCount)
-   content:setHeight(math.max(1, totalRows * cellHeight))
-
-   local firstRow = math.floor(math.max(0, scrollY or 0) / cellHeight)
-   local viewportHeight = math.max(list:getHeight(), cellHeight)
-   local poolSize = (math.ceil(viewportHeight / cellHeight) + 2) * columnCount
-   while #cells < poolSize do
-      table.insert(cells, g_ui.createWidget('SpritePickerCell', content))
-   end
-
-   local updatedThumbnails = false
-   for slot, cell in ipairs(cells) do
-      local index = firstRow * columnCount + slot
-      local spriteId = index <= spritePickerCount and getSpritePickerIdAt(index) or nil
-      cell:setVisible(spriteId ~= nil)
-      if spriteId then
-         cell.isSpritePickerCell = true
-         cell:setDraggable(currentImportSection == 'replace' and activeVersion ~= nil and
-            not g_game.isOnline() and selectedSpriteId ~= nil)
-         cell:setMarginTop(math.floor((index - 1) / columnCount) * cellHeight)
-         cell:setMarginLeft(((index - 1) % columnCount) * (cellWidth + columnGap))
-         cell:recursiveGetChildById('spritePickerId'):setText(tostring(spriteId))
-         cell:setOn(spriteId == getSelectedSpritePickerId())
-         cell.spriteId = spriteId
-         if cell.thumbnailSpriteId ~= spriteId then
-            local thumbnail = cell:recursiveGetChildById('thumbnail')
-            local sizeBadge = cell:recursiveGetChildById('spriteSizeBadge')
-            if thumbnail:setThumbnailSpriteId(spriteId) then
-               cell.thumbnailSpriteId = spriteId
-               updatedThumbnails = true
-               local width = thumbnail:getSpriteWidth()
-               local height = thumbnail:getSpriteHeight()
-               local largestDimension = math.max(width, height)
-               thumbnail:setThumbnailSizeBadge(largestDimension)
-               sizeBadge:setText(tostring(getSpriteSizeTier(width, height)))
-               sizeBadge:setColor(largestDimension <= 32 and '#ffffff' or '#171717')
-               cell:setTooltip(tr('Sprite dimensions: %d x %d', width, height))
-               sizeBadge:setVisible(true)
-            else
-               cell.thumbnailSpriteId = nil
-               cell:setTooltip('')
-               sizeBadge:setVisible(false)
-            end
-         end
-         cell.onClick = function()
-            selectSpritePickerSprite(spriteId)
-         end
-         cell.onDragEnter = function(widget)
-            if not widget.spriteId or not activeVersion or g_game.isOnline() or not selectedSpriteId then
-               return false
-            end
-            selectSpritePickerSprite(widget.spriteId)
-            return true
-         end
-         cell.onDragMove = function(widget, mousePos)
-            local overCanvas = canvas and canvas:isVisible() and canvas:containsPoint(mousePos)
-            if canvas then
-               canvas:setBorderWidth(overCanvas and 2 or 0)
-               canvas:setBorderColor(overCanvas and '#8f69d3' or 'alpha')
-            end
-            return true
-         end
-         cell.onDragLeave = function()
-            if canvas then
-               canvas:setBorderWidth(0)
-               canvas:setBorderColor('alpha')
-            end
-            return true
-         end
-      else
-         cell.spriteId = nil
-         cell.thumbnailSpriteId = nil
-         cell.isSpritePickerCell = false
-         cell:setDraggable(false)
-         cell:setTooltip('')
-         cell:recursiveGetChildById('spriteSizeBadge'):setVisible(false)
-      end
-   end
-
-   local countLabel = getSpritePickerWidget('count')
-   countLabel:setText(spritePickerCount == 1 and tr('%d sprite', spritePickerCount) or
-      tr('%d sprites', spritePickerCount))
-   local selectionLabel = getSpritePickerWidget('selection')
-   local selectedSprite = getSelectedSpritePickerId()
-   if currentImportSection == 'create' then
-      selectionLabel:setText(selectedSprite and tr('Selected sprite ID %d.', selectedSprite) or
-         tr('Choose a sprite from the list.'))
-   else
-      selectionLabel:setText(selectedSprite and tr('Drag sprite %d onto the preview.', selectedSprite) or
-         tr('Select or drag a sprite onto the preview.'))
-   end
-
-   if updatedThumbnails and g_spriteAppearances.releaseDecodedSpriteSheets then
-      g_spriteAppearances.releaseDecodedSpriteSheets()
-   end
 end
 
 function setImportSection(section)
@@ -3074,7 +2321,7 @@ function duplicateSelectedAppearance(forceDiscard)
    if loadAppearanceRecord(category, duplicateId, true, true) then
       setActivePage('editor')
       local list = window:recursiveGetChildById('appearanceList')
-      local targetOffset = math.max(0, (#filteredAppearanceEntries - 1) * APPEARANCE_ROW_HEIGHT)
+      local targetOffset = getAppearanceCatalogComponent():get_bottom_offset()
       list:setVirtualOffset({ x = 0, y = targetOffset })
       renderAppearanceRows(list:getVirtualOffset().y)
       list:updateScrollBars()
@@ -3558,25 +2805,8 @@ function saveAppearanceProperties()
    if not appearanceOriginal or not activeVersion or g_game.isOnline() then
       return
    end
-   for key, edit in pairs(appearanceValueWidgets) do
-      local value = tonumber(edit:getText())
-      if not value or value < 0 or value % 1 ~= 0 then
-         setAppearanceStatus(tr('Appearance values must be non-negative integers.'))
-         return
-      end
-      if value == appearanceOriginal.values[key] then
-         appearanceChanges.values[key] = nil
-      else
-         appearanceChanges.values[key] = value
-      end
-   end
-   for key, edit in pairs(appearanceStringWidgets) do
-      local value = edit:getText()
-      if value == (appearanceOriginal[key] or '') then
-         appearanceChanges.strings[key] = nil
-      else
-         appearanceChanges.strings[key] = value
-      end
+   if not getAppearancePropertiesEditor():collect_changes() then
+      return
    end
    if not collectAnimationWidgetChanges() then
       return
@@ -3659,26 +2889,20 @@ function exportWorkCopy(forceContinue, confirmed)
       return
    end
 
-   local mountedRoot = activeWorkRoot
-   local unmountOk, wasMounted = unmountWorkRoot(mountedRoot)
-   if not unmountOk then
-      window:recursiveGetChildById('exportStatus'):setText(tr('Could not unmount the working copy before installing assets.'))
-      return
-   end
-
-   local ok, backupPath = pcall(g_spriteAppearances.installWorkCopy, activeVersion)
-   local remountOk = restoreWorkRoot(mountedRoot, wasMounted)
-   if not remountOk then
-      local message = ok and tr('Assets were installed, but the working copy could not be remounted. Backup: %s', backupPath) or
-         tr('%s The working copy could not be remounted.', getUserFacingError(backupPath))
+   local result = getWorkCopyService():install(activeVersion, activeWorkRoot)
+   if result.remount_failed then
+      local message = result.installed and
+         tr('Assets were installed, but the working copy could not be remounted. Backup: %s', result.backup_path) or
+         tr('%s The working copy could not be remounted.', getUserFacingError(result.error))
       window:recursiveGetChildById('exportStatus'):setText(message)
       displayErrorBox(tr('Assets Editor'), message)
       return
    end
-   if not ok then
-      window:recursiveGetChildById('exportStatus'):setText(getUserFacingError(backupPath))
+   if not result.installed then
+      window:recursiveGetChildById('exportStatus'):setText(getUserFacingError(result.error))
       return
    end
+   local backupPath = result.backup_path
    if not reloadAssets() then
       local message = tr('Assets were installed, but the editor could not reload them. Backup: %s', backupPath)
       window:recursiveGetChildById('exportStatus'):setText(message)

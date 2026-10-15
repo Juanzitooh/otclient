@@ -1,0 +1,69 @@
+Panel
+  id: exportPanel
+  anchors.fill: parent
+  visible: false
+
+  AppearanceCenteredSectionHeader
+    !text: tr('Install the edited client assets')
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: parent.top
+
+  Label
+    !text: tr('Install replaces the selected package in data/things. The previous package is moved to data/things/backup first. The editor then reloads appearances and static data for offline testing.')
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: prev.bottom
+    margin-top: 8
+    height: 54
+    text-wrap: true
+
+  AppearanceFieldLabel
+    !text: tr('Working copy')
+    anchors.left: parent.left
+    anchors.top: prev.bottom
+    margin-top: 10
+
+  AppearanceFieldLabel
+    id: activeWorkCopyLabel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: prev.bottom
+    margin-top: 3
+    height: 48
+    text-wrap: true
+
+  AppearanceFieldLabel
+    !text: tr('Install location')
+    anchors.left: parent.left
+    anchors.top: activeWorkCopyLabel.bottom
+    margin-top: 8
+
+  AppearanceFieldLabel
+    id: installTargetLabel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: prev.bottom
+    margin-top: 4
+    height: 24
+    text-wrap: false
+
+  AppearanceActionButton
+    id: exportButton
+    !text: tr('Export and replace assets')
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: installTargetLabel.bottom
+    margin-top: 7
+    height: 25
+    @onClick: modules.game_sprite_editor.exportWorkCopy()
+
+  Label
+    id: exportStatus
+    !text: tr('The installed package will be backed up before it is replaced.')
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: exportButton.bottom
+    margin-top: 8
+    height: 58
+    text-wrap: true
