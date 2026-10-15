@@ -4,16 +4,43 @@ Panel
   visible: false
 
   AppearanceCenteredSectionHeader
+    id: exportHeader
     !text: tr('Export assets')
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.top: parent.top
 
   Panel
+    id: exportSubpageTabs
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: exportHeader.bottom
+    margin-top: 5
+    height: 24
+    layout: horizontalBox
+    spacing: 4
+
+    AppearanceNavigationButton
+      id: exportAssetsSubpageButton
+      !text: tr('Export')
+      width: 150
+      height: 24
+      checkable: true
+      @onClick: modules.game_sprite_editor.setExportSubpage('assets')
+
+    AppearanceNavigationButton
+      id: exportBackupsSubpageButton
+      !text: tr('Backups')
+      width: 150
+      height: 24
+      checkable: true
+      @onClick: modules.game_sprite_editor.setExportSubpage('backups')
+
+  Panel
     id: exportModeTabs
     anchors.left: parent.left
     anchors.right: parent.right
-    anchors.top: prev.bottom
+    anchors.top: exportSubpageTabs.bottom
     margin-top: 5
     height: 24
     layout: horizontalBox
@@ -151,3 +178,104 @@ Panel
     margin-top: 5
     height: 45
     text-wrap: true
+
+  Panel
+    id: restoreBackupPanel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: exportSubpageTabs.bottom
+    anchors.bottom: parent.bottom
+    margin-top: 6
+    visible: false
+
+    AppearanceCenteredSectionHeader
+      id: restoreBackupHeader
+      !text: tr('Restore installed backup')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+
+    AppearanceFieldLabel
+      id: installedBackupListLabel
+      !text: tr('Available backups | Newest first')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: restoreBackupHeader.bottom
+      margin-top: 4
+      height: 18
+
+    ScrollablePanel
+      id: installedBackupList
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: installedBackupListLabel.bottom
+      margin-top: 3
+      height: 154
+      margin-right: 14
+      vertical-scrollbar: installedBackupScroll
+      layout:
+        type: verticalBox
+        spacing: 4
+      auto-focus: none
+
+    VerticalScrollBar
+      id: installedBackupScroll
+      anchors.top: installedBackupList.top
+      anchors.bottom: installedBackupList.bottom
+      anchors.right: parent.right
+      step: 52
+      pixels-scroll: true
+
+    Label
+      id: backupDetailLabel
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: installedBackupList.bottom
+      margin-top: 4
+      height: 38
+      text-wrap: true
+
+    ScrollablePanel
+      id: backupChangesList
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: backupDetailLabel.bottom
+      anchors.bottom: restoreBackupChangeButton.top
+      margin-top: 4
+      margin-right: 14
+      margin-bottom: 4
+      vertical-scrollbar: backupChangesScroll
+      layout:
+        type: verticalBox
+        spacing: 3
+      auto-focus: none
+
+    VerticalScrollBar
+      id: backupChangesScroll
+      anchors.top: backupChangesList.top
+      anchors.bottom: backupChangesList.bottom
+      anchors.right: parent.right
+      step: 48
+      pixels-scroll: true
+
+    AppearanceActionButton
+      id: restoreBackupChangeButton
+      !text: tr('Restore selected change')
+      !tooltip: tr('Restore the appearance to the state before this edit. The current state remains in history.')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: restoreBackupButton.top
+      margin-bottom: 3
+      height: 23
+      enabled: false
+      @onClick: modules.game_sprite_editor.restoreInstalledBackupChange()
+
+    AppearanceActionButton
+      id: restoreBackupButton
+      !text: tr('Restore selected backup')
+      !tooltip: tr('Restore a previous installed package. The current package is saved as a backup first.')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      height: 24
+      @onClick: modules.game_sprite_editor.restoreInstalledBackup()

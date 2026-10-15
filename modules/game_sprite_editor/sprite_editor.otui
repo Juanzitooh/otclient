@@ -8,13 +8,38 @@ SpriteEditorWindow < MainWindow
     id: statusLabel
     !text: tr('Status: Loading the work copy…')
     anchors.left: appearancesPanel.right
-    anchors.right: pageNavigation.left
+    anchors.right: historyActions.left
     anchors.verticalCenter: pageNavigation.verticalCenter
     margin-left: 12
     margin-right: 12
     color: #c6c6c6
     text-align: center
     text-wrap: true
+
+  Panel
+    id: historyActions
+    anchors.right: pageNavigation.left
+    anchors.verticalCenter: pageNavigation.verticalCenter
+    margin-right: 8
+    size: 116 22
+    layout: horizontalBox
+    spacing: 4
+
+    AppearanceNavigationButton
+      id: undoButton
+      !text: tr('Undo')
+      !tooltip: tr('Undo one of the last 20 saved changes in this client session.')
+      width: 56
+      height: 22
+      @onClick: modules.game_sprite_editor.undoWorkCopyEdit()
+
+    AppearanceNavigationButton
+      id: redoButton
+      !text: tr('Redo')
+      !tooltip: tr('Redo a saved change undone in this client session.')
+      width: 56
+      height: 22
+      @onClick: modules.game_sprite_editor.redoWorkCopyEdit()
 
   Panel
     id: pageNavigation
@@ -29,7 +54,7 @@ SpriteEditorWindow < MainWindow
       id: editorPageButton
       !text: tr('Properties')
       !tooltip: tr('Edit the appearance name, description, flags, and values.')
-      width: 104
+      width: 77
       height: 22
       @onClick: modules.game_sprite_editor.showEditorPage()
 
@@ -37,7 +62,7 @@ SpriteEditorWindow < MainWindow
       id: importPageButton
       !text: tr('Import')
       !tooltip: tr('Replace or edit a frame sprite, or create an appearance from PNG.')
-      width: 104
+      width: 77
       height: 22
       @onClick: modules.game_sprite_editor.showImportPage()
 
@@ -45,9 +70,17 @@ SpriteEditorWindow < MainWindow
       id: exportPageButton
       !text: tr('Export')
       !tooltip: tr('Export the working copy as an asset package.')
-      width: 104
+      width: 77
       height: 22
       @onClick: modules.game_sprite_editor.showExportPage()
+
+    AppearanceNavigationButton
+      id: historyPageButton
+      !text: tr('History')
+      !tooltip: tr('Review and recover appearance edits saved with this asset package.')
+      width: 77
+      height: 22
+      @onClick: modules.game_sprite_editor.showHistoryPage()
 
   Panel
     id: appearancesPanel

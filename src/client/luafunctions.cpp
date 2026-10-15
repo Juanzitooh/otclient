@@ -148,6 +148,18 @@ void Client::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_spriteAppearances", "createWorkCopy", &SpriteAppearances::createWorkCopy, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "workCopyExists", &SpriteAppearances::workCopyExists, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "resetWorkCopy", &SpriteAppearances::resetWorkCopy, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "getWorkCopyHistoryState", &SpriteAppearances::getWorkCopyHistoryState, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "beginWorkCopyEdit", &SpriteAppearances::beginWorkCopyEdit, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "commitWorkCopyEdit", &SpriteAppearances::commitWorkCopyEdit, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "undoWorkCopyEdit", &SpriteAppearances::undoWorkCopyEdit, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "redoWorkCopyEdit", &SpriteAppearances::redoWorkCopyEdit, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "getInstalledAssetBackups", &SpriteAppearances::getInstalledAssetBackups, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "getInstalledAssetBackupHistory", &SpriteAppearances::getInstalledAssetBackupHistory, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "restoreInstalledAssetBackup", &SpriteAppearances::restoreInstalledAssetBackup, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "getAssetEditHistory", &SpriteAppearances::getAssetEditHistory, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "appendAssetEditHistory", &SpriteAppearances::appendAssetEditHistory, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "getSpriteImagePngBase64", &SpriteAppearances::getSpriteImagePngBase64, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "restoreSpriteImageFromPngBase64", &SpriteAppearances::restoreSpriteImageFromPngBase64, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "exportWorkCopy", &SpriteAppearances::exportWorkCopy, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "installWorkCopy", &SpriteAppearances::installWorkCopy, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "installWorkCopyAsNewVersion", &SpriteAppearances::installWorkCopyAsNewVersion, &g_spriteAppearances);
@@ -159,6 +171,8 @@ void Client::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_spriteAppearances", "releaseDecodedSpriteSheets", &SpriteAppearances::releaseDecodedSpriteSheets, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_things", "invalidateTextureCache", &ThingTypeManager::invalidateTextureCache, &g_things);
     g_lua.bindSingletonFunction("g_things", "getAppearanceEditorData", &ThingTypeManager::getAppearanceEditorData, &g_things);
+    g_lua.bindSingletonFunction("g_things", "getAppearanceEditorSnapshot", &ThingTypeManager::getAppearanceEditorSnapshot, &g_things);
+    g_lua.bindSingletonFunction("g_things", "restoreAppearanceEditorSnapshot", &ThingTypeManager::restoreAppearanceEditorSnapshot, &g_things);
     g_lua.bindSingletonFunction("g_things", "saveAppearanceEditorData", &ThingTypeManager::saveAppearanceEditorData, &g_things);
     g_lua.bindSingletonFunction("g_things", "replaceAppearanceSprite", &ThingTypeManager::replaceAppearanceSprite, &g_things);
     g_lua.bindSingletonFunction("g_things", "createAppearanceFromSprite", &ThingTypeManager::createAppearanceFromSprite, &g_things);

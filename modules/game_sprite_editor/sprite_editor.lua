@@ -43,8 +43,16 @@ local spritePicker
 local currentImportSection = 'replace'
 local currentReplaceMode = 'sprite'
 local currentNewAppearanceSourceMode = 'sprite'
+local currentExportSubpage = 'assets'
 local currentExportMode = 'replace'
 local pngFilePicker
+local installedAssetBackups = {}
+local selectedInstalledBackupName
+local installedAssetBackupChanges = {}
+local selectedInstalledBackupChange
+local assetEditHistoryEntries = {}
+local selectedAssetEditHistoryEntry
+local getUserFacingError
 
 local SPRITE_PICKER_WIDGET_IDS = {
    replace = {
@@ -118,6 +126,12 @@ local refreshAppearanceCatalog
 local applyAppearanceFilter
 local updateCategoryOptions
 local updateExportControls
+local setActivePage
+local refreshAssetEditHistory
+local updateInstalledBackupDetails
+local formatClientVersion
+local loadAppearanceRecord
+local reloadAssets
 local importPngAsNewSprite
 local selectSpritePickerSprite
 local linkSpriteToSelectedFrame
@@ -164,6 +178,343 @@ local function getWorkCopyService()
       workCopyService = SpriteEditorWorkCopyService.new()
    end
    return workCopyService
+end
+
+local function getWorkCopyHistoryState()
+   if not activeVersion then
+      return { undo = 0, redo = 0 }
+   end
+   local ok, encoded = pcall(g_spriteAppearances.getWorkCopyHistoryState, activeVersion)
+   if not ok then
+      return { undo = 0, redo = 0 }
+   end
+   local decoded, state = pcall(json.decode, encoded)
+   if not decoded or type(state) ~= 'table' then
+      return { undo = 0, redo = 0 }
+   end
+   return state
+end
+
+local function updateHistoryControls()
+   if not window then
+      return
+   end
+   local active = activeVersion ~= nil and not g_game.isOnline()
+   local state = getWorkCopyHistoryState()
+   local undo = window:recursiveGetChildById('undoButton')
+   local redo = window:recursiveGetChildById('redoButton')
+   undo:setVisible(active)
+   redo:setVisible(active)
+   undo:setEnabled(active and (tonumber(state.undo) or 0) > 0)
+   redo:setEnabled(active and (tonumber(state.redo) or 0) > 0)
+end
+
+local function getAppearanceHistoryChanges(beforeData, afterData)
+   if type(beforeData) ~= 'table' or type(afterData) ~= 'table' then
+      return {}
+   end
+   local changed = {}
+   local function compare(before, after, path)
+      if #changed >= 24 then
+         return
+      end
+      if type(before) == 'table' and type(after) == 'table' then
+         local keys = {}
+         for key in pairs(before) do
+            if key ~= 'enumOptions' then keys[key] = true end
+         end
+         for key in pairs(after) do
+            if key ~= 'enumOptions' then keys[key] = true end
+         end
+         for key in pairs(keys) do
+            compare(before[key], after[key], path == '' and tostring(key) or path .. '.' .. tostring(key))
+         end
+         return
+      end
+      if before ~= after then
+         table.insert(changed, path)
+      end
+   end
+   compare(beforeData, afterData, '')
+   return changed
+end
+
+local function runWorkCopyEdit(label, operation, historyContext)
+   historyContext = historyContext or {}
+   local category = historyContext.category
+   if category == nil then category = selectedAppearanceCategory end
+   local beforeId = historyContext.beforeAppearanceId
+   if beforeId == nil and historyContext.captureBeforeAppearance ~= false then
+      beforeId = historyContext.appearanceId or selectedAppearanceId
+   end
+   local afterId = historyContext.appearanceId or beforeId
+   local spriteId = historyContext.spriteId
+   local snapshotSpriteId = historyContext.captureSpritePixels and historyContext.spriteId or nil
+   local beforeAppearance
+   local beforeAppearanceData
+   local beforeSprite
+   local appearanceName = historyContext.appearanceName or (appearanceOriginal and appearanceOriginal.name) or ''
+   if category ~= nil and beforeId then
+      local ok, snapshot = pcall(g_things.getAppearanceEditorSnapshot, activeVersion, category, beforeId)
+      if ok then beforeAppearance = snapshot end
+      local dataOk, encoded = pcall(g_things.getAppearanceEditorData, activeVersion, category, beforeId)
+      if dataOk then
+         local decoded, data = pcall(json.decode, encoded)
+         if decoded and type(data) == 'table' then beforeAppearanceData = data end
+      end
+   end
+   if snapshotSpriteId then
+      local ok, snapshot = pcall(g_spriteAppearances.getSpriteImagePngBase64, activeVersion, snapshotSpriteId)
+      if ok then
+         beforeSprite = snapshot
+      else
+         return false, tr('The current sprite could not be added to asset history: %s', getUserFacingError(snapshot))
+      end
+   end
+
+   local started, startError = pcall(g_spriteAppearances.beginWorkCopyEdit, activeVersion)
+   if not started then
+      return false, getUserFacingError(startError)
+   end
+
+   local succeeded, result = pcall(operation)
+   local historyError
+   if succeeded and result ~= false then
+      if historyContext.resultIsAppearanceId and tonumber(result) then
+         afterId = tonumber(result)
+      elseif historyContext.resolveAppearanceId then
+         local ok, resolvedId = pcall(historyContext.resolveAppearanceId, result)
+         if ok then afterId = tonumber(resolvedId) or afterId end
+      end
+      if historyContext.resultIsSpriteId and tonumber(result) then
+         spriteId = tonumber(result)
+      end
+      local afterAppearance
+      local afterAppearanceData
+      local afterSprite
+      local afterPresent = false
+      if category ~= nil and afterId then
+         local ok, snapshot = pcall(g_things.getAppearanceEditorSnapshot, activeVersion, category, afterId)
+         if ok then
+            afterAppearance = snapshot
+            afterPresent = true
+         end
+         local dataOk, encoded = pcall(g_things.getAppearanceEditorData, activeVersion, category, afterId)
+         if dataOk then
+            local decoded, data = pcall(json.decode, encoded)
+            if decoded and type(data) == 'table' then afterAppearanceData = data end
+         end
+      end
+      if snapshotSpriteId then
+         local ok, snapshot = pcall(g_spriteAppearances.getSpriteImagePngBase64, activeVersion, snapshotSpriteId)
+         if ok then afterSprite = snapshot end
+      end
+      local categoryInfo = categories[(category or -1) + 1]
+      local entry = {
+         action = historyContext.action or 'edit',
+         label = label,
+         summary = historyContext.summary or label,
+         category = category,
+         categoryName = categoryInfo and categoryInfo.name or '',
+         appearanceId = afterId or beforeId,
+         appearanceName = appearanceName,
+         beforeAppearancePresent = beforeAppearance ~= nil,
+         beforeAppearanceSnapshot = beforeAppearance or '',
+         afterAppearancePresent = afterPresent,
+         afterAppearanceSnapshot = afterAppearance or '',
+         changedFields = getAppearanceHistoryChanges(beforeAppearanceData, afterAppearanceData),
+         spriteId = spriteId or 0,
+         beforeSpritePng = beforeSprite or '',
+         afterSpritePng = afterSprite or '',
+      }
+      local saved, err = pcall(g_spriteAppearances.appendAssetEditHistory, activeVersion, json.encode(entry))
+      if not saved then
+         historyError = getUserFacingError(err)
+         g_logger.error('[game_sprite_editor] Unable to save asset edit history: ' .. tostring(err))
+      end
+   end
+
+   local recorded, changedOrError = pcall(g_spriteAppearances.commitWorkCopyEdit, activeVersion, label)
+   updateHistoryControls()
+   if not recorded then
+      return false, tr('The edit may have been applied, but its undo history could not be saved: %s',
+         getUserFacingError(changedOrError))
+   end
+   if historyError then
+      refreshAssetEditHistory()
+      setStatus(tr('Edit saved, but its portable history entry could not be written: %s', historyError))
+      return true, result, changedOrError
+   end
+   if not succeeded then
+      return false, getUserFacingError(result)
+   end
+   refreshAssetEditHistory()
+   return true, result, changedOrError
+end
+
+local function updateAssetEditHistoryDetails()
+   if not window then
+      return
+   end
+   local entry = selectedAssetEditHistoryEntry
+   local title = window:recursiveGetChildById('historyDetailTitle')
+   local details = window:recursiveGetChildById('historyDetailLabel')
+   local restore = window:recursiveGetChildById('restoreHistoryButton')
+   if not entry then
+      title:setText(tr('Select an edit'))
+      details:setText(#assetEditHistoryEntries == 0 and tr('No recorded edits for this package yet.') or
+         tr('Choose an entry to see its details and restore the previous state.'))
+      restore:setEnabled(false)
+      return
+   end
+
+   local category = entry.categoryName and entry.categoryName ~= '' and tr(entry.categoryName) or tr('Appearance')
+   local appearanceId = tonumber(entry.appearanceId)
+   local spriteId = tonumber(entry.spriteId)
+   title:setText(appearanceId and tr('%s %d', category, appearanceId) or tr('Asset edit'))
+   local parts = { tostring(entry.summary or entry.label or tr('Asset edit')) }
+   if entry.appearanceName and entry.appearanceName ~= '' then
+      table.insert(parts, tr('Name: %s', entry.appearanceName))
+   end
+   if spriteId and spriteId > 0 then
+      table.insert(parts, tr('Sprite ID: %d', spriteId))
+   end
+   if type(entry.changedFields) == 'table' and #entry.changedFields > 0 then
+      local fieldLabels = {}
+      local count = math.min(#entry.changedFields, 4)
+      for index = 1, count do
+         local field = tostring(entry.changedFields[index])
+         local group, sprite = field:match('^frameGroups%.(%d+)%.sprites%.(%d+)$')
+         if group then
+            field = tr('Frame group %s, sprite slot %s', group, sprite)
+         else
+            field = field:gsub('^bools%.', ''):gsub('^values%.', '')
+               :gsub('^textValues%.', ''):gsub('^multiValues%.', '')
+            field = field:gsub('^strings%.name$', tr('Name')):gsub('^strings%.description$', tr('Description'))
+         end
+         table.insert(fieldLabels, field)
+      end
+      if #entry.changedFields > count then
+         table.insert(fieldLabels, #entry.changedFields >= 24 and tr('Other changed fields') or
+            tr('+%d more', #entry.changedFields - count))
+      end
+      table.insert(parts, tr('Changed: %s', table.concat(fieldLabels, ', ')))
+   end
+   if entry.createdAt then
+      table.insert(parts, tostring(entry.createdAt))
+   end
+   details:setText(table.concat(parts, '\n'))
+   restore:setEnabled(activeVersion ~= nil and not g_game.isOnline() and appearanceId ~= nil and
+      entry.beforeAppearancePresent ~= nil and
+      (entry.beforeAppearancePresent == true or entry.afterAppearancePresent == true or
+         spriteId and spriteId > 0 and entry.beforeSpritePng ~= ''))
+end
+
+refreshAssetEditHistory = function()
+   assetEditHistoryEntries = {}
+   selectedAssetEditHistoryEntry = nil
+   if not window or not activeVersion then
+      return
+   end
+   local ok, encoded = pcall(g_spriteAppearances.getAssetEditHistory, activeVersion)
+   if not ok then
+      g_logger.warning('[game_sprite_editor] Unable to load portable asset history: ' .. tostring(encoded))
+      return
+   end
+   local decoded, history = pcall(json.decode, encoded)
+   if decoded and type(history) == 'table' and type(history.entries) == 'table' then
+      assetEditHistoryEntries = history.entries
+   end
+
+   local list = window:recursiveGetChildById('assetEditHistoryList')
+   list:destroyChildren()
+   selectedAssetEditHistoryEntry = assetEditHistoryEntries[#assetEditHistoryEntries]
+   for index = #assetEditHistoryEntries, 1, -1 do
+      local entry = assetEditHistoryEntries[index]
+      local category = entry.categoryName and entry.categoryName ~= '' and tr(entry.categoryName) or tr('Assets')
+      local id = tonumber(entry.appearanceId)
+      local objectLabel = id and tr('%s %d', category, id) or category
+      local row = g_ui.createWidget('AssetEditHistoryEntry', list)
+      row.historyEntryId = entry.id
+      row:setText(string.format('%s | %s\n%s', objectLabel, tostring(entry.label or tr('Edit')),
+         tostring(entry.createdAt or '')))
+      local rowEntry = entry
+      row.onClick = function()
+         selectedAssetEditHistoryEntry = rowEntry
+         for _, candidate in ipairs(list:getChildren()) do
+            candidate:setOn(candidate == row)
+         end
+         updateAssetEditHistoryDetails()
+      end
+      row:setOn(selectedAssetEditHistoryEntry and selectedAssetEditHistoryEntry.id == entry.id)
+   end
+   window:recursiveGetChildById('historySourceLabel'):setText(
+      tr('Working copy %s | %d saved edits', formatClientVersion(activeVersion), #assetEditHistoryEntries))
+   updateAssetEditHistoryDetails()
+end
+
+local function refreshInstalledAssetBackups()
+   installedAssetBackups = {}
+   if not activeVersion then
+      return
+   end
+   local ok, encoded = pcall(g_spriteAppearances.getInstalledAssetBackups, activeVersion)
+   if not ok then
+      g_logger.warning('[game_sprite_editor] Unable to list installed asset backups: ' .. tostring(encoded))
+      return
+   end
+   local decoded, backups = pcall(json.decode, encoded)
+   if decoded and type(backups) == 'table' then
+      for _, name in ipairs(backups) do
+         if type(name) == 'string' then
+            local label = name
+            local timestamp = name:match('^%d+%-(%d+)')
+            local milliseconds = tonumber(timestamp)
+            if milliseconds and milliseconds >= 1000000000000 then
+               local seconds = math.floor(milliseconds / 1000)
+               local date = os.date('%Y-%m-%d %H:%M:%S', seconds)
+               local timezone = os.date('%z', seconds)
+               if date then
+                  label = string.format('%s.%03d %s', date, milliseconds % 1000,
+                     timezone and timezone ~= '%z' and timezone or tr('local time'))
+               end
+            end
+            table.insert(installedAssetBackups, { label = label, data = name, timestamp = milliseconds })
+         end
+      end
+   end
+   table.sort(installedAssetBackups, function(left, right)
+      if left.timestamp and right.timestamp and left.timestamp ~= right.timestamp then
+         return left.timestamp > right.timestamp
+      end
+      if left.timestamp ~= nil and right.timestamp == nil then
+         return true
+      end
+      if right.timestamp ~= nil and left.timestamp == nil then
+         return false
+      end
+      return left.data > right.data
+   end)
+   if selectedInstalledBackupName then
+      local selectedFound = false
+      for _, backup in ipairs(installedAssetBackups) do
+         if backup.data == selectedInstalledBackupName then
+            selectedFound = true
+            break
+         end
+      end
+      if not selectedFound then
+         selectedInstalledBackupName = nil
+      end
+   end
+end
+
+local function getInstalledAssetBackup(name)
+   for _, backup in ipairs(installedAssetBackups) do
+      if backup.data == name then
+         return backup
+      end
+   end
 end
 
 local function getAppearanceCatalogComponent()
@@ -260,7 +611,7 @@ local function setAppearanceStatus(message)
    end
 end
 
-local function getUserFacingError(error)
+getUserFacingError = function(error)
    local message = tostring(error)
    local stackTraceStart = message:find('\nstack traceback:', 1, true)
    if stackTraceStart then
@@ -270,11 +621,33 @@ local function getUserFacingError(error)
    return message
 end
 
+local function getSupportedAssetVersions()
+   local versions = {}
+   for _, version in ipairs(g_game.getSupportedClients()) do
+      if version >= 1500 and version < 1600 then
+         table.insert(versions, version)
+      end
+   end
+   return versions
+end
+
+local function isSupportedAssetVersion(version)
+   if not version or version < 1500 or version >= 1600 or version % 1 ~= 0 then
+      return false
+   end
+   for _, supportedVersion in ipairs(getSupportedAssetVersions()) do
+      if supportedVersion == version then
+         return true
+      end
+   end
+   return false
+end
+
 local function getVersions()
    local versions = {}
    for _, entry in ipairs(g_resources.listDirectoryFiles('/data/things/')) do
       local version = tonumber(entry)
-      if version and version >= 1500 and version < 1600 and version % 1 == 0 and
+      if isSupportedAssetVersion(version) and
             g_resources.fileExists(string.format('/data/things/%d/catalog-content.json', version)) then
          table.insert(versions, version)
       end
@@ -283,7 +656,7 @@ local function getVersions()
    return versions
 end
 
-local function formatClientVersion(version)
+formatClientVersion = function(version)
    return string.format('%d.%02d', math.floor(version / 100), version % 100)
 end
 
@@ -292,14 +665,14 @@ local function parseClientVersion(value)
    if tonumber(major) ~= 15 or not minor then
       return nil
    end
-   return 1500 + tonumber(minor)
+   return tonumber(major) * 100 + tonumber(minor)
 end
 
 local function getVersionDirectories()
    local directories = {}
    for _, entry in ipairs(g_resources.listDirectoryFiles('/data/things/')) do
       local version = tonumber(entry)
-      if version and version >= 1500 and version < 1600 and version % 1 == 0 then
+      if version and version >= 1500 and version % 1 == 0 then
          directories[version] = true
       end
    end
@@ -308,13 +681,15 @@ end
 
 local function getNextAvailableVersion(sourceVersion)
    local directories = getVersionDirectories()
-   for version = sourceVersion + 1, 1599 do
-      if version ~= sourceVersion and not directories[version] then
+   local supportedVersions = getSupportedAssetVersions()
+   for _, version in ipairs(supportedVersions) do
+      if version > sourceVersion and not directories[version] then
          return version
       end
    end
-   for version = 1500, sourceVersion - 1 do
-      if not directories[version] then
+   for index = #supportedVersions, 1, -1 do
+      local version = supportedVersions[index]
+      if version < sourceVersion and not directories[version] then
          return version
       end
    end
@@ -429,6 +804,12 @@ end
 local function createPngFilePicker()
    pngFilePicker = SpriteEditorPngFilePicker.new({
       on_status = setStatus,
+      get_canvas = function() return canvas end,
+      can_drag = function(target)
+         return target == 'replace' and currentPage == 'import' and currentImportSection == 'replace' and
+            currentReplaceMode == 'png' and activeVersion ~= nil and selectedSpriteId ~= nil and
+            not g_game.isOnline()
+      end,
       on_selected = function(target, path)
          if target == 'export' then
             window:recursiveGetChildById('exportFolderEdit'):setText(path)
@@ -1155,6 +1536,151 @@ local function setComboOptions(comboBox, options, selectedData)
    comboBox.onOptionChange = onOptionChange
 end
 
+local function formatBackupHistoryChange(entry)
+   local category = entry.categoryName and entry.categoryName ~= '' and tr(entry.categoryName) or tr('Appearance')
+   local appearanceId = tonumber(entry.appearanceId)
+   local subject = appearanceId and tr('%s %d', category, appearanceId) or category
+   local label = tostring(entry.label or tr('Asset edit'))
+   local fields = {}
+   for index = 1, math.min(type(entry.changedFields) == 'table' and #entry.changedFields or 0, 3) do
+      local field = tostring(entry.changedFields[index])
+      field = field:gsub('^bools%.', ''):gsub('^values%.', '')
+         :gsub('^textValues%.', ''):gsub('^multiValues%.', '')
+      field = field:gsub('^strings%.name$', tr('Name')):gsub('^strings%.description$', tr('Description'))
+      table.insert(fields, field)
+   end
+   local summary = #fields > 0 and tr('Changed: %s', table.concat(fields, ', ')) or label
+   return string.format('%s | %s\n%s | %s', subject, label, summary, tostring(entry.createdAt or ''))
+end
+
+updateInstalledBackupDetails = function()
+   if not window then
+      return
+   end
+
+   installedAssetBackupChanges = {}
+   selectedInstalledBackupChange = nil
+   local backupName = selectedInstalledBackupName
+   local backup = backupName and getInstalledAssetBackup(backupName)
+   local backupLabel = backup and backup.label or backupName
+   local detail = window:recursiveGetChildById('backupDetailLabel')
+   local backupList = window:recursiveGetChildById('installedBackupList')
+   local list = window:recursiveGetChildById('backupChangesList')
+   local restoreChange = window:recursiveGetChildById('restoreBackupChangeButton')
+   list:destroyChildren()
+   restoreChange:setEnabled(false)
+
+   if not activeVersion or not backupName then
+      detail:setText(#installedAssetBackups == 0 and tr('No installed backups are available for this assets version.') or
+         tr('Select a backup above to inspect its timestamp and changes.'))
+      backupList:setEnabled(#installedAssetBackups > 0)
+      window:recursiveGetChildById('restoreBackupButton'):setEnabled(false)
+      return
+   end
+
+   refreshAssetEditHistory()
+   local baselineOk, baselineEncoded = pcall(g_spriteAppearances.getInstalledAssetBackupHistory,
+      activeVersion, backupName)
+   local baselineIds = {}
+   local baselineHistoryAvailable = false
+   if baselineOk then
+      local decoded, baseline = pcall(json.decode, baselineEncoded)
+      if decoded and type(baseline) == 'table' and type(baseline.entries) == 'table' then
+         baselineHistoryAvailable = baseline.historyAvailable ~= false
+         if baselineHistoryAvailable then
+            for _, entry in ipairs(baseline.entries) do
+               if entry.id then baselineIds[tostring(entry.id)] = true end
+            end
+         end
+      end
+   else
+      g_logger.warning('[game_sprite_editor] Unable to inspect installed backup history: ' .. tostring(baselineEncoded))
+   end
+
+   local backupUtcTimestamp = backup and backup.timestamp and
+      os.date('!%Y-%m-%dT%H:%M:%S', math.floor(backup.timestamp / 1000))
+   for _, entry in ipairs(assetEditHistoryEntries) do
+      local isAfterBackup = false
+      if baselineHistoryAvailable then
+         isAfterBackup = entry.id and not baselineIds[tostring(entry.id)] or false
+      elseif backupUtcTimestamp then
+         local entryUtcTimestamp = tostring(entry.createdAt or ''):match(
+            '^(%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%d)Z$')
+         isAfterBackup = entryUtcTimestamp and entryUtcTimestamp >= backupUtcTimestamp or false
+      end
+      if isAfterBackup then
+         table.insert(installedAssetBackupChanges, entry)
+      end
+   end
+   table.sort(installedAssetBackupChanges, function(left, right)
+      return tostring(left.createdAt or '') < tostring(right.createdAt or '')
+   end)
+
+   if baselineHistoryAvailable then
+      detail:setText(tr('Created: %s\n%d recorded edits after this backup.',
+         backupLabel, #installedAssetBackupChanges))
+   elseif backupUtcTimestamp then
+      detail:setText(tr('Created: %s\nHistory starts later; edits use 1-second timestamps.', backupLabel))
+   else
+      detail:setText(tr('Created: %s\nNo edit history is available for comparison.', backupLabel))
+   end
+
+   for _, entry in ipairs(installedAssetBackupChanges) do
+      local row = g_ui.createWidget('BackupChangeEntry', list)
+      row:setText(formatBackupHistoryChange(entry))
+      local rowEntry = entry
+      row.onClick = function()
+         selectedInstalledBackupChange = rowEntry
+         for _, candidate in ipairs(list:getChildren()) do
+            candidate:setOn(candidate == row)
+         end
+         restoreChange:setEnabled(tonumber(rowEntry.appearanceId) ~= nil and
+            (rowEntry.beforeAppearancePresent == true or rowEntry.beforeAppearancePresent == false or
+               (tonumber(rowEntry.spriteId) and tonumber(rowEntry.spriteId) > 0 and
+                  rowEntry.beforeSpritePng and rowEntry.beforeSpritePng ~= '')))
+      end
+   end
+
+   if #installedAssetBackupChanges == 0 and (baselineHistoryAvailable or backupUtcTimestamp) then
+      detail:setText(tr('Created: %s\nNo later edits are recorded in the portable history.', backupLabel))
+   end
+   window:recursiveGetChildById('restoreBackupButton'):setEnabled(true)
+end
+
+local function updateInstalledAssetBackupOptions()
+   if not window then
+      return
+   end
+   local list = window:recursiveGetChildById('installedBackupList')
+   list:destroyChildren()
+   window:recursiveGetChildById('installedBackupListLabel'):setText(
+      tr('Available backups (%d) | Newest first', #installedAssetBackups))
+
+   if #installedAssetBackups == 0 then
+      local emptyEntry = g_ui.createWidget('InstalledAssetBackupEmptyEntry', list)
+      emptyEntry:setText(tr('No installed backups are available for this assets version.'))
+   end
+
+   for _, backup in ipairs(installedAssetBackups) do
+      local row = g_ui.createWidget('InstalledAssetBackupEntry', list)
+      row.backupName = backup.data
+      row:recursiveGetChildById('backupTimestamp'):setText(backup.label)
+      row:recursiveGetChildById('backupCaption'):setText(tr('Installed asset package'))
+      local backupName = backup.data
+      row.onClick = function()
+         selectedInstalledBackupName = backupName
+         for _, candidate in ipairs(list:getChildren()) do
+            candidate:setOn(candidate == row)
+         end
+         updateInstalledBackupDetails()
+         updateExportControls()
+      end
+      row:setOn(backup.data == selectedInstalledBackupName)
+   end
+
+   updateInstalledBackupDetails()
+end
+
 local function buildPatternOptions(comboBox, label, count, selectedIndex, optionLabelForIndex)
    local options = {}
    for index = 0, count - 1 do
@@ -1451,6 +1977,90 @@ local function restorePreviewSelection(selection)
    updatePreviewPatternControls()
    updateAnimationEditor()
    refreshAppearancePreview()
+end
+
+local function refreshAfterHistoryChange(label, action)
+   local category = selectedAppearanceCategory
+   local appearanceId = selectedAppearanceId
+   local selection = capturePreviewSelection()
+   local page = currentPage
+   if not reloadAssets() then
+      setStatus(tr('%s was applied, but the working copy could not be reloaded.', action))
+      return false
+   end
+
+   refreshAppearanceCatalog(category)
+   local thing = appearanceId and g_things.getThingType(appearanceId, category)
+   if thing and thing:getId() == appearanceId then
+      loadAppearanceRecord(category, appearanceId, true, true)
+      restorePreviewSelection(selection)
+   else
+      selectedAppearanceId = nil
+      local firstEntry = getFilteredAppearanceEntry(1)
+      if firstEntry then
+         loadAppearanceRecord(category, firstEntry.id, true, true)
+      else
+         clearAppearanceProperties()
+      end
+   end
+   setActivePage(page)
+   updateHistoryControls()
+   setStatus(tr('%s: %s.', action, label))
+   return true
+end
+
+function undoWorkCopyEdit(forceDiscard)
+   if hasAppearanceChanges() and not forceDiscard then
+      confirmUnsavedChanges(tr('Save changes before undoing?'), function()
+         undoWorkCopyEdit(true)
+      end)
+      return
+   end
+   if pendingSpriteEdit then
+      setStatus(tr('Apply or discard the pending sprite edit before undoing.'))
+      return
+   end
+   if not activeVersion or g_game.isOnline() then
+      return
+   end
+
+   local ok, label = pcall(g_spriteAppearances.undoWorkCopyEdit, activeVersion)
+   if not ok then
+      setStatus(getUserFacingError(label))
+      return
+   end
+   if label == '' then
+      updateHistoryControls()
+      return
+   end
+   refreshAfterHistoryChange(label, tr('Undid'))
+end
+
+function redoWorkCopyEdit(forceDiscard)
+   if hasAppearanceChanges() and not forceDiscard then
+      confirmUnsavedChanges(tr('Save changes before redoing?'), function()
+         redoWorkCopyEdit(true)
+      end)
+      return
+   end
+   if pendingSpriteEdit then
+      setStatus(tr('Apply or discard the pending sprite edit before redoing.'))
+      return
+   end
+   if not activeVersion or g_game.isOnline() then
+      return
+   end
+
+   local ok, label = pcall(g_spriteAppearances.redoWorkCopyEdit, activeVersion)
+   if not ok then
+      setStatus(getUserFacingError(label))
+      return
+   end
+   if label == '' then
+      updateHistoryControls()
+      return
+   end
+   refreshAfterHistoryChange(label, tr('Redid'))
 end
 
 configurePreviewControls = function(frameGroups)
@@ -1852,7 +2462,7 @@ local function refreshSelectedAppearance()
    end
 end
 
-local function loadAppearanceRecord(category, id, forceDiscard, forceReload)
+loadAppearanceRecord = function(category, id, forceDiscard, forceReload)
    if not window or not activeVersion or g_game.isOnline() then
       setStatus(tr('Open a 15.x work copy before editing appearances.'))
       return false
@@ -1936,7 +2546,7 @@ local function changeAppearanceCategory(category, forceDiscard)
    end
 end
 
-local function reloadAssets()
+reloadAssets = function()
    if not activeAssetPath then
       return false
    end
@@ -1960,6 +2570,10 @@ local function releaseActiveWorkCopy()
    activeVersion = nil
    activeAssetPath = nil
    activeWorkRoot = nil
+   installedAssetBackups = {}
+   selectedInstalledBackupName = nil
+   assetEditHistoryEntries = {}
+   selectedAssetEditHistoryEntry = nil
    return true
 end
 
@@ -1969,6 +2583,7 @@ updateExportControls = function()
    end
 
    local offline = not g_game.isOnline()
+   local showExportForm = currentExportSubpage == 'assets'
    local canExport = activeVersion ~= nil and offline
    local isNewVersion = currentExportMode == 'new'
    local isFolderExport = currentExportMode == 'folder'
@@ -1982,10 +2597,20 @@ updateExportControls = function()
    local isAbsoluteDestination = destinationRoot:sub(1, 1) == '/' or destinationRoot:match('^%a:[/\\]') ~= nil or
       destinationRoot:match('^[/\\][/\\]') ~= nil
    local versionDirectories = getVersionDirectories()
-   local newVersionValid = targetVersion ~= nil and targetVersion ~= activeVersion and
+   local newVersionValid = isSupportedAssetVersion(targetVersion) and targetVersion ~= activeVersion and
       not versionDirectories[targetVersion]
    local folderDestinationValid = isAbsoluteDestination and activeVersion ~= nil
 
+   window:recursiveGetChildById('exportAssetsSubpageButton'):setOn(showExportForm)
+   window:recursiveGetChildById('exportBackupsSubpageButton'):setOn(not showExportForm)
+   window:recursiveGetChildById('exportHeader'):setText(showExportForm and tr('Export assets') or tr('Asset backups'))
+   window:recursiveGetChildById('exportModeTabs'):setVisible(showExportForm)
+   window:recursiveGetChildById('exportSourceLabel'):setVisible(showExportForm)
+   window:recursiveGetChildById('exportTargetRow'):setVisible(showExportForm)
+   window:recursiveGetChildById('installTargetLabel'):setVisible(showExportForm)
+   window:recursiveGetChildById('exportButton'):setVisible(showExportForm)
+   window:recursiveGetChildById('exportHint'):setVisible(showExportForm)
+   window:recursiveGetChildById('exportStatus'):setVisible(showExportForm)
    window:recursiveGetChildById('replaceVersionModeButton'):setOn(not isNewVersion and not isFolderExport and not isAppearanceExport)
    window:recursiveGetChildById('newVersionModeButton'):setOn(isNewVersion)
    window:recursiveGetChildById('exportFolderModeButton'):setOn(isFolderExport)
@@ -1995,7 +2620,7 @@ updateExportControls = function()
    window:recursiveGetChildById('exportFolderModeButton'):setEnabled(canExport)
    window:recursiveGetChildById('exportAppearanceModeButton'):setEnabled(canExportAppearance)
    window:recursiveGetChildById('targetVersionLabel'):setText(isNewVersion and
-      tr('New version (15.x)') or tr('Replace current version'))
+      tr('New supported version') or tr('Replace current version'))
    window:recursiveGetChildById('targetVersionLabel'):setVisible(not isDirectoryExport)
    window:recursiveGetChildById('newVersionEdit'):setEnabled(canExport and isNewVersion)
    window:recursiveGetChildById('newVersionEdit'):setVisible(isNewVersion)
@@ -2016,7 +2641,7 @@ updateExportControls = function()
          string.format('%s/appearance-%s-%d', destinationRoot, categoryName:lower(), selectedAppearanceId or 0) or
          tr('Choose an absolute destination folder.')) or
       (isNewVersion and (newVersionValid and string.format('data/things/%d', targetVersion) or
-         tr('Enter a valid, unused 15.x version.')) or
+         tr('Choose an unused 15.x version supported by this client.')) or
          (activeVersion and string.format('data/things/%d', activeVersion) or tr('No install destination.'))))
    window:recursiveGetChildById('installTargetLabel'):setText(installTarget)
    local exportButton = window:recursiveGetChildById('exportButton')
@@ -2036,7 +2661,7 @@ updateExportControls = function()
    end
    exportButton:setEnabled((isAppearanceExport and canExportAppearance or canExport) and exportTargetValid)
    local batchExportButton = window:recursiveGetChildById('exportAppearanceBatchButton')
-   batchExportButton:setVisible(isAppearanceExport)
+   batchExportButton:setVisible(showExportForm and isAppearanceExport)
    batchExportButton:setText(filteredAppearanceCount > 8 and tr('Filter to 8 or fewer appearances') or
       tr('Export %d filtered bundle(s)', filteredAppearanceCount))
    batchExportButton:setEnabled(isAppearanceExport and canExport and folderDestinationValid and
@@ -2044,9 +2669,26 @@ updateExportControls = function()
    window:recursiveGetChildById('loadAssetsButton'):setEnabled(offline and selectedVersion ~= nil)
    window:recursiveGetChildById('importPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('exportPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
+   window:recursiveGetChildById('historyPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('reloadButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('newAppearanceTabButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('appearanceBundleTabButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
+   local restoreBackupPanel = window:recursiveGetChildById('restoreBackupPanel')
+   restoreBackupPanel:setVisible(not showExportForm)
+   window:recursiveGetChildById('restoreBackupHeader'):setText(
+      tr('Restore installed backup (%s)', activeVersion and formatClientVersion(activeVersion) or ''))
+   window:recursiveGetChildById('restoreBackupButton'):setEnabled(
+      canExport and selectedInstalledBackupName ~= nil and
+         getInstalledAssetBackup(selectedInstalledBackupName) ~= nil)
+   updateHistoryControls()
+end
+
+function setExportSubpage(subpage)
+   if subpage ~= 'assets' and subpage ~= 'backups' then
+      return
+   end
+   currentExportSubpage = subpage
+   updateExportControls()
 end
 
 function setExportMode(mode)
@@ -2128,7 +2770,7 @@ function exportFilteredAppearanceBundles(confirmed)
    end
 end
 
-local function setActivePage(page)
+setActivePage = function(page)
    if not window then
       return
    end
@@ -2136,9 +2778,11 @@ local function setActivePage(page)
    window:recursiveGetChildById('propertiesPanel'):setVisible(page == 'editor')
    window:recursiveGetChildById('importPanel'):setVisible(page == 'import')
    window:recursiveGetChildById('exportPanel'):setVisible(page == 'export')
+   window:recursiveGetChildById('historyPanel'):setVisible(page == 'history')
    window:recursiveGetChildById('editorPageButton'):setOn(page == 'editor')
    window:recursiveGetChildById('importPageButton'):setOn(page == 'import')
    window:recursiveGetChildById('exportPageButton'):setOn(page == 'export')
+   window:recursiveGetChildById('historyPageButton'):setOn(page == 'history')
    updateSpriteReplacementTarget()
    updateExportControls()
 end
@@ -2160,7 +2804,8 @@ local function createWindow()
       displayErrorBox(tr('Assets Editor'), tr('The editor side panel could not be initialized.'))
       return false
    end
-   for _, panelName in ipairs({ 'sprite_editor_properties', 'sprite_editor_import', 'sprite_editor_export' }) do
+   for _, panelName in ipairs({ 'sprite_editor_properties', 'sprite_editor_import', 'sprite_editor_export',
+         'sprite_editor_history' }) do
       local loaded, panel = pcall(g_ui.loadUI, panelName, rightPanel)
       if not loaded or not panel then
          g_logger.error('[game_sprite_editor] Unable to load panel ' .. panelName .. ': ' .. tostring(panel))
@@ -2190,8 +2835,27 @@ local function createWindow()
       end
    end
    canvas.onDrop = function(_, draggedWidget)
-      if not draggedWidget or not draggedWidget.isSpritePickerCell or
-            currentPage ~= 'import' or currentImportSection ~= 'replace' or currentReplaceMode ~= 'sprite' then
+      if not draggedWidget or currentPage ~= 'import' or currentImportSection ~= 'replace' then
+         return false
+      end
+
+      if draggedWidget.isPngFilePickerCell then
+         local path = draggedWidget.filePickerPath
+         if not path or currentReplaceMode ~= 'png' or not activeVersion or g_game.isOnline() or
+               not selectedSpriteId or not getSelectedSpriteReference() then
+            return false
+         end
+
+         preparedSpritePath = path
+         setSpritePath(path)
+         closePngFilePicker()
+         canvas:setBorderWidth(0)
+         canvas:setBorderColor('alpha')
+         importPngAndReplace()
+         return true
+      end
+
+      if not draggedWidget.isSpritePickerCell or currentReplaceMode ~= 'sprite' then
          return false
       end
       local spriteId = tonumber(draggedWidget.spriteId)
@@ -2262,6 +2926,8 @@ local function createWindow()
    versionBox.onOptionChange = function()
       updateExportControls()
    end
+   refreshInstalledAssetBackups()
+   updateInstalledAssetBackupOptions()
    local newVersionEdit = window:recursiveGetChildById('newVersionEdit')
    local suggestedVersion = activeVersion and getNextAvailableVersion(activeVersion)
    if suggestedVersion then
@@ -2285,6 +2951,7 @@ local function createWindow()
    if activeVersion then
       refreshAppearanceCatalog(selectedAppearanceCategory)
       refreshSpritePicker()
+      refreshAssetEditHistory()
       local firstEntry = getFilteredAppearanceEntry(1)
       if firstEntry then
          loadAppearanceRecord(selectedAppearanceCategory, firstEntry.id, true)
@@ -2340,6 +3007,7 @@ local function loadAssets(version)
    activeVersion = version
    activeAssetPath = assetPath
    activeWorkRoot = workRoot
+   refreshInstalledAssetBackups()
    if appearanceCatalog then
       appearanceCatalog:clear_category_counts()
    end
@@ -2473,7 +3141,79 @@ function loadSelectedAssets()
       }, cancelReset, cancelReset)
 end
 
+function restoreInstalledBackup(forceDiscard, confirmed)
+   if hasAppearanceChanges() and not forceDiscard then
+      confirmUnsavedChanges(tr('Save changes before restoring an installed backup?'), function()
+         restoreInstalledBackup(true, false)
+      end)
+      return
+   end
+   if not activeVersion or g_game.isOnline() then
+      setStatus(tr('Open an offline assets version before restoring a backup.'))
+      return
+   end
+   if pendingSpriteEdit then
+      setStatus(tr('Apply or discard the pending sprite edit before restoring a backup.'))
+      return
+   end
+
+   local backupName = selectedInstalledBackupName
+   if not backupName then
+      setStatus(tr('No installed backup is selected.'))
+      return
+   end
+   if not confirmed then
+      local messageBox
+      local function cancelRestore()
+         messageBox:cancel()
+      end
+      local function confirmRestore()
+         messageBox:ok()
+         restoreInstalledBackup(true, true)
+      end
+      messageBox = displayGeneralBox(tr('Restore installed backup?'),
+         tr('Restore %s to data/things/%d? The current installed package will be saved as a backup. The working copy will reset to the restored version and discard its saved edits.',
+            getInstalledAssetBackup(backupName) and getInstalledAssetBackup(backupName).label or backupName,
+            activeVersion), {
+            { text = tr('Restore backup'), callback = confirmRestore },
+            { text = tr('Cancel'), callback = cancelRestore },
+         }, cancelRestore, cancelRestore)
+      return
+   end
+
+   local version = activeVersion
+   local released, releaseError = releaseActiveWorkCopy()
+   if not released then
+      displayErrorBox(tr('Assets Editor'), releaseError)
+      return
+   end
+
+   local restored, safetyBackup = pcall(g_spriteAppearances.restoreInstalledAssetBackup, version, backupName)
+   if not restored then
+      openWorkCopyVersion(version)
+      setStatus(getUserFacingError(safetyBackup))
+      return
+   end
+
+   local reset, resetError = pcall(g_spriteAppearances.resetWorkCopy, version)
+   if not reset then
+      openWorkCopyVersion(version)
+      displayErrorBox(tr('Assets Editor'), tr('The installed backup was restored, but the working copy could not be reset. Use Load assets to retry. Details: %s',
+         getUserFacingError(resetError)))
+      return
+   end
+
+   if openWorkCopyVersion(version) then
+      setStatus(tr('Restored the installed assets. The previous package is backed up at %s.', safetyBackup))
+   end
+end
+
 function openWorkCopyVersion(version)
+   if not isSupportedAssetVersion(version) then
+      displayErrorBox(tr('Assets Editor'), tr('This OTClient build does not support client version %s.',
+         formatClientVersion(version or 0)))
+      return false
+   end
    if activeVersion then
       local released, err = releaseActiveWorkCopy()
       if not released then
@@ -2553,7 +3293,17 @@ function importAppearanceBundle(forceDiscard)
       return
    end
 
-   local imported, response = pcall(g_things.importAppearanceBundlesFromDirectory, activeVersion, bundleDirectory)
+   local imported, response = runWorkCopyEdit(tr('Import appearance bundles'), function()
+      return g_things.importAppearanceBundlesFromDirectory(activeVersion, bundleDirectory)
+   end, {
+      action = 'appearance-import',
+      captureBeforeAppearance = false,
+      summary = tr('Imported appearance bundle(s)'),
+      resolveAppearanceId = function(encoded)
+         local ok, result = pcall(json.decode, encoded)
+         return ok and result.items and result.items[1] and result.items[1].id
+      end,
+   })
    if not imported then
       setStatus(getUserFacingError(response))
       return
@@ -2620,7 +3370,15 @@ function duplicateSelectedAppearance(forceDiscard)
 
    local sourceId = selectedAppearanceId
    local category = selectedAppearanceCategory
-   local ok, duplicateId = pcall(g_things.duplicateAppearance, activeVersion, category, sourceId)
+   local ok, duplicateId = runWorkCopyEdit(tr('Duplicate appearance'), function()
+      return g_things.duplicateAppearance(activeVersion, category, sourceId)
+   end, {
+      category = category,
+      captureBeforeAppearance = false,
+      resultIsAppearanceId = true,
+      action = 'duplicate',
+      summary = tr('Duplicated from appearance %d', sourceId),
+   })
    if not ok then
       setStatus(getUserFacingError(duplicateId))
       return
@@ -2670,7 +3428,14 @@ function deleteSelectedAppearance(forceDiscard)
    end
    local function confirmDeletion()
       messageBox:ok()
-      local ok, deleted = pcall(g_things.deleteAppearance, activeVersion, category, appearanceId)
+      local ok, deleted = runWorkCopyEdit(tr('Delete appearance'), function()
+         return g_things.deleteAppearance(activeVersion, category, appearanceId)
+      end, {
+         category = category,
+         appearanceId = appearanceId,
+         action = 'delete',
+         summary = tr('Deleted appearance %d', appearanceId),
+      })
       if not ok then
          setStatus(getUserFacingError(deleted))
          return
@@ -2753,6 +3518,111 @@ function showExportPage()
    setActivePage('export')
 end
 
+function showHistoryPage()
+   refreshAssetEditHistory()
+   setActivePage('history')
+end
+
+function restoreAssetHistoryEntry(forceDiscard, confirmed)
+   if hasAppearanceChanges() and not forceDiscard then
+      confirmUnsavedChanges(tr('Save changes before restoring asset history?'), function()
+         restoreAssetHistoryEntry(true, false)
+      end)
+      return
+   end
+   local entry = selectedAssetEditHistoryEntry
+   local appearanceId = entry and tonumber(entry.appearanceId)
+   local spriteId = entry and tonumber(entry.spriteId)
+   if not activeVersion or g_game.isOnline() or not entry or not appearanceId then
+      setStatus(tr('Select a recoverable history entry in an offline work copy.'))
+      return
+   end
+   if entry.beforeAppearancePresent ~= true and entry.beforeAppearancePresent ~= false and
+         (not spriteId or spriteId < 1 or entry.beforeSpritePng == '') then
+      setStatus(tr('This history entry does not contain a recoverable previous state.'))
+      return
+   end
+   if pendingSpriteEdit then
+      setStatus(tr('Apply or discard the pending sprite edit before restoring asset history.'))
+      return
+   end
+   if not confirmed then
+      local spriteWarning = spriteId and spriteId > 0 and entry.beforeSpritePng ~= '' and
+         tr(' The sprite is shared, so all appearances using it will change.') or ''
+      local dialog
+      dialog = displayGeneralBox(tr('Restore previous asset state?'),
+         tr('Restore the state before %s for %s %d? The current state remains available in the history as a new edit.%s',
+            tostring(entry.label or tr('this edit')), tr(entry.categoryName or 'Appearance'), appearanceId, spriteWarning), {
+            { text = tr('Restore previous state'), callback = function()
+               dialog:ok()
+               restoreAssetHistoryEntry(true, true)
+            end },
+            { text = tr('Cancel'), callback = function() dialog:cancel() end },
+         })
+      return
+   end
+
+   local category = tonumber(entry.category)
+   if category == nil then
+      setStatus(tr('This history entry does not include an appearance category.'))
+      return
+   end
+   local restored, err = runWorkCopyEdit(tr('Restore previous asset state'), function()
+      if spriteId and spriteId > 0 and entry.beforeSpritePng ~= '' then
+         g_spriteAppearances.restoreSpriteImageFromPngBase64(activeVersion, spriteId, entry.beforeSpritePng)
+      end
+      if entry.beforeAppearancePresent == true or entry.beforeAppearancePresent == false then
+         g_things.restoreAppearanceEditorSnapshot(activeVersion, category, appearanceId,
+            entry.beforeAppearancePresent, entry.beforeAppearanceSnapshot or '')
+      end
+      return true
+   end, {
+      category = category,
+      appearanceId = appearanceId,
+      beforeAppearanceId = appearanceId,
+      spriteId = spriteId and spriteId > 0 and spriteId or nil,
+      captureSpritePixels = spriteId and spriteId > 0 and entry.beforeSpritePng ~= '',
+      action = 'restore',
+      summary = tr('Restored the state before %s', tostring(entry.label or tr('this edit'))),
+   })
+   if not restored then
+      setStatus(getUserFacingError(err))
+      return
+   end
+   if not reloadAssets() then
+      setStatus(tr('The previous state was written, but the work copy could not be reloaded.'))
+      return
+   end
+   refreshAppearanceCatalog(category)
+   if entry.beforeAppearancePresent then
+      loadAppearanceRecord(category, appearanceId, true, true)
+   elseif selectedAppearanceCategory == category and selectedAppearanceId == appearanceId then
+      selectedAppearanceId = nil
+      clearAppearanceProperties()
+   end
+   refreshAssetEditHistory()
+   setActivePage('history')
+   setStatus(tr('Restored the previous state of %s %d. The restore is recorded in asset history.',
+      tr(entry.categoryName or 'Appearance'), appearanceId))
+end
+
+function restoreInstalledBackupChange()
+   local entry = selectedInstalledBackupChange
+   if not entry then
+      setStatus(tr('Select a recorded change after this backup first.'))
+      return
+   end
+
+   selectedAssetEditHistoryEntry = entry
+   setActivePage('history')
+   local list = window:recursiveGetChildById('assetEditHistoryList')
+   for _, row in ipairs(list:getChildren()) do
+      row:setOn(row.historyEntryId == entry.id)
+   end
+   updateAssetEditHistoryDetails()
+   restoreAssetHistoryEntry()
+end
+
 function showPropertiesTab(tab)
    setPropertiesTab(tab)
 end
@@ -2806,8 +3676,16 @@ linkSpriteToSelectedFrame = function(spriteId)
    end
 
    local previewSelection = capturePreviewSelection()
-   local ok, result = pcall(g_things.replaceAppearanceSprite, activeVersion, category,
-      appearanceId, frameGroupIndex, spriteIndex, spriteId)
+   local ok, result = runWorkCopyEdit(tr('Replace frame sprite'), function()
+      return g_things.replaceAppearanceSprite(activeVersion, category,
+         appearanceId, frameGroupIndex, spriteIndex, spriteId)
+   end, {
+      category = category,
+      appearanceId = appearanceId,
+      action = 'sprite-link',
+      spriteId = spriteId,
+      summary = tr('Linked frame to sprite %d', spriteId),
+   })
    if not ok then
       setStatus(getUserFacingError(result))
       return false
@@ -2864,20 +3742,21 @@ importPngAsNewSprite = function()
       return
    end
    local previewSelection = capturePreviewSelection()
-   local imported, spriteId = pcall(g_spriteAppearances.importSpriteForAppearance, selectedSpriteId, path, activeVersion)
+   local imported, spriteId = runWorkCopyEdit(tr('Import and replace frame sprite'), function()
+      local newSpriteId = g_spriteAppearances.importSpriteForAppearance(selectedSpriteId, path, activeVersion)
+      assert(reloadAssets(), tr('The imported sprite was saved, but the work copy could not be reloaded.'))
+      assert(g_things.replaceAppearanceSprite(activeVersion, category,
+         appearanceId, frameGroupIndex, spriteIndex, newSpriteId))
+      return newSpriteId
+   end, {
+      category = category,
+      appearanceId = appearanceId,
+      resultIsSpriteId = true,
+      action = 'sprite-import-and-link',
+      summary = tr('Imported a PNG and linked it to the selected frame'),
+   })
    if not imported then
       setStatus(getUserFacingError(spriteId))
-      return
-   end
-   if not reloadAssets() then
-      setStatus(tr('PNG was imported as sprite %d, but the work copy could not be reloaded. The current link is unchanged.', spriteId))
-      return
-   end
-
-   local linked, result = pcall(g_things.replaceAppearanceSprite, activeVersion, category,
-      appearanceId, frameGroupIndex, spriteIndex, spriteId)
-   if not linked then
-      setStatus(tr('PNG was imported as sprite %d, but it could not be linked: %s', spriteId, getUserFacingError(result)))
       return
    end
    if not refreshAfterSpriteReferenceChange(category, appearanceId, previewSelection) then
@@ -3039,8 +3918,16 @@ function applyEditedSprite(forceDiscard, confirmed, closeAfterApply)
    local category = selectedAppearanceCategory
    local appearanceId = selectedAppearanceId
    local previewSelection = capturePreviewSelection()
-   local imported, result = pcall(g_spriteAppearances.importSpriteFromFile,
-      edit.spriteId, edit.path, edit.version)
+   local imported, result = runWorkCopyEdit(tr('Edit sprite image'), function()
+      return g_spriteAppearances.importSpriteFromFile(edit.spriteId, edit.path, edit.version)
+   end, {
+      category = category,
+      appearanceId = appearanceId,
+      spriteId = edit.spriteId,
+      captureSpritePixels = true,
+      action = 'sprite-image-edit',
+      summary = tr('Edited sprite %d pixels', edit.spriteId),
+   })
    if not imported then
       local errorMessage = getUserFacingError(result)
       if errorMessage:find('prepared PNG dimensions must match the selected sprite', 1, true) then
@@ -3096,7 +3983,15 @@ function createAppearance(forceDiscard)
          setStatus(tr('Choose a PNG file first.'))
          return
       end
-      local imported, result = pcall(g_spriteAppearances.importSpriteFromFile, 0, path, activeVersion)
+      local imported, result = runWorkCopyEdit(tr('Import sprite PNG'), function()
+         return g_spriteAppearances.importSpriteFromFile(0, path, activeVersion)
+      end, {
+         category = category,
+         captureBeforeAppearance = false,
+         resultIsSpriteId = true,
+         action = 'sprite-import',
+         summary = tr('Imported PNG as a new sprite'),
+      })
       if not imported then
          setStatus(getUserFacingError(result))
          return
@@ -3118,8 +4013,15 @@ function createAppearance(forceDiscard)
       return
    end
 
-   local created, appearanceId = pcall(g_things.createAppearanceFromSprite,
-      activeVersion, category, spriteId)
+   local created, appearanceId = runWorkCopyEdit(tr('Create appearance'), function()
+      return g_things.createAppearanceFromSprite(activeVersion, category, spriteId)
+   end, {
+      category = category,
+      captureBeforeAppearance = false,
+      resultIsAppearanceId = true,
+      action = 'create',
+      summary = tr('Created appearance from sprite %d', spriteId),
+   })
    if not created then
       if importedNewSprite then reloadAssets() end
       setStatus(tr('Sprite %d is ready, but the appearance could not be created: %s', spriteId, getUserFacingError(appearanceId)))
@@ -3159,7 +4061,13 @@ function importPngFolder(forceDiscard)
       return
    end
 
-   local imported, response = pcall(g_spriteAppearances.importSpritesFromDirectory, folder, activeVersion)
+   local imported, response = runWorkCopyEdit(tr('Import PNG folder'), function()
+      return g_spriteAppearances.importSpritesFromDirectory(folder, activeVersion)
+   end, {
+      captureBeforeAppearance = false,
+      action = 'sprite-batch-import',
+      summary = tr('Imported prepared PNG sprites from a folder'),
+   })
    if not imported then
       setStatus(getUserFacingError(response))
       return
@@ -3236,9 +4144,15 @@ function importSpriteSheet(forceDiscard)
       return
    end
 
-   local imported, response = pcall(g_spriteAppearances.importSpritesFromSheet,
-      fileName, activeVersion, spriteWidth, spriteHeight, firstCell, lastCell,
-      window:recursiveGetChildById('spriteSheetSkipTransparent'):isChecked())
+   local imported, response = runWorkCopyEdit(tr('Import sprite sheet'), function()
+      return g_spriteAppearances.importSpritesFromSheet(fileName, activeVersion,
+         spriteWidth, spriteHeight, firstCell, lastCell,
+         window:recursiveGetChildById('spriteSheetSkipTransparent'):isChecked())
+   end, {
+      captureBeforeAppearance = false,
+      action = 'sprite-sheet-import',
+      summary = tr('Imported sprites from a PNG sheet'),
+   })
    if not imported then
       setStatus(getUserFacingError(response))
       return
@@ -3342,8 +4256,10 @@ function saveAppearanceProperties()
          updates[section] = values
       end
    end
-   local ok, err = pcall(g_things.saveAppearanceEditorData,
-      activeVersion, selectedAppearanceCategory, selectedAppearanceId, json.encode(updates))
+   local ok, err = runWorkCopyEdit(tr('Save appearance changes'), function()
+      return g_things.saveAppearanceEditorData(activeVersion, selectedAppearanceCategory,
+         selectedAppearanceId, json.encode(updates))
+   end)
    if not ok then
       setAppearanceStatus(getUserFacingError(err))
       return
@@ -3412,8 +4328,10 @@ function exportWorkCopy(forceContinue, confirmed)
       window:recursiveGetChildById('exportStatus'):setText(tr('Select an appearance in the list before exporting its bundle.'))
       return
    end
-   if isNewVersion and (not targetVersion or targetVersion == activeVersion or getVersionDirectories()[targetVersion]) then
-      window:recursiveGetChildById('exportStatus'):setText(tr('Choose an unused version from 15.00 to 15.99.'))
+   if isNewVersion and (not isSupportedAssetVersion(targetVersion) or targetVersion == activeVersion or
+         getVersionDirectories()[targetVersion]) then
+      window:recursiveGetChildById('exportStatus'):setText(
+         tr('Choose an unused 15.x version supported by this client.'))
       return
    end
    if not confirmed then
@@ -3479,6 +4397,11 @@ function exportWorkCopy(forceContinue, confirmed)
    local result = isNewVersion and
       getWorkCopyService():install_as_new_version(activeVersion, targetVersion, activeWorkRoot) or
       getWorkCopyService():install(activeVersion, activeWorkRoot)
+   if result.installed and not isNewVersion then
+      refreshInstalledAssetBackups()
+      updateInstalledAssetBackupOptions()
+      updateExportControls()
+   end
    if isNewVersion and result.installed then
       window:recursiveGetChildById('versionComboBox'):addOption(formatClientVersion(targetVersion), targetVersion)
    end

@@ -29,8 +29,10 @@
 #include "thingtypemanager.h"
 #include "framework/core/filestream.h"
 #include "framework/core/resourcemanager.h"
+#include "framework/graphics/apngloader.h"
 #include "framework/graphics/image.h"
 #include "framework/graphics/texturemanager.h"
+#include "framework/util/crypt.h"
 
 #ifdef FRAMEWORK_EDITOR
 #include <algorithm>
@@ -38,11 +40,16 @@
 #include <cctype>
 #include <chrono>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <iomanip>
 #include <iterator>
 #include <limits>
 #include <map>
+#include <sstream>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 #endif
@@ -153,32 +160,82 @@ std::filesystem::path getEditorWorkPackagePath(const int version)
     return package;
 }
 
+std::filesystem::path getEditorAssetHistoryPath(const int version)
+{
+    namespace fs = std::filesystem;
+    const auto catalog = getEditorCatalogPath(version);
+    const auto package = getEditorWorkPackagePath(version);
+    const auto history = package / "asset-editor-history.json";
+    ensureNoSymlinkPath(package, history);
+    if (!fs::is_regular_file(catalog) || fs::weakly_canonical(catalog.parent_path()) != fs::weakly_canonical(package))
+        throw stdext::exception("asset edit history is available only inside the active work copy");
+    return history;
+}
+
+std::string getUtcTimestamp()
+{
+    const auto now = std::chrono::system_clock::now();
+    const auto time = std::chrono::system_clock::to_time_t(now);
+    std::tm utc{};
+#ifdef _WIN32
+    gmtime_s(&utc, &time);
+#else
+    gmtime_r(&time, &utc);
+#endif
+    std::ostringstream timestamp;
+    timestamp << std::put_time(&utc, "%Y-%m-%dT%H:%M:%SZ");
+    return timestamp.str();
+}
+
+std::string readSmallFile(const std::filesystem::path& path, const size_t maximumSize)
+{
+    const auto size = std::filesystem::file_size(path);
+    if (size > maximumSize)
+        throw stdext::exception("asset edit history file is larger than the supported limit");
+    std::ifstream file(path, std::ios::binary);
+    if (!file)
+        throw stdext::exception("unable to read asset edit history");
+    return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+}
+
 std::filesystem::path findInstalledAssetPackage(const int version, const std::filesystem::path& workPackage)
 {
     namespace fs = std::filesystem;
     std::error_code error;
-    const auto catalog = fs::path(g_resources.getRealPath(
-        fmt::format("/data/things/{}/catalog-content.json", version))).lexically_normal();
-    const auto catalogStatus = fs::symlink_status(catalog, error);
+    const auto normalizedWorkPackage = fs::weakly_canonical(workPackage, error);
     if (error)
-        throw stdext::exception("unable to locate installed assets for client version {}: {}", version, error.message());
-    if (fs::is_symlink(catalogStatus) || !fs::is_regular_file(catalogStatus))
-        throw stdext::exception("installed assets for client version {} were not found", version);
+        throw stdext::exception("unable to resolve the sprite editor work copy: {}", error.message());
 
-    const auto packageStatus = fs::symlink_status(catalog.parent_path(), error);
-    if (error || fs::is_symlink(packageStatus) || !fs::is_directory(packageStatus))
-        throw stdext::exception("installed assets for client version {} were not found", version);
-    const auto assetRoot = catalog.parent_path().parent_path().parent_path().parent_path();
-    ensureNoSymlinkPath(assetRoot, catalog.parent_path());
+    for (const auto& searchRoot : g_resources.getSearchPaths()) {
+        const auto assetRoot = fs::path(searchRoot);
+        const auto package = assetRoot / "data" / "things" / std::to_string(version);
+        const auto catalog = package / "catalog-content.json";
+        const auto status = fs::symlink_status(catalog, error);
+        if (error == std::errc::no_such_file_or_directory) {
+            error.clear();
+            continue;
+        }
+        if (error)
+            throw stdext::exception("unable to inspect installed assets for client version {}: {}", version, error.message());
+        if (fs::is_symlink(status))
+            throw stdext::exception("installed asset catalogs cannot be symbolic links");
+        if (!fs::is_regular_file(status))
+            continue;
 
-    const auto installedPackage = fs::weakly_canonical(catalog.parent_path(), error);
-    if (error)
-        throw stdext::exception("unable to resolve installed assets: {}", error.message());
-    if (installedPackage == fs::weakly_canonical(workPackage))
-        throw stdext::exception("unmount the working copy before locating installed assets");
+        const auto packageStatus = fs::symlink_status(package, error);
+        if (error || fs::is_symlink(packageStatus) || !fs::is_directory(packageStatus))
+            throw stdext::exception("installed assets for client version {} were not found", version);
+        ensureNoSymlinkPath(assetRoot, package);
+        const auto installedPackage = fs::weakly_canonical(package, error);
+        if (error)
+            throw stdext::exception("unable to resolve installed assets: {}", error.message());
+        if (installedPackage == normalizedWorkPackage)
+            continue;
 
-    validateAssetDirectory(installedPackage);
-    return installedPackage;
+        validateAssetDirectory(installedPackage);
+        return installedPackage;
+    }
+    throw stdext::exception("installed assets for client version {} were not found", version);
 }
 
 void verifyAssetCopy(const std::filesystem::path& source, const std::filesystem::path& copy)
@@ -189,6 +246,288 @@ void verifyAssetCopy(const std::filesystem::path& source, const std::filesystem:
     if (!fs::is_regular_file(copiedCatalog) || fs::file_size(sourceCatalog) != fs::file_size(copiedCatalog))
         throw stdext::exception("sprite editor asset copy verification failed");
     validateAssetDirectory(copy);
+}
+
+struct WorkCopyHistoryEntry {
+    std::filesystem::path snapshot;
+    std::string label;
+};
+
+struct WorkCopyHistory {
+    std::vector<WorkCopyHistoryEntry> undo;
+    std::vector<WorkCopyHistoryEntry> redo;
+    std::filesystem::path pending;
+};
+
+std::unordered_map<int, WorkCopyHistory> workCopyHistory;
+uint64_t workCopyHistoryCounter = 0;
+constexpr size_t MAX_WORK_COPY_HISTORY = 20;
+
+std::filesystem::path getWorkCopyHistoryPath(const int version)
+{
+    const std::filesystem::path writeDirectory(g_resources.getWriteDir());
+    if (writeDirectory.empty())
+        throw stdext::exception("the client has no writable user directory");
+
+    const auto normalizedWriteDirectory = std::filesystem::weakly_canonical(writeDirectory);
+    const auto historyPath = normalizedWriteDirectory / "sprite-editor" / "history" / std::to_string(version);
+    ensureNoSymlinkPath(normalizedWriteDirectory, historyPath);
+    return historyPath;
+}
+
+std::filesystem::path createWorkCopySnapshot(const int version, const std::filesystem::path& source,
+                                             const std::string& purpose)
+{
+    namespace fs = std::filesystem;
+    const auto historyRoot = getWorkCopyHistoryPath(version);
+    std::error_code error;
+    fs::create_directories(historyRoot, error);
+    if (error)
+        throw stdext::exception("unable to create the work copy history folder: {}", error.message());
+
+    const auto snapshot = historyRoot / fmt::format("{}-{}", purpose, ++workCopyHistoryCounter);
+    ensureNoSymlinkPath(historyRoot, snapshot);
+    fs::create_directory(snapshot, error);
+    if (error)
+        throw stdext::exception("unable to create a work copy history snapshot: {}", error.message());
+
+    try {
+        for (const auto& entry : fs::recursive_directory_iterator(source)) {
+            const auto status = entry.symlink_status();
+            if (fs::is_symlink(status))
+                throw stdext::exception("work copy history does not support symbolic links");
+            if (!fs::is_directory(status) && !fs::is_regular_file(status))
+                throw stdext::exception("work copy history does not support this asset file type");
+
+            const auto relative = entry.path().lexically_relative(source);
+            const auto target = snapshot / relative;
+            ensureNoSymlinkPath(snapshot, target);
+            if (fs::is_directory(status)) {
+                fs::create_directories(target, error);
+                if (error)
+                    throw stdext::exception("unable to create a history snapshot folder: {}", error.message());
+            } else if (fs::is_regular_file(status)) {
+                fs::create_directories(target.parent_path(), error);
+                if (error)
+                    throw stdext::exception("unable to create a history snapshot folder: {}", error.message());
+                // Asset editors replace files atomically, so these links retain the pre-edit file contents.
+                fs::create_hard_link(entry.path(), target, error);
+                if (error) {
+                    error.clear();
+                    fs::copy_file(entry.path(), target, fs::copy_options::none, error);
+                    if (error)
+                        throw stdext::exception("unable to preserve a work copy history file: {}", error.message());
+                }
+            }
+        }
+    } catch (...) {
+        fs::remove_all(snapshot, error);
+        throw;
+    }
+    return snapshot;
+}
+
+using AssetFiles = std::map<std::string, std::filesystem::path>;
+
+AssetFiles collectAssetFiles(const std::filesystem::path& root)
+{
+    namespace fs = std::filesystem;
+    AssetFiles files;
+    for (const auto& entry : fs::recursive_directory_iterator(root)) {
+        const auto status = entry.symlink_status();
+        if (fs::is_symlink(status))
+            throw stdext::exception("work copy history does not support symbolic links");
+        if (fs::is_directory(status))
+            continue;
+        if (!fs::is_regular_file(status))
+            throw stdext::exception("work copy history does not support this asset file type");
+        files.emplace(entry.path().lexically_relative(root).generic_string(), entry.path());
+    }
+    return files;
+}
+
+bool areFilesEqual(const std::filesystem::path& left, const std::filesystem::path& right)
+{
+    namespace fs = std::filesystem;
+    std::error_code error;
+    if (fs::equivalent(left, right, error) && !error)
+        return true;
+    if (error)
+        error.clear();
+    const auto leftSize = fs::file_size(left, error);
+    if (error)
+        return false;
+    const auto rightSize = fs::file_size(right, error);
+    if (error || leftSize != rightSize)
+        return false;
+
+    std::ifstream leftStream(left, std::ios::binary);
+    std::ifstream rightStream(right, std::ios::binary);
+    if (!leftStream || !rightStream)
+        throw stdext::exception("unable to compare work copy history files");
+    std::array<char, 65536> leftBuffer{};
+    std::array<char, 65536> rightBuffer{};
+    do {
+        leftStream.read(leftBuffer.data(), static_cast<std::streamsize>(leftBuffer.size()));
+        rightStream.read(rightBuffer.data(), static_cast<std::streamsize>(rightBuffer.size()));
+        if (leftStream.gcount() != rightStream.gcount() ||
+            !std::equal(leftBuffer.begin(), leftBuffer.begin() + leftStream.gcount(), rightBuffer.begin()))
+            return false;
+    } while (leftStream && rightStream);
+    return leftStream.eof() && rightStream.eof();
+}
+
+bool areAssetStatesEqual(const std::filesystem::path& left, const std::filesystem::path& right)
+{
+    const auto leftFiles = collectAssetFiles(left);
+    const auto rightFiles = collectAssetFiles(right);
+    if (leftFiles.size() != rightFiles.size())
+        return false;
+    for (const auto& [relative, leftPath] : leftFiles) {
+        const auto it = rightFiles.find(relative);
+        if (it == rightFiles.end() || !areFilesEqual(leftPath, it->second))
+            return false;
+    }
+    return true;
+}
+
+void replaceFileFromSnapshot(const std::filesystem::path& source, const std::filesystem::path& target)
+{
+    namespace fs = std::filesystem;
+    auto temporary = target;
+    temporary += ".sprite-editor-undo.tmp";
+    auto backup = target;
+    backup += ".sprite-editor-undo.bak";
+    std::error_code error;
+    for (const auto& candidate : { temporary, backup }) {
+        const auto status = fs::symlink_status(candidate, error);
+        if (!error && fs::exists(status))
+            throw stdext::exception("a previous work copy undo was interrupted; inspect '{}'", candidate.generic_string());
+        if (error == std::errc::no_such_file_or_directory)
+            error.clear();
+        else if (error)
+            throw stdext::exception("unable to validate a work copy undo path: {}", error.message());
+    }
+
+    fs::copy_file(source, temporary, fs::copy_options::none, error);
+    if (error)
+        throw stdext::exception("unable to stage a work copy undo file: {}", error.message());
+    const bool hadTarget = fs::exists(target, error);
+    if (error) {
+        fs::remove(temporary, error);
+        throw stdext::exception("unable to inspect a work copy undo target: {}", error.message());
+    }
+    if (hadTarget) {
+        fs::rename(target, backup, error);
+        if (error) {
+            fs::remove(temporary, error);
+            throw stdext::exception("unable to preserve a work copy file before undo: {}", error.message());
+        }
+    }
+    fs::rename(temporary, target, error);
+    if (error) {
+        if (hadTarget) {
+            std::error_code rollbackError;
+            fs::rename(backup, target, rollbackError);
+        }
+        fs::remove(temporary, error);
+        throw stdext::exception("unable to apply a work copy undo file: {}", error.message());
+    }
+    if (hadTarget)
+        fs::remove(backup, error);
+}
+
+void restoreWorkCopySnapshot(const std::filesystem::path& snapshot, const std::filesystem::path& package)
+{
+    namespace fs = std::filesystem;
+    const auto snapshotFiles = collectAssetFiles(snapshot);
+    const auto packageFiles = collectAssetFiles(package);
+    std::error_code error;
+
+    for (const auto& [relative, currentPath] : packageFiles) {
+        if (snapshotFiles.find(relative) != snapshotFiles.end())
+            continue;
+        fs::remove(currentPath, error);
+        if (error)
+            throw stdext::exception("unable to remove a work copy file during undo: {}", error.message());
+    }
+    for (const auto& [relative, snapshotPath] : snapshotFiles) {
+        const auto target = package / fs::path(relative);
+        ensureNoSymlinkPath(package, target);
+        fs::create_directories(target.parent_path(), error);
+        if (error)
+            throw stdext::exception("unable to restore a work copy folder: {}", error.message());
+        const auto current = packageFiles.find(relative);
+        if (current != packageFiles.end() && areFilesEqual(current->second, snapshotPath))
+            continue;
+        replaceFileFromSnapshot(snapshotPath, target);
+    }
+
+    std::vector<fs::path> directories;
+    for (const auto& entry : fs::recursive_directory_iterator(package)) {
+        if (entry.is_directory())
+            directories.push_back(entry.path());
+    }
+    std::sort(directories.begin(), directories.end(), [](const fs::path& left, const fs::path& right) {
+        return std::distance(left.begin(), left.end()) > std::distance(right.begin(), right.end());
+    });
+    for (const auto& directory : directories) {
+        fs::remove(directory, error);
+        error.clear();
+    }
+}
+
+void removeHistorySnapshot(const std::filesystem::path& snapshot)
+{
+    std::error_code error;
+    std::filesystem::remove_all(snapshot, error);
+}
+
+void clearHistoryWorkCopy(const int version)
+{
+    const auto historyPath = getWorkCopyHistoryPath(version);
+    std::error_code error;
+    const auto status = std::filesystem::symlink_status(historyPath, error);
+    if (!error && std::filesystem::exists(status)) {
+        ensureNoSymlinkPath(historyPath.parent_path().parent_path().parent_path(), historyPath);
+        std::filesystem::remove_all(historyPath, error);
+        if (error)
+            throw stdext::exception("unable to clear stale work copy history: {}", error.message());
+    } else if (error != std::errc::no_such_file_or_directory && error) {
+        throw stdext::exception("unable to inspect work copy history: {}", error.message());
+    }
+    workCopyHistory.erase(version);
+}
+
+std::filesystem::path createInstalledBackupPath(const std::filesystem::path& thingsDirectory, const int version)
+{
+    namespace fs = std::filesystem;
+    const auto backupDirectory = thingsDirectory / "backup";
+    std::error_code error;
+    fs::create_directories(backupDirectory, error);
+    if (error)
+        throw stdext::exception("unable to create the Things backup folder: {}", error.message());
+    ensureNoSymlinkPath(thingsDirectory, backupDirectory);
+
+    const auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    for (int suffix = 0; ; ++suffix) {
+        const auto name = suffix == 0 ? fmt::format("{}-{}", version, timestamp) :
+            fmt::format("{}-{}-{}", version, timestamp, suffix);
+        const auto backup = backupDirectory / name;
+        const auto status = fs::symlink_status(backup, error);
+        if (error == std::errc::no_such_file_or_directory) {
+            error.clear();
+            ensureNoSymlinkPath(thingsDirectory, backup);
+            return backup;
+        }
+        if (error)
+            throw stdext::exception("unable to validate the Things backup path: {}", error.message());
+        if (!fs::exists(status)) {
+            ensureNoSymlinkPath(thingsDirectory, backup);
+            return backup;
+        }
+    }
 }
 
 ImagePtr loadPreparedSprite(const std::string& fileName, const Size& expectedSize = Size(32, 32))
@@ -924,6 +1263,8 @@ std::string SpriteAppearances::createWorkCopy(const int version)
     const auto packagePath = workRoot / "data" / "things" / std::to_string(version);
     const auto copiedCatalog = packagePath / "catalog-content.json";
     ensureNoSymlinkPath(normalizedWriteDirectory, packagePath);
+    if (workCopyHistory.find(version) == workCopyHistory.end())
+        clearHistoryWorkCopy(version);
 
     if (std::filesystem::exists(packagePath)) {
         validateAssetDirectory(packagePath);
@@ -1043,7 +1384,355 @@ std::string SpriteAppearances::resetWorkCopy(const int version)
 
     if (movedPrevious)
         fs::remove_all(previousPackage, error);
+    try {
+        clearHistoryWorkCopy(version);
+    } catch (const std::exception& exception) {
+        g_logger.warning("Unable to clear sprite editor history after resetting client version {}: {}",
+                         version, exception.what());
+    }
     return (normalizedWriteDirectory / "sprite-editor").generic_string();
+}
+
+std::string SpriteAppearances::getWorkCopyHistoryState(const int version)
+{
+    const auto it = workCopyHistory.find(version);
+    const size_t undoCount = it == workCopyHistory.end() ? 0 : it->second.undo.size();
+    const size_t redoCount = it == workCopyHistory.end() ? 0 : it->second.redo.size();
+    return json({ { "undo", undoCount }, { "redo", redoCount } }).dump();
+}
+
+void SpriteAppearances::beginWorkCopyEdit(const int version)
+{
+    const auto package = getEditorWorkPackagePath(version);
+    if (!std::filesystem::is_regular_file(package / "catalog-content.json"))
+        throw stdext::exception("the selected sprite editor work copy is incomplete");
+    validateAssetDirectory(package);
+
+    auto& history = workCopyHistory[version];
+    if (!history.pending.empty())
+        throw stdext::exception("another work copy edit is already being recorded");
+    history.pending = createWorkCopySnapshot(version, package, "pending");
+}
+
+bool SpriteAppearances::commitWorkCopyEdit(const int version, const std::string& label)
+{
+    auto it = workCopyHistory.find(version);
+    if (it == workCopyHistory.end() || it->second.pending.empty())
+        throw stdext::exception("there is no work copy edit to record");
+
+    auto& history = it->second;
+    const auto package = getEditorWorkPackagePath(version);
+    const auto pending = history.pending;
+    if (areAssetStatesEqual(pending, package)) {
+        removeHistorySnapshot(pending);
+        history.pending.clear();
+        return false;
+    }
+
+    for (const auto& entry : history.redo)
+        removeHistorySnapshot(entry.snapshot);
+    history.redo.clear();
+    history.undo.push_back({ pending, label.empty() ? "Edit assets" : label });
+    history.pending.clear();
+    while (history.undo.size() > MAX_WORK_COPY_HISTORY) {
+        removeHistorySnapshot(history.undo.front().snapshot);
+        history.undo.erase(history.undo.begin());
+    }
+    return true;
+}
+
+std::string SpriteAppearances::undoWorkCopyEdit(const int version)
+{
+    auto it = workCopyHistory.find(version);
+    if (it == workCopyHistory.end() || it->second.undo.empty())
+        return {};
+    auto& history = it->second;
+    if (!history.pending.empty())
+        throw stdext::exception("finish the current work copy edit before undoing");
+
+    const auto package = getEditorWorkPackagePath(version);
+    const auto previous = history.undo.back();
+    const auto redoSnapshot = createWorkCopySnapshot(version, package, "redo");
+    try {
+        restoreWorkCopySnapshot(previous.snapshot, package);
+    } catch (...) {
+        try {
+            restoreWorkCopySnapshot(redoSnapshot, package);
+        } catch (const std::exception& rollbackError) {
+            throw stdext::exception("undo failed and the current work copy could not be restored: {}", rollbackError.what());
+        }
+        removeHistorySnapshot(redoSnapshot);
+        throw;
+    }
+
+    history.undo.pop_back();
+    history.redo.push_back(previous);
+    removeHistorySnapshot(previous.snapshot);
+    history.redo.back().snapshot = redoSnapshot;
+    return previous.label;
+}
+
+std::string SpriteAppearances::redoWorkCopyEdit(const int version)
+{
+    auto it = workCopyHistory.find(version);
+    if (it == workCopyHistory.end() || it->second.redo.empty())
+        return {};
+    auto& history = it->second;
+    if (!history.pending.empty())
+        throw stdext::exception("finish the current work copy edit before redoing");
+
+    const auto package = getEditorWorkPackagePath(version);
+    const auto next = history.redo.back();
+    const auto undoSnapshot = createWorkCopySnapshot(version, package, "undo");
+    try {
+        restoreWorkCopySnapshot(next.snapshot, package);
+    } catch (...) {
+        try {
+            restoreWorkCopySnapshot(undoSnapshot, package);
+        } catch (const std::exception& rollbackError) {
+            throw stdext::exception("redo failed and the current work copy could not be restored: {}", rollbackError.what());
+        }
+        removeHistorySnapshot(undoSnapshot);
+        throw;
+    }
+
+    history.redo.pop_back();
+    history.undo.push_back({ undoSnapshot, next.label });
+    removeHistorySnapshot(next.snapshot);
+    while (history.undo.size() > MAX_WORK_COPY_HISTORY) {
+        removeHistorySnapshot(history.undo.front().snapshot);
+        history.undo.erase(history.undo.begin());
+    }
+    return next.label;
+}
+
+std::string SpriteAppearances::getInstalledAssetBackups(const int version)
+{
+    namespace fs = std::filesystem;
+    const auto workPackage = getEditorWorkPackagePath(version);
+    const auto installedPackage = findInstalledAssetPackage(version, workPackage);
+    const auto thingsDirectory = installedPackage.parent_path();
+    const auto backupDirectory = thingsDirectory / "backup";
+    ensureNoSymlinkPath(thingsDirectory, backupDirectory);
+    std::error_code error;
+    if (!fs::exists(backupDirectory, error)) {
+        if (error)
+            throw stdext::exception("unable to inspect the Things backup folder: {}", error.message());
+        return "[]";
+    }
+    if (!fs::is_directory(backupDirectory, error) || error)
+        throw stdext::exception("the Things backup path is not a directory");
+
+    const auto prefix = fmt::format("{}-", version);
+    std::vector<std::string> backups;
+    for (const auto& entry : fs::directory_iterator(backupDirectory)) {
+        const auto name = entry.path().filename().string();
+        if (!name.starts_with(prefix))
+            continue;
+        const auto status = entry.symlink_status();
+        if (fs::is_symlink(status) || !fs::is_directory(status))
+            continue;
+        if (fs::is_regular_file(entry.path() / "catalog-content.json"))
+            backups.push_back(name);
+    }
+    std::sort(backups.begin(), backups.end(), std::greater<>());
+    return json(backups).dump();
+}
+
+std::string SpriteAppearances::getInstalledAssetBackupHistory(const int version, const std::string& backupName)
+{
+    namespace fs = std::filesystem;
+    constexpr size_t MAX_HISTORY_FILE_SIZE = 32 * 1024 * 1024;
+    if (backupName.empty() || fs::path(backupName).filename() != fs::path(backupName) ||
+        !backupName.starts_with(fmt::format("{}-", version)))
+        throw stdext::exception("choose a backup for the selected client assets version");
+
+    const auto workPackage = getEditorWorkPackagePath(version);
+    const auto installedPackage = findInstalledAssetPackage(version, workPackage);
+    const auto thingsDirectory = installedPackage.parent_path();
+    const auto backupDirectory = thingsDirectory / "backup";
+    const auto selectedBackup = backupDirectory / backupName;
+    ensureNoSymlinkPath(thingsDirectory, backupDirectory);
+    ensureNoSymlinkPath(backupDirectory, selectedBackup);
+    if (!fs::is_directory(selectedBackup) || !fs::is_regular_file(selectedBackup / "catalog-content.json"))
+        throw stdext::exception("the selected asset backup is unavailable or incomplete");
+
+    const auto path = selectedBackup / "asset-editor-history.json";
+    ensureNoSymlinkPath(selectedBackup, path);
+    std::error_code error;
+    if (!fs::exists(path, error)) {
+        if (error)
+            throw stdext::exception("unable to inspect the selected backup history: {}", error.message());
+        return json({ { "schemaVersion", 1 }, { "clientVersion", version },
+                      { "historyAvailable", false }, { "entries", json::array() } }).dump();
+    }
+    const auto status = fs::symlink_status(path, error);
+    if (error || fs::is_symlink(status) || !fs::is_regular_file(status))
+        throw stdext::exception("the selected backup history is not a regular file");
+
+    const auto history = json::parse(readSmallFile(path, MAX_HISTORY_FILE_SIZE));
+    if (!history.is_object() || !history.contains("entries") || !history["entries"].is_array())
+        throw stdext::exception("the selected backup history has an unsupported format");
+    auto result = history;
+    result["historyAvailable"] = true;
+    return result.dump();
+}
+
+std::string SpriteAppearances::getAssetEditHistory(const int version)
+{
+    namespace fs = std::filesystem;
+    constexpr size_t MAX_HISTORY_FILE_SIZE = 32 * 1024 * 1024;
+    const auto path = getEditorAssetHistoryPath(version);
+    std::error_code error;
+    if (!fs::exists(path, error)) {
+        if (error)
+            throw stdext::exception("unable to inspect asset edit history: {}", error.message());
+        return json({ { "schemaVersion", 1 }, { "clientVersion", version }, { "entries", json::array() } }).dump();
+    }
+    const auto status = fs::symlink_status(path, error);
+    if (error || fs::is_symlink(status) || !fs::is_regular_file(status))
+        throw stdext::exception("asset edit history is not a regular file");
+
+    const auto history = json::parse(readSmallFile(path, MAX_HISTORY_FILE_SIZE));
+    if (!history.is_object() || !history.contains("entries") || !history["entries"].is_array())
+        throw stdext::exception("asset edit history has an unsupported format");
+    return history.dump();
+}
+
+std::string SpriteAppearances::appendAssetEditHistory(const int version, const std::string& encodedEntry)
+{
+    namespace fs = std::filesystem;
+    constexpr size_t MAX_HISTORY_FILE_SIZE = 32 * 1024 * 1024;
+    constexpr size_t MAX_HISTORY_ENTRIES = 200;
+    if (encodedEntry.size() > 16 * 1024 * 1024)
+        throw stdext::exception("this asset edit is too large to store in the history");
+
+    auto entry = json::parse(encodedEntry);
+    if (!entry.is_object())
+        throw stdext::exception("asset edit history entry must be an object");
+    if (!entry.contains("label") || !entry["label"].is_string() || entry["label"].get<std::string>().empty())
+        throw stdext::exception("asset edit history entry needs a label");
+
+    const auto path = getEditorAssetHistoryPath(version);
+    json history = { { "schemaVersion", 1 }, { "clientVersion", version }, { "entries", json::array() } };
+    std::error_code error;
+    if (fs::exists(path, error)) {
+        const auto status = fs::symlink_status(path, error);
+        if (error || fs::is_symlink(status) || !fs::is_regular_file(status))
+            throw stdext::exception("asset edit history is not a regular file");
+        history = json::parse(readSmallFile(path, MAX_HISTORY_FILE_SIZE));
+        if (!history.is_object() || !history.contains("entries") || !history["entries"].is_array())
+            throw stdext::exception("asset edit history has an unsupported format");
+    } else if (error) {
+        throw stdext::exception("unable to inspect asset edit history: {}", error.message());
+    }
+
+    entry["id"] = g_crypt.genUUID();
+    entry["createdAt"] = getUtcTimestamp();
+    history["schemaVersion"] = 1;
+    history["clientVersion"] = version;
+    history["entries"].push_back(std::move(entry));
+    while (history["entries"].size() > MAX_HISTORY_ENTRIES)
+        history["entries"].erase(history["entries"].begin());
+
+    auto serialized = history.dump(2);
+    while (serialized.size() > MAX_HISTORY_FILE_SIZE && history["entries"].size() > 1) {
+        history["entries"].erase(history["entries"].begin());
+        serialized = history.dump(2);
+    }
+    if (serialized.size() > MAX_HISTORY_FILE_SIZE)
+        throw stdext::exception("asset edit history reached its storage limit");
+
+    const std::vector<uint8_t> bytes(serialized.begin(), serialized.end());
+    writeFileAtomically(path, bytes);
+    return history["entries"].back()["id"].get<std::string>();
+}
+
+std::string SpriteAppearances::getSpriteImagePngBase64(const int version, const int spriteId)
+{
+    if (spriteId < 1)
+        throw stdext::exception("sprite ID must be positive");
+    const auto catalog = getEditorCatalogPath(version);
+    const auto package = getEditorWorkPackagePath(version);
+    if (std::filesystem::weakly_canonical(catalog.parent_path()) != std::filesystem::weakly_canonical(package))
+        throw stdext::exception("sprite snapshots are available only inside the active work copy");
+    const auto image = getSpriteImage(spriteId);
+    if (!image)
+        throw stdext::exception("sprite {} is not available in the loaded asset package", spriteId);
+
+    std::stringstream png;
+    save_png(png, image->getSize().width(), image->getSize().height(), 4, image->getPixelData());
+    const auto contents = png.str();
+    if (contents.size() > 4 * 1024 * 1024)
+        throw stdext::exception("sprite image is too large to store in asset history");
+    return g_crypt.base64Encode(contents);
+}
+
+void SpriteAppearances::restoreSpriteImageFromPngBase64(const int version, const int spriteId,
+                                                         const std::string& encodedPng)
+{
+    if (spriteId < 1 || encodedPng.empty() || encodedPng.size() > 8 * 1024 * 1024)
+        throw stdext::exception("invalid sprite history restore request");
+    const auto decoded = g_crypt.base64Decode(encodedPng);
+    const auto image = Image::loadPNG(decoded.data(), decoded.size());
+    if (!image)
+        throw stdext::exception("the saved sprite image in asset history is invalid");
+    saveSpriteToWorkCopy(spriteId, image, version);
+}
+
+std::string SpriteAppearances::restoreInstalledAssetBackup(const int version, const std::string& backupName)
+{
+    namespace fs = std::filesystem;
+    if (backupName.empty() || fs::path(backupName).filename() != fs::path(backupName) ||
+        !backupName.starts_with(fmt::format("{}-", version)))
+        throw stdext::exception("choose a backup for the selected client assets version");
+
+    const auto workPackage = getEditorWorkPackagePath(version);
+    const auto installedPackage = findInstalledAssetPackage(version, workPackage);
+    const auto thingsDirectory = installedPackage.parent_path();
+    const auto backupDirectory = thingsDirectory / "backup";
+    const auto selectedBackup = backupDirectory / backupName;
+    ensureNoSymlinkPath(thingsDirectory, backupDirectory);
+    ensureNoSymlinkPath(backupDirectory, selectedBackup);
+    if (!fs::is_directory(selectedBackup) || !fs::is_regular_file(selectedBackup / "catalog-content.json"))
+        throw stdext::exception("the selected asset backup is unavailable or incomplete");
+    validateAssetDirectory(selectedBackup);
+    validateAssetDirectory(installedPackage);
+
+    const auto temporaryPackage = fs::path(installedPackage.generic_string() + ".sprite-editor.restore.tmp");
+    ensureNoSymlinkPath(thingsDirectory.parent_path(), temporaryPackage);
+    std::error_code error;
+    if (fs::exists(temporaryPackage, error) || error)
+        throw stdext::exception("a previous asset restore left a temporary folder; inspect '{}' before retrying",
+                                temporaryPackage.generic_string());
+    try {
+        copyAssetDirectory(selectedBackup, temporaryPackage);
+        verifyAssetCopy(selectedBackup, temporaryPackage);
+    } catch (...) {
+        fs::remove_all(temporaryPackage, error);
+        throw;
+    }
+
+    const auto safetyBackup = createInstalledBackupPath(thingsDirectory, version);
+    try {
+        fs::rename(installedPackage, safetyBackup);
+    } catch (const std::exception& exception) {
+        fs::remove_all(temporaryPackage, error);
+        throw stdext::exception("unable to preserve the current installed assets: {}", exception.what());
+    }
+    try {
+        fs::rename(temporaryPackage, installedPackage);
+    } catch (const std::exception& exception) {
+        try {
+            fs::rename(safetyBackup, installedPackage);
+        } catch (const std::exception& rollbackError) {
+            throw stdext::exception("asset restore failed and rollback could not recover the current package; backup remains at '{}': {}",
+                                    safetyBackup.generic_string(), rollbackError.what());
+        }
+        fs::remove_all(temporaryPackage, error);
+        throw stdext::exception("asset restore failed; the current package was restored: {}", exception.what());
+    }
+    return safetyBackup.generic_string();
 }
 
 std::string SpriteAppearances::exportWorkCopy(const int version, const std::string& destination)
