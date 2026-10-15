@@ -144,6 +144,36 @@ function WorkCopyService:install(version, root)
    return { installed = true, backup_path = result }
 end
 
+function WorkCopyService:install_as_new_version(source_version, target_version, root)
+   local unmounted, was_mounted = self:unmount(root)
+   if not unmounted then
+      return {
+         error = tr('Could not unmount the working copy before installing the new version.'),
+         unmount_failed = true,
+      }
+   end
+
+   local installed, result = pcall(g_spriteAppearances.installWorkCopyAsNewVersion, source_version, target_version)
+   local remounted = self:restore(root, was_mounted)
+   if not remounted then
+      if installed then
+         return {
+            installed = true,
+            destination = result,
+            remount_failed = true,
+         }
+      end
+      return {
+         error = result,
+         remount_failed = true,
+      }
+   end
+   if not installed then
+      return { error = result }
+   end
+   return { installed = true, destination = result }
+end
+
 function SpriteEditorWorkCopyService.new()
    return setmetatable({ mounted_roots = {} }, { __index = WorkCopyService })
 end

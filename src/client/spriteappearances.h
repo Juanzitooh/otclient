@@ -141,6 +141,7 @@ public:
     std::string resetWorkCopy(int version);
     std::string exportWorkCopy(int version, const std::string& destination);
     std::string installWorkCopy(int version);
+    std::string installWorkCopyAsNewVersion(int sourceVersion, int targetVersion);
     void saveSpriteToWorkCopy(int id, const ImagePtr& image, int version);
     int importSpriteFromFile(int id, const std::string& fileName, int version);
     int importSpriteForAppearance(int referenceSpriteId, const std::string& fileName, int version);
