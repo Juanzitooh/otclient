@@ -123,13 +123,24 @@ Panel
     height: 25
     @onClick: modules.game_sprite_editor.exportWorkCopy()
 
+  AppearanceActionButton
+    id: exportAppearanceBatchButton
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: exportButton.bottom
+    margin-top: 5
+    height: 24
+    visible: false
+    !tooltip: tr('Exports the appearances currently shown in the left list, up to 8 at a time.')
+    @onClick: modules.game_sprite_editor.exportFilteredAppearanceBundles()
+
   Label
     id: exportHint
     anchors.left: parent.left
     anchors.right: parent.right
-    anchors.top: exportButton.bottom
+    anchors.top: exportAppearanceBatchButton.bottom
     margin-top: 7
-    height: 30
+    height: 42
     text-wrap: true
 
   Label

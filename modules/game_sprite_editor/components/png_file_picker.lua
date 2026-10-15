@@ -70,11 +70,11 @@ function PngFilePicker:render()
    local directory_mode = is_directory_target(self.target)
    local folder_title = (self.target == 'export' or self.target == 'appearanceExport') and
       tr('Choose a destination folder') or
-      (self.target == 'appearanceImport' and tr('Choose an appearance bundle folder') or
+      (self.target == 'appearanceImport' and tr('Choose appearance bundle folder(s)') or
          tr('Choose a folder with prepared PNGs'))
    local folder_hint = (self.target == 'export' or self.target == 'appearanceExport') and
       tr('Choose where the package will be created.') or
-      (self.target == 'appearanceImport' and tr('Choose a folder containing manifest.json, appearance.pb and the referenced sprite PNGs.') or
+      (self.target == 'appearanceImport' and tr('Choose one folder containing manifest.json, or a parent folder containing several appearance bundle folders.') or
          tr('Choose a folder containing individual prepared PNG sprites.'))
    self.directory = normalize_directory_path(self.directory)
    self.selection = directory_mode and normalize_directory_path(previous_selection or self.directory) or nil

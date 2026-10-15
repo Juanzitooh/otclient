@@ -659,21 +659,31 @@ SpriteEditorWindow < MainWindow
 
   AppearanceActionButton
     id: duplicateAppearanceButton
-    !text: tr('Duplicate')
+    !text: tr('Copy')
     !tooltip: tr('Copy flags, values, animation, and sprite links to a new ID. Sprite IDs stay shared until replaced.')
     anchors.left: appearancesPanel.left
     anchors.bottom: parent.bottom
-    width: 91
+    width: 56
     height: 25
     @onClick: modules.game_sprite_editor.duplicateSelectedAppearance()
 
   AppearanceActionButton
+    id: deleteAppearanceButton
+    !text: tr('Delete')
+    !tooltip: tr('Remove this appearance from the working copy. Its sprites are kept, including sprites shared by other appearances.')
+    anchors.horizontalCenter: appearancesPanel.horizontalCenter
+    anchors.bottom: parent.bottom
+    width: 56
+    height: 25
+    @onClick: modules.game_sprite_editor.deleteSelectedAppearance()
+
+  AppearanceActionButton
     id: createAppearanceShortcutButton
-    !text: tr('+ New')
+    !text: tr('New')
     !tooltip: tr('Create an appearance from a PNG or an existing sprite ID.')
     anchors.right: appearancesPanel.right
     anchors.bottom: parent.bottom
-    width: 91
+    width: 56
     height: 25
     @onClick: modules.game_sprite_editor.openNewAppearance()
 

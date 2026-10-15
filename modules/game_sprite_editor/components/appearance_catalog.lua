@@ -193,12 +193,18 @@ function AppearanceCatalog:apply_filter()
    list:setVirtualOffset({ x = 0, y = 0 })
    self:render_rows(0)
    list:updateScrollBars()
+   if self.callbacks.on_filter_change then
+      self.callbacks.on_filter_change()
+   end
 end
 
 function AppearanceCatalog:refresh(category)
    if not self.callbacks.get_window() or not self.callbacks.get_active_version() then
       self.entries = {}
       self.filtered_entries = {}
+      if self.callbacks.on_filter_change then
+         self.callbacks.on_filter_change()
+      end
       return
    end
    self.entries = self:get_thing_entries(category)
@@ -213,6 +219,17 @@ end
 
 function AppearanceCatalog:get_entry_count()
    return #self.entries
+end
+
+function AppearanceCatalog:get_filtered_ids(limit)
+   if #self.filtered_entries == 0 or #self.filtered_entries > limit then
+      return nil, #self.filtered_entries
+   end
+   local ids = {}
+   for _, entry in ipairs(self.filtered_entries) do
+      table.insert(ids, entry.id)
+   end
+   return ids, #self.filtered_entries
 end
 
 function AppearanceCatalog:get_bottom_offset()
