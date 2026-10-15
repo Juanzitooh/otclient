@@ -4,53 +4,80 @@ Panel
   visible: false
 
   AppearanceCenteredSectionHeader
-    !text: tr('Install the edited client assets')
+    !text: tr('Export assets')
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.top: parent.top
 
-  Label
-    !text: tr('Install replaces the selected package in data/things. The previous package is moved to data/things/backup first. The editor then reloads appearances and static data for offline testing.')
+  Panel
+    id: exportModeTabs
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.top: prev.bottom
-    margin-top: 8
-    height: 54
-    text-wrap: true
+    margin-top: 5
+    height: 24
+    layout: horizontalBox
+    spacing: 5
+
+    AppearanceNavigationButton
+      id: replaceVersionModeButton
+      !text: tr('Replace version')
+      width: 148
+      height: 24
+      checkable: true
+      @onClick: modules.game_sprite_editor.setExportMode('replace')
+
+    AppearanceNavigationButton
+      id: newVersionModeButton
+      !text: tr('New version')
+      width: 148
+      height: 24
+      checkable: true
+      @onClick: modules.game_sprite_editor.setExportMode('new')
 
   AppearanceFieldLabel
-    !text: tr('Working copy')
-    anchors.left: parent.left
-    anchors.top: prev.bottom
-    margin-top: 10
-
-  AppearanceFieldLabel
-    id: activeWorkCopyLabel
+    id: exportSourceLabel
     anchors.left: parent.left
     anchors.right: parent.right
-    anchors.top: prev.bottom
-    margin-top: 3
-    height: 48
-    text-wrap: true
+    anchors.top: exportModeTabs.bottom
+    margin-top: 9
+    height: 18
+    text-wrap: false
 
-  AppearanceFieldLabel
-    !text: tr('Install location')
+  Panel
+    id: exportTargetRow
     anchors.left: parent.left
-    anchors.top: activeWorkCopyLabel.bottom
-    margin-top: 8
+    anchors.right: parent.right
+    anchors.top: exportSourceLabel.bottom
+    margin-top: 4
+    height: 23
+
+    AppearanceFieldLabel
+      id: targetVersionLabel
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      width: 190
+
+    AppearanceCenteredNumberEdit
+      id: newVersionEdit
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      width: 92
+      height: 22
+      max-length: 5
+      visible: false
 
   AppearanceFieldLabel
     id: installTargetLabel
     anchors.left: parent.left
     anchors.right: parent.right
-    anchors.top: prev.bottom
-    margin-top: 4
-    height: 24
+    anchors.top: exportTargetRow.bottom
+    margin-top: 2
+    height: 18
     text-wrap: false
 
   AppearanceActionButton
     id: exportButton
-    !text: tr('Export and replace assets')
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.top: installTargetLabel.bottom
@@ -59,11 +86,19 @@ Panel
     @onClick: modules.game_sprite_editor.exportWorkCopy()
 
   Label
-    id: exportStatus
-    !text: tr('The installed package will be backed up before it is replaced.')
+    id: exportHint
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.top: exportButton.bottom
-    margin-top: 8
-    height: 58
+    margin-top: 7
+    height: 30
+    text-wrap: true
+
+  Label
+    id: exportStatus
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: exportHint.bottom
+    margin-top: 5
+    height: 45
     text-wrap: true

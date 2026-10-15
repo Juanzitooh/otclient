@@ -1149,6 +1149,69 @@ std::string SpriteAppearances::installWorkCopy(const int version)
     return backupPath.generic_string();
 }
 
+std::string SpriteAppearances::installWorkCopyAsNewVersion(const int sourceVersion, const int targetVersion)
+{
+    namespace fs = std::filesystem;
+    if (sourceVersion < 1500 || sourceVersion >= 1600 ||
+        targetVersion < 1500 || targetVersion >= 1600 || sourceVersion == targetVersion)
+        throw stdext::exception("source and new client versions must be different 15.x versions");
+
+    const auto workPackage = getEditorWorkPackagePath(sourceVersion);
+    if (!fs::is_regular_file(workPackage / "catalog-content.json"))
+        throw stdext::exception("the selected sprite editor work copy is incomplete");
+    validateAssetDirectory(workPackage);
+
+    const fs::path writeDirectory(g_resources.getWriteDir());
+    if (writeDirectory.empty())
+        throw stdext::exception("the client has no writable user directory");
+    const auto writeRoot = fs::weakly_canonical(writeDirectory);
+    const auto thingsDirectory = writeRoot / "data" / "things";
+    const auto targetPackage = thingsDirectory / std::to_string(targetVersion);
+    ensureNoSymlinkPath(writeRoot, targetPackage);
+
+    std::error_code error;
+    for (const auto& searchRoot : g_resources.getSearchPaths()) {
+        const auto installedPackage = fs::path(searchRoot) / "data" / "things" / std::to_string(targetVersion);
+        error.clear();
+        const auto status = fs::symlink_status(installedPackage, error);
+        if (!error && fs::exists(status))
+            throw stdext::exception("client version {} already has an asset folder; choose an unused 15.x version", targetVersion);
+        if (error != std::errc::no_such_file_or_directory && error)
+            throw stdext::exception("unable to validate the new asset version destination: {}", error.message());
+    }
+
+    auto temporaryPackage = targetPackage;
+    temporaryPackage += ".sprite-editor.tmp";
+    error.clear();
+    const auto temporaryStatus = fs::symlink_status(temporaryPackage, error);
+    if (!error && fs::exists(temporaryStatus))
+        throw stdext::exception("an earlier new-version export left a temporary folder; inspect it before retrying");
+    if (error != std::errc::no_such_file_or_directory && error)
+        throw stdext::exception("unable to validate the new-version temporary folder: {}", error.message());
+
+    fs::create_directories(thingsDirectory, error);
+    if (error)
+        throw stdext::exception("unable to create the Things folder: {}", error.message());
+    ensureNoSymlinkPath(writeRoot, targetPackage);
+
+    try {
+        copyAssetDirectory(workPackage, temporaryPackage);
+        verifyAssetCopy(workPackage, temporaryPackage);
+        error.clear();
+        const auto targetStatus = fs::symlink_status(targetPackage, error);
+        if (!error && fs::exists(targetStatus))
+            throw stdext::exception("client version {} already has an asset folder; choose an unused 15.x version", targetVersion);
+        if (error != std::errc::no_such_file_or_directory && error)
+            throw stdext::exception("unable to revalidate the new asset version destination: {}", error.message());
+        fs::rename(temporaryPackage, targetPackage);
+    } catch (...) {
+        fs::remove_all(temporaryPackage, error);
+        throw;
+    }
+
+    return targetPackage.generic_string();
+}
+
 void SpriteAppearances::saveSpriteToWorkCopy(const int id, const ImagePtr& image, const int version)
 {
     if (version < 1500 || version >= 1600 || id <= 0 || !image || image->getBpp() != 4)

@@ -43,6 +43,7 @@ local spritePicker
 local currentImportSection = 'replace'
 local currentReplaceMode = 'sprite'
 local currentNewAppearanceSourceMode = 'sprite'
+local currentExportMode = 'replace'
 local pngFilePicker
 
 local SPRITE_PICKER_WIDGET_IDS = {
@@ -278,6 +279,40 @@ end
 
 local function formatClientVersion(version)
    return string.format('%d.%02d', math.floor(version / 100), version % 100)
+end
+
+local function parseClientVersion(value)
+   local major, minor = tostring(value):match('^%s*(%d+)%.(%d%d)%s*$')
+   if tonumber(major) ~= 15 or not minor then
+      return nil
+   end
+   return 1500 + tonumber(minor)
+end
+
+local function getVersionDirectories()
+   local directories = {}
+   for _, entry in ipairs(g_resources.listDirectoryFiles('/data/things/')) do
+      local version = tonumber(entry)
+      if version and version >= 1500 and version < 1600 and version % 1 == 0 then
+         directories[version] = true
+      end
+   end
+   return directories
+end
+
+local function getNextAvailableVersion(sourceVersion)
+   local directories = getVersionDirectories()
+   for version = sourceVersion + 1, 1599 do
+      if version ~= sourceVersion and not directories[version] then
+         return version
+      end
+   end
+   for version = 1500, sourceVersion - 1 do
+      if not directories[version] then
+         return version
+      end
+   end
+   return nil
 end
 
 local function hasAppearanceChanges()
@@ -1853,13 +1888,49 @@ local function updateExportControls()
    end
 
    local offline = not g_game.isOnline()
+   local canExport = activeVersion ~= nil and offline
+   local isNewVersion = currentExportMode == 'new'
    local selectedVersion = selectedOption(window:recursiveGetChildById('versionComboBox'))
+   local targetVersion = parseClientVersion(window:recursiveGetChildById('newVersionEdit'):getText())
+   local versionDirectories = getVersionDirectories()
+   local newVersionValid = targetVersion ~= nil and targetVersion ~= activeVersion and
+      not versionDirectories[targetVersion]
+
+   window:recursiveGetChildById('replaceVersionModeButton'):setOn(not isNewVersion)
+   window:recursiveGetChildById('newVersionModeButton'):setOn(isNewVersion)
+   window:recursiveGetChildById('replaceVersionModeButton'):setEnabled(canExport)
+   window:recursiveGetChildById('newVersionModeButton'):setEnabled(canExport)
+   window:recursiveGetChildById('targetVersionLabel'):setText(isNewVersion and
+      tr('New version (15.x)') or tr('Replace current version'))
+   window:recursiveGetChildById('newVersionEdit'):setEnabled(canExport and isNewVersion)
+   window:recursiveGetChildById('newVersionEdit'):setVisible(isNewVersion)
+   window:recursiveGetChildById('exportSourceLabel'):setText(activeVersion and
+      tr('Source version: %s', formatClientVersion(activeVersion)) or tr('No assets version loaded.'))
+   window:recursiveGetChildById('installTargetLabel'):setText(isNewVersion and
+      (newVersionValid and string.format('data/things/%d', targetVersion) or tr('Enter a valid, unused 15.x version.')) or
+      (activeVersion and string.format('data/things/%d', activeVersion) or tr('No install destination.')))
+   window:recursiveGetChildById('exportButton'):setText(isNewVersion and tr('Install as new version') or
+      tr('Replace %s', activeVersion and formatClientVersion(activeVersion) or ''))
+   window:recursiveGetChildById('exportHint'):setText(isNewVersion and
+      tr('The source stays unchanged. Choose an unused version to add it to the client.') or
+      tr('The current package is backed up before replacement.'))
+   window:recursiveGetChildById('exportButton'):setEnabled(canExport and (not isNewVersion or newVersionValid))
    window:recursiveGetChildById('loadAssetsButton'):setEnabled(offline and selectedVersion ~= nil)
-   window:recursiveGetChildById('exportButton'):setEnabled(activeVersion ~= nil and offline)
    window:recursiveGetChildById('importPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('exportPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('reloadButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('newAppearanceTabButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
+end
+
+function setExportMode(mode)
+   if mode ~= 'replace' and mode ~= 'new' then
+      return
+   end
+   currentExportMode = mode
+   if window then
+      window:recursiveGetChildById('exportStatus'):setText('')
+      updateExportControls()
+   end
 end
 
 local function setActivePage(page)
@@ -1875,15 +1946,6 @@ local function setActivePage(page)
    window:recursiveGetChildById('exportPageButton'):setOn(page == 'export')
    updateSpriteReplacementTarget()
    updateExportControls()
-   if page == 'export' then
-      local packagePath = activeWorkRoot and activeVersion and
-         string.format('%s/data/things/%d', activeWorkRoot, activeVersion)
-      local copyLabel = window:recursiveGetChildById('activeWorkCopyLabel')
-      copyLabel:setText(packagePath or tr('No work copy is open.'))
-      copyLabel:setTooltip(packagePath or '')
-      window:recursiveGetChildById('installTargetLabel'):setText(activeVersion and
-         string.format('data/things/%d', activeVersion) or tr('No assets version selected.'))
-   end
 end
 
 local function createWindow()
@@ -1987,6 +2049,14 @@ local function createWindow()
       versionBox:setCurrentOptionByData(selectedVersion, true)
    end
    versionBox.onOptionChange = function()
+      updateExportControls()
+   end
+   local newVersionEdit = window:recursiveGetChildById('newVersionEdit')
+   local suggestedVersion = activeVersion and getNextAvailableVersion(activeVersion)
+   if suggestedVersion then
+      newVersionEdit:setText(formatClientVersion(suggestedVersion))
+   end
+   newVersionEdit.onTextChange = function()
       updateExportControls()
    end
 
@@ -2816,6 +2886,15 @@ function exportWorkCopy(forceContinue, confirmed)
       window:recursiveGetChildById('exportStatus'):setText(tr('Load an offline 15.x work copy before exporting.'))
       return
    end
+   local isNewVersion = currentExportMode == 'new'
+   local targetVersion = activeVersion
+   if isNewVersion then
+      targetVersion = parseClientVersion(window:recursiveGetChildById('newVersionEdit'):getText())
+   end
+   if isNewVersion and (not targetVersion or targetVersion == activeVersion or getVersionDirectories()[targetVersion]) then
+      window:recursiveGetChildById('exportStatus'):setText(tr('Choose an unused version from 15.00 to 15.99.'))
+      return
+   end
    if not confirmed then
       local messageBox
       local function cancelInstall()
@@ -2825,18 +2904,29 @@ function exportWorkCopy(forceContinue, confirmed)
          messageBox:ok()
          exportWorkCopy(true, true)
       end
-      messageBox = displayGeneralBox(tr('Replace installed client assets?'),
-         tr('This installs the full working copy into data/things/%d. The current package is first preserved in data/things/backup, then the editor reloads appearances and static data. Use this copy when you next enter a world.', activeVersion), {
-            { text = tr('Export and replace'), callback = confirmInstall },
+      local title = isNewVersion and tr('Install client version %s?', formatClientVersion(targetVersion)) or
+         tr('Replace client version %s?', formatClientVersion(activeVersion))
+      local message = isNewVersion and
+         tr('Creates data/things/%d. Existing versions are never overwritten; source %s stays unchanged.',
+            targetVersion, formatClientVersion(activeVersion)) or
+         tr('Replaces data/things/%d. The current package is backed up first.', activeVersion)
+      messageBox = displayGeneralBox(title, message, {
+            { text = isNewVersion and tr('Install new version') or tr('Replace version'), callback = confirmInstall },
             { text = tr('Cancel'), callback = cancelInstall },
          }, cancelInstall, cancelInstall)
       return
    end
 
-   local result = getWorkCopyService():install(activeVersion, activeWorkRoot)
+   local result = isNewVersion and
+      getWorkCopyService():install_as_new_version(activeVersion, targetVersion, activeWorkRoot) or
+      getWorkCopyService():install(activeVersion, activeWorkRoot)
+   if isNewVersion and result.installed then
+      window:recursiveGetChildById('versionComboBox'):addOption(formatClientVersion(targetVersion), targetVersion)
+   end
    if result.remount_failed then
+      local details = isNewVersion and result.destination or result.backup_path
       local message = result.installed and
-         tr('Assets were installed, but the working copy could not be remounted. Backup: %s', result.backup_path) or
+         tr('Assets were installed, but the working copy could not be remounted. Location: %s', details) or
          tr('%s The working copy could not be remounted.', getUserFacingError(result.error))
       window:recursiveGetChildById('exportStatus'):setText(message)
       displayErrorBox(tr('Assets Editor'), message)
@@ -2846,6 +2936,13 @@ function exportWorkCopy(forceContinue, confirmed)
       window:recursiveGetChildById('exportStatus'):setText(getUserFacingError(result.error))
       return
    end
+   if isNewVersion then
+      local status = tr('Version %s installed. Select it in Assets version to load it.', formatClientVersion(targetVersion))
+      window:recursiveGetChildById('exportStatus'):setText(status)
+      setStatus(tr('Client version %s is available in data/things/%d.', formatClientVersion(targetVersion), targetVersion))
+      return
+   end
+
    local backupPath = result.backup_path
    if not reloadAssets() then
       local message = tr('Assets were installed, but the editor could not reload them. Backup: %s', backupPath)
