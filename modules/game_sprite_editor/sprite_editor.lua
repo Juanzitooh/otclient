@@ -87,9 +87,10 @@ local PREVIEW_CONTROLS_BOTTOM_MARGIN = 14
 local PREVIEW_CANVAS_BOTTOM_MARGIN = 4
 local PREVIEW_HINT_BOTTOM_MARGIN = 8
 local MAX_PREVIEW_TIMELINE_FRAMES = 20
-local PREVIEW_TIMELINE_HEIGHT = 86
-local PREVIEW_TIMELINE_ONLY_HEIGHT = 42
-local PREVIEW_TIMELINE_TRACK_HEIGHT = 34
+local PREVIEW_TIMELINE_HEIGHT = 100
+local PREVIEW_TIMELINE_ONLY_HEIGHT = 56
+local PREVIEW_TIMELINE_CELL_WIDTH = 30
+local PREVIEW_TIMELINE_TRACK_HEIGHT = 22
 local PREVIEW_FRAME_SELECTION_WIDTH = 164
 local PREVIEW_DURATION_GROUP_GAP = 6
 local PREVIEW_DIRECTION_BUTTON_WIDTH = 48
@@ -745,7 +746,7 @@ local function updatePreviewTimelineLayout(phaseCount, hasFrameControls, hasAnim
    timelinePanel:setHeight(panelHeight)
    timelineLabel:setVisible(hasFrameControls)
    timeline:setVisible(showFrameButtons)
-   timelineScroll:setVisible(showFrameButtons and phaseCount * 30 > timeline:getWidth())
+   timelineScroll:setVisible(showFrameButtons and phaseCount * PREVIEW_TIMELINE_CELL_WIDTH > timeline:getWidth())
    phaseActions:setVisible(hasFrameControls)
    local showPlayButton = hasAnimation and phaseCount > 1
    playButton:setVisible(showPlayButton)
@@ -1038,9 +1039,9 @@ updatePreviewTimelineSelection = function(phaseCount)
       local frameButton = frameCell:getChildById('previewTimelineFrameButton')
       frameButton:setOn(selected)
       frameButton:setColor(selected and '#d9c7ff' or '#dfdfdf')
-      local marker = frameCell:getChildById('previewTimelineMarker')
-      if marker then
-         marker:setVisible(selected)
+      local thumb = frameCell:recursiveGetChildById('previewTimelineThumb')
+      if thumb then
+         thumb:setVisible(selected)
       end
    end
 
@@ -1390,13 +1391,28 @@ local function setComboOptions(comboBox, options, selectedData)
    comboBox.onOptionChange = onOptionChange
 end
 
-local function buildPatternOptions(comboBox, label, count, selectedIndex)
+local function buildPatternOptions(comboBox, label, count, selectedIndex, optionLabelForIndex)
    local options = {}
    for index = 0, count - 1 do
-      table.insert(options, { label = string.format('%s %d', label, index + 1), data = index })
+      local optionLabel = optionLabelForIndex and optionLabelForIndex(index) or
+         string.format('%s %d', label, index + 1)
+      table.insert(options, { label = optionLabel, data = index })
    end
    setComboOptions(comboBox, options, math.min(selectedIndex or 0, count - 1))
    comboBox:setVisible(count > 1)
+end
+
+local function outfitAddonOptionLabel(index)
+   if index == 0 then
+      return tr('No addon')
+   elseif index == 1 then
+      return tr('Addon 1')
+   elseif index == 2 then
+      return tr('Addon 2')
+   elseif index == 3 then
+      return tr('Both addons')
+   end
+   return tr('Addon pattern %d', index + 1)
 end
 
 local function setCheckBoxState(checkBox, checked)
@@ -1506,7 +1522,8 @@ updatePreviewPatternControls = function()
       buildPatternOptions(directionBox, isOutfit and tr('Direction') or tr('Pattern X'), group.patternWidth, previewPatternX)
    end
 
-   buildPatternOptions(addonBox, isOutfit and tr('Addon') or tr('Pattern Y'), group.patternHeight, previewPatternY)
+   buildPatternOptions(addonBox, isOutfit and tr('Addon') or tr('Pattern Y'), group.patternHeight,
+      previewPatternY, isOutfit and outfitAddonOptionLabel or nil)
    buildPatternOptions(layerBox, tr('Layer'), group.layers, previewLayer)
    if isOutfit then
       patternZBox:setVisible(false)
@@ -1600,7 +1617,8 @@ refreshAppearancePreview = function()
             table.insert(details, tr('Pattern X %d', previewPatternX + 1))
          end
          if group.patternHeight > 1 then
-            table.insert(details, tr('%s %d', selectedAppearanceCategory == 1 and tr('Addon') or tr('Pattern Y'), previewPatternY + 1))
+            table.insert(details, selectedAppearanceCategory == 1 and outfitAddonOptionLabel(previewPatternY) or
+               tr('Pattern Y %d', previewPatternY + 1))
          end
          if group.layers > 1 then
             table.insert(details, tr('Layer %d', previewLayer + 1))
@@ -1971,9 +1989,21 @@ updateAnimationEditor = function()
          local currentPhaseIndex = phaseIndex
          local frameCell = g_ui.createWidget('AppearanceTimelineCell', frameList)
          local frameButton = frameCell:getChildById('previewTimelineFrameButton')
+         local frameTrack = frameCell:getChildById('previewTimelineTrack')
+         frameTrack:setHeight(PREVIEW_TIMELINE_TRACK_HEIGHT)
+         frameTrack:setVisible(phaseCount > 1)
          frameButton:setText(tostring(currentPhaseIndex + 1))
          frameButton:setTooltip(tr('Frame %d', currentPhaseIndex + 1))
          frameButton.onMousePress = function(_, _, mouseButton)
+            if mouseButton ~= MouseLeftButton then
+               return false
+            end
+            timelineScrubbing = false
+            selectPreviewPhase(currentPhaseIndex, false)
+            return true
+         end
+         frameTrack:setTooltip(tr('Drag to scrub through frames.'))
+         frameTrack.onMousePress = function(_, _, mouseButton)
             if mouseButton ~= MouseLeftButton then
                return false
             end
@@ -1982,14 +2012,13 @@ updateAnimationEditor = function()
             selectPreviewPhase(currentPhaseIndex, true)
             return true
          end
-         frameButton.onMouseMove = function(_, mousePos)
+         frameTrack.onMouseMove = function(_, mousePos)
             if not timelineScrubbing then
                return false
             end
             for index, candidate in ipairs(frameList:getChildren()) do
                local rect = candidate:getRect()
-               if mousePos.x >= rect.x and mousePos.x < rect.x + rect.width and
-                     mousePos.y >= rect.y and mousePos.y <= rect.y + PREVIEW_TIMELINE_TRACK_HEIGHT then
+               if mousePos.x >= rect.x and mousePos.x < rect.x + rect.width then
                   if index - 1 ~= previewPhase then
                      selectPreviewPhase(index - 1, true)
                   end
@@ -1998,7 +2027,7 @@ updateAnimationEditor = function()
             end
             return true
          end
-         frameButton.onMouseRelease = function(_, _, mouseButton)
+         frameTrack.onMouseRelease = function(_, _, mouseButton)
             if mouseButton == MouseLeftButton then
                timelineScrubbing = false
                return true
@@ -2023,7 +2052,7 @@ updateAnimationEditor = function()
          end
       end
    end
-   frameList:setWidth(showFrameButtons and math.max(1, phaseCount * 30 - 2) or 1)
+   frameList:setWidth(showFrameButtons and math.max(1, phaseCount * PREVIEW_TIMELINE_CELL_WIDTH) or 1)
    updatePreviewTimelineSelection(phaseCount)
    buildingAppearanceProperties = wasBuildingProperties
 end
