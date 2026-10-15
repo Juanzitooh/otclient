@@ -149,6 +149,8 @@ void Client::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_spriteAppearances", "installWorkCopy", &SpriteAppearances::installWorkCopy, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "installWorkCopyAsNewVersion", &SpriteAppearances::installWorkCopyAsNewVersion, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "importSpriteFromFile", &SpriteAppearances::importSpriteFromFile, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "importSpritesFromDirectory", &SpriteAppearances::importSpritesFromDirectory, &g_spriteAppearances);
+    g_lua.bindSingletonFunction("g_spriteAppearances", "importSpritesFromSheet", &SpriteAppearances::importSpritesFromSheet, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "importSpriteForAppearance", &SpriteAppearances::importSpriteForAppearance, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "getSpriteRanges", &SpriteAppearances::getSpriteRanges, &g_spriteAppearances);
     g_lua.bindSingletonFunction("g_spriteAppearances", "releaseDecodedSpriteSheets", &SpriteAppearances::releaseDecodedSpriteSheets, &g_spriteAppearances);
@@ -158,6 +160,8 @@ void Client::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_things", "replaceAppearanceSprite", &ThingTypeManager::replaceAppearanceSprite, &g_things);
     g_lua.bindSingletonFunction("g_things", "createAppearanceFromSprite", &ThingTypeManager::createAppearanceFromSprite, &g_things);
     g_lua.bindSingletonFunction("g_things", "duplicateAppearance", &ThingTypeManager::duplicateAppearance, &g_things);
+    g_lua.bindSingletonFunction("g_things", "exportAppearanceBundle", &ThingTypeManager::exportAppearanceBundle, &g_things);
+    g_lua.bindSingletonFunction("g_things", "importAppearanceBundle", &ThingTypeManager::importAppearanceBundle, &g_things);
 #endif
 
     g_lua.registerSingletonClass("g_map");

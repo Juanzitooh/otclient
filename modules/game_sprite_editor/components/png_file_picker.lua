@@ -2,6 +2,10 @@ SpriteEditorPngFilePicker = {}
 
 local PngFilePicker = {}
 
+local function is_directory_target(target)
+   return target == 'export' or target == 'batch' or target == 'appearanceImport' or target == 'appearanceExport'
+end
+
 local function normalize_directory_path(path)
    path = (path or ''):trim():gsub('\\', '/')
    if path == '' then
@@ -63,11 +67,22 @@ function PngFilePicker:render()
    end
 
    local previous_selection = self.selection
+   local directory_mode = is_directory_target(self.target)
+   local folder_title = (self.target == 'export' or self.target == 'appearanceExport') and
+      tr('Choose a destination folder') or
+      (self.target == 'appearanceImport' and tr('Choose an appearance bundle folder') or
+         tr('Choose a folder with prepared PNGs'))
+   local folder_hint = (self.target == 'export' or self.target == 'appearanceExport') and
+      tr('Choose where the package will be created.') or
+      (self.target == 'appearanceImport' and tr('Choose a folder containing manifest.json, appearance.pb and the referenced sprite PNGs.') or
+         tr('Choose a folder containing individual prepared PNG sprites.'))
    self.directory = normalize_directory_path(self.directory)
-   self.selection = nil
+   self.selection = directory_mode and normalize_directory_path(previous_selection or self.directory) or nil
    local list = self:get_widget('filePickerEntries')
    list:destroyChildren()
+   self.rendering = true
    self:get_widget('filePickerPathEdit'):setText(self.directory)
+   self.rendering = false
    self:get_widget('filePickerSelectedLabel'):setText(tr('Choose a PNG file.'))
    self:get_widget('filePickerUseButton'):setEnabled(false)
 
@@ -79,7 +94,7 @@ function PngFilePicker:render()
    local visible_entries = {}
    for _, path in ipairs(entries or {}) do
       local is_directory = path:ends('/')
-      if is_directory or path:lower():ends('.png') then
+      if is_directory or (not directory_mode and path:lower():ends('.png')) then
          table.insert(visible_entries, { path = path, is_directory = is_directory })
       end
    end
@@ -99,7 +114,8 @@ function PngFilePicker:render()
          row:setText(entry.is_directory and tr('[Folder] %s', name) or name)
          row.filePickerPath = entry.path
          row.filePickerIsDirectory = entry.is_directory
-         if not entry.is_directory and entry.path == previous_selection then
+         if (directory_mode and entry.is_directory and normalize_directory_path(entry.path) == previous_selection) or
+               (not directory_mode and not entry.is_directory and entry.path == previous_selection) then
             self.selection = entry.path
          end
          row.onClick = function(widget)
@@ -113,21 +129,37 @@ function PngFilePicker:render()
    end
 
    self:get_widget('filePickerParentButton'):setEnabled(get_parent_directory(self.directory) ~= nil)
-   self:get_widget('filePickerCountLabel'):setText(tr('%d PNG files and folders', shown))
+   self:get_widget('filePickerCountLabel'):setText(directory_mode and tr('%d folders', shown) or
+      tr('%d PNG files and folders', shown))
+   self.window:setText(directory_mode and folder_title or
+      tr('Choose a PNG file'))
+   self:get_widget('filePickerHintLabel'):setText(directory_mode and folder_hint or
+      tr('Browse folders and select a PNG image.'))
+   self:get_widget('filePickerUseButton'):setText(directory_mode and tr('Use folder') or tr('Use PNG'))
    if self.selection then
       local label = self:get_widget('filePickerSelectedLabel')
-      label:setText(self.selection)
-      label:setTooltip(self.selection)
+      local selected_path = directory_mode and normalize_directory_path(self.selection) or self.selection
+      label:setText(selected_path)
+      label:setTooltip(selected_path)
       self:get_widget('filePickerUseButton'):setEnabled(true)
    end
-   if shown == 0 then
+   if shown == 0 and not self.selection then
       self:get_widget('filePickerSelectedLabel'):setText(
+      directory_mode and tr('No folders match this location and filter.') or
          tr('No PNG files or folders match this location and filter.'))
    end
 end
 
 function PngFilePicker:select_entry(widget)
    if widget.filePickerIsDirectory then
+      if is_directory_target(self.target) then
+         self.selection = normalize_directory_path(widget.filePickerPath)
+         local label = self:get_widget('filePickerSelectedLabel')
+         label:setText(self.selection)
+         label:setTooltip(self.selection)
+         self:get_widget('filePickerUseButton'):setEnabled(true)
+         return
+      end
       self.selection = nil
       self:get_widget('filePickerUseButton'):setEnabled(false)
       self:get_widget('filePickerSelectedLabel'):setText(
@@ -145,6 +177,9 @@ end
 function PngFilePicker:activate_entry(widget)
    if widget.filePickerIsDirectory then
       self.directory = widget.filePickerPath
+      if is_directory_target(self.target) then
+         self.selection = normalize_directory_path(widget.filePickerPath)
+      end
       self:render()
       return
    end
@@ -181,6 +216,9 @@ function PngFilePicker:navigate()
       return
    end
    self.directory = normalize_directory_path(self:get_widget('filePickerPathEdit'):getText())
+   if is_directory_target(self.target) then
+      self.selection = self.directory
+   end
    self:render()
 end
 
@@ -191,6 +229,9 @@ function PngFilePicker:go_to_parent()
    local parent = get_parent_directory(self.directory)
    if parent then
       self.directory = parent
+   if is_directory_target(self.target) then
+         self.selection = self.directory
+      end
       self:render()
    end
 end
@@ -206,7 +247,9 @@ function PngFilePicker:use_selected()
 
    local path = self.selection
    local target = self.target
-   self.directory = get_parent_directory(path) or self.directory
+   if not is_directory_target(target) then
+      self.directory = get_parent_directory(path) or self.directory
+   end
    self.callbacks.on_selected(target, path)
    self:destroy()
 end
@@ -215,7 +258,10 @@ function PngFilePicker:open(target, initial_path)
    self:destroy()
    self.target = target
    initial_path = (initial_path or ''):gsub('\\', '/')
-   if initial_path ~= '' and initial_path:lower():ends('.png') then
+   if is_directory_target(target) then
+      self.directory = normalize_directory_path(initial_path ~= '' and initial_path or g_platform.getCurrentDir())
+      self.selection = nil
+   elseif initial_path ~= '' and initial_path:lower():ends('.png') then
       self.directory = get_parent_directory(initial_path) or g_platform.getCurrentDir()
       self.selection = g_platform.fileExists(initial_path) and initial_path or nil
    elseif not self.directory then
@@ -251,6 +297,9 @@ function PngFilePicker:open(target, initial_path)
          self:navigate()
       end
       path_edit.onTextChange = function()
+         if self.rendering then
+            return
+         end
          self.selection = nil
          self:get_widget('filePickerUseButton'):setEnabled(false)
       end
@@ -282,5 +331,6 @@ function SpriteEditorPngFilePicker.new(callbacks)
       selection = nil,
       target = nil,
       window = nil,
+      rendering = false,
    }, { __index = PngFilePicker })
 end

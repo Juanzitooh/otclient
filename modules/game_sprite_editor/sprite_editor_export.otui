@@ -17,23 +17,41 @@ Panel
     margin-top: 5
     height: 24
     layout: horizontalBox
-    spacing: 5
+    spacing: 4
 
     AppearanceNavigationButton
       id: replaceVersionModeButton
-      !text: tr('Replace version')
-      width: 148
+      !text: tr('Replace')
+      width: 70
       height: 24
       checkable: true
       @onClick: modules.game_sprite_editor.setExportMode('replace')
 
     AppearanceNavigationButton
       id: newVersionModeButton
-      !text: tr('New version')
-      width: 148
+      !text: tr('New')
+      width: 52
       height: 24
       checkable: true
       @onClick: modules.game_sprite_editor.setExportMode('new')
+
+    AppearanceNavigationButton
+      id: exportFolderModeButton
+      !text: tr('Folder')
+      !tooltip: tr('Copy the working assets package to a chosen folder.')
+      width: 62
+      height: 24
+      checkable: true
+      @onClick: modules.game_sprite_editor.setExportMode('folder')
+
+    AppearanceNavigationButton
+      id: exportAppearanceModeButton
+      !text: tr('Appearance')
+      !tooltip: tr('Export the selected appearance with its referenced sprites as a portable bundle.')
+      width: 94
+      height: 24
+      checkable: true
+      @onClick: modules.game_sprite_editor.setExportMode('appearance')
 
   AppearanceFieldLabel
     id: exportSourceLabel
@@ -66,6 +84,26 @@ Panel
       height: 22
       max-length: 5
       visible: false
+
+    AppearanceTextEdit
+      id: exportFolderEdit
+      anchors.left: parent.left
+      anchors.right: exportFolderBrowseButton.left
+      anchors.verticalCenter: parent.verticalCenter
+      margin-right: 5
+      height: 22
+      !placeholder: tr('Destination folder')
+      visible: false
+
+    AppearanceActionButton
+      id: exportFolderBrowseButton
+      !text: tr('Browse...')
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      width: 78
+      height: 22
+      visible: false
+      @onClick: modules.game_sprite_editor.openExportFolderPicker()
 
   AppearanceFieldLabel
     id: installTargetLabel

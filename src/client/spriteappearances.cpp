@@ -42,6 +42,8 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <map>
+#include <utility>
 #include <vector>
 #endif
 
@@ -235,6 +237,64 @@ ImagePtr loadPreparedSprite(const std::string& fileName, const Size& expectedSiz
     const auto image = Image::loadPNG(contents.data(), contents.size());
     if (!image || image->getBpp() != 4 || image->getSize() != pngSize)
         throw stdext::exception("the selected PNG could not be decoded as an RGBA sprite");
+    return image;
+}
+
+ImagePtr loadPreparedSpriteSheet(const std::string& fileName)
+{
+    const std::filesystem::path source(fileName);
+    if (fileName.empty() || !source.is_absolute())
+        throw stdext::exception("enter an absolute PNG file path");
+
+    auto extension = source.extension().string();
+    std::ranges::transform(extension, extension.begin(), [](const unsigned char value) {
+        return static_cast<char>(std::tolower(value));
+    });
+    if (extension != ".png")
+        throw stdext::exception("sprite sheets must be PNG files");
+
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(source, error) || error)
+        throw stdext::exception("the selected PNG file does not exist");
+    const auto fileSize = std::filesystem::file_size(source, error);
+    if (error || fileSize < 24 || fileSize > 32 * 1024 * 1024)
+        throw stdext::exception("the selected sprite sheet has an unsupported file size");
+
+    std::ifstream stream(source, std::ios::binary);
+    if (!stream)
+        throw stdext::exception("unable to open the selected sprite sheet");
+    const std::string contents(std::istreambuf_iterator<char>(stream), {});
+    static constexpr std::array<uint8_t, 8> pngSignature = { 137, 80, 78, 71, 13, 10, 26, 10 };
+    if (contents.size() != fileSize || !std::equal(pngSignature.begin(), pngSignature.end(), contents.begin(),
+            [](const uint8_t expected, const char actual) { return expected == static_cast<uint8_t>(actual); }) ||
+        contents.compare(12, 4, "IHDR") != 0)
+        throw stdext::exception("the selected file is not a valid PNG image");
+
+    const auto readBigEndianU32 = [&](const size_t offset) {
+        return (static_cast<uint32_t>(static_cast<uint8_t>(contents[offset])) << 24) |
+               (static_cast<uint32_t>(static_cast<uint8_t>(contents[offset + 1])) << 16) |
+               (static_cast<uint32_t>(static_cast<uint8_t>(contents[offset + 2])) << 8) |
+               static_cast<uint32_t>(static_cast<uint8_t>(contents[offset + 3]));
+    };
+    const Size pngSize(readBigEndianU32(16), readBigEndianU32(20));
+    if (pngSize.width() < 1 || pngSize.height() < 1 || pngSize.width() > 4096 || pngSize.height() > 4096 ||
+        pngSize.area() > 16 * 1024 * 1024)
+        throw stdext::exception("sprite sheet dimensions must not exceed 4096 x 4096 pixels");
+
+    for (size_t offset = 8; offset + 12 <= contents.size();) {
+        const auto chunkLength = readBigEndianU32(offset);
+        if (chunkLength > contents.size() - offset - 12)
+            throw stdext::exception("the PNG contains an invalid chunk length");
+        if (contents.compare(offset + 4, 4, "acTL") == 0)
+            throw stdext::exception("animated PNG files are not supported as sprite sheets");
+        if (contents.compare(offset + 4, 4, "IEND") == 0)
+            break;
+        offset += static_cast<size_t>(chunkLength) + 12;
+    }
+
+    const auto image = Image::loadPNG(contents.data(), contents.size());
+    if (!image || image->getBpp() != 4 || image->getSize() != pngSize || image->isAnimated())
+        throw stdext::exception("the selected PNG could not be decoded as a static RGBA sprite sheet");
     return image;
 }
 
@@ -1343,6 +1403,294 @@ int SpriteAppearances::importSpriteForAppearance(const int referenceSpriteId, co
     return importNewSprite(image, version, referenceSheet->spriteLayout);
 }
 
+std::vector<int> SpriteAppearances::importNewSprites(
+    const std::vector<std::pair<ImagePtr, SpriteLayout>>& sprites, const int version)
+{
+    namespace fs = std::filesystem;
+    if (sprites.empty())
+        throw stdext::exception("no prepared sprites were selected for import");
+
+    const auto catalogPath = getEditorCatalogPath(version);
+    const auto package = catalogPath.parent_path();
+    std::ifstream catalogStream(catalogPath, std::ios::binary);
+    if (!catalogStream)
+        throw stdext::exception("unable to read the active sprite catalog");
+    json catalog = json::parse(catalogStream);
+    if (!catalog.is_array())
+        throw stdext::exception("the active sprite catalog has an invalid format");
+
+    int maximumSpriteId = -1;
+    std::map<int, std::string> templateFiles;
+    for (const auto& entry : catalog) {
+        if (!entry.is_object() || entry.value("type", std::string{}) != "sprite")
+            continue;
+        if (!entry.contains("firstspriteid") || !entry.contains("lastspriteid") ||
+            !entry.contains("spritetype") || !entry.contains("file"))
+            throw stdext::exception("the active sprite catalog contains an incomplete sprite entry");
+
+        const int firstId = entry.at("firstspriteid").get<int>();
+        const int lastId = entry.at("lastspriteid").get<int>();
+        const int layout = entry.at("spritetype").get<int>();
+        if (firstId < 0 || lastId < firstId || layout < 0 || layout > static_cast<int>(SpriteLayout::SIZE_384_384))
+            throw stdext::exception("the active sprite catalog contains an invalid sprite range");
+        maximumSpriteId = std::max(maximumSpriteId, lastId);
+        templateFiles.try_emplace(layout, entry.at("file").get<std::string>());
+    }
+    if (maximumSpriteId < 0 || static_cast<uint64_t>(maximumSpriteId) + sprites.size() >=
+            static_cast<uint64_t>(std::numeric_limits<int>::max()))
+        throw stdext::exception("the active sprite catalog has no room for the imported sprites");
+
+    std::map<int, std::vector<std::pair<size_t, ImagePtr>>> groupedSprites;
+    for (size_t index = 0; index < sprites.size(); ++index) {
+        const auto& [image, layout] = sprites[index];
+        const SpriteSheet layoutTemplate(0, 0, layout, {});
+        if (!image || image->getSize() != layoutTemplate.getSpriteSize())
+            throw stdext::exception("a prepared sprite does not match its selected sprite layout");
+        groupedSprites[static_cast<int>(layout)].emplace_back(index, image);
+    }
+
+    std::vector<int> importedIds(sprites.size());
+    std::vector<std::pair<fs::path, fs::path>> stagedFiles;
+    std::vector<fs::path> committedFiles;
+    int nextSpriteId = maximumSpriteId + 1;
+    try {
+        for (const auto& [layoutValue, layoutSprites] : groupedSprites) {
+            const auto templateIt = templateFiles.find(layoutValue);
+            if (templateIt == templateFiles.end())
+                throw stdext::exception("the active sprite catalog has no sheet for layout {}", layoutValue);
+
+            const auto templateRelative = safeAssetPath(templateIt->second);
+            const auto templatePath = package / templateRelative;
+            ensureNoSymlinkPath(package, templatePath);
+            if (!isPathWithin(package, templatePath) || !fs::is_regular_file(templatePath))
+                throw stdext::exception("unable to read a sprite sheet template from the work copy");
+            const auto templateData = readBinaryFile(templatePath);
+            const auto header = readSpriteSheetHeader(templateData);
+            const int capacity = SpriteSheet(0, 0, static_cast<SpriteLayout>(layoutValue), {}).getSpritesPerSheet();
+
+            for (size_t start = 0; start < layoutSprites.size(); start += static_cast<size_t>(capacity)) {
+                const size_t count = std::min(static_cast<size_t>(capacity), layoutSprites.size() - start);
+                const int firstId = nextSpriteId;
+                const int lastId = firstId + static_cast<int>(count) - 1;
+                const std::string relativeName = fmt::format("sprite-editor-{}.bmp.lzma", firstId);
+                const auto relativePath = safeAssetPath(relativeName);
+                const auto targetPath = package / relativePath;
+                const auto stagedPath = fs::path(targetPath.string() + ".bulk.tmp");
+                ensureNoSymlinkPath(package, targetPath);
+                ensureNoSymlinkPath(package, stagedPath);
+                if (fs::exists(targetPath) || fs::exists(stagedPath))
+                    throw stdext::exception("a sprite sheet file already exists for the next sprite ID");
+
+                auto bitmap = decompressSpriteSheet(templateData, header);
+                const uint32_t bitmapOffset = validateSpriteSheetBitmap(bitmap);
+                for (size_t offset = bitmapOffset; offset < bitmapOffset + BYTES_IN_SPRITE_SHEET; offset += 4) {
+                    bitmap[offset + 0] = 0xff;
+                    bitmap[offset + 1] = 0x00;
+                    bitmap[offset + 2] = 0xff;
+                    bitmap[offset + 3] = 0x00;
+                }
+                for (size_t index = 0; index < count; ++index) {
+                    const auto& [sourceIndex, image] = layoutSprites[start + index];
+                    writeSpritePixels(bitmap, bitmapOffset, static_cast<int>(index),
+                                      SpriteSheet(0, 0, static_cast<SpriteLayout>(layoutValue), {}).getSpriteSize(), image);
+                    importedIds[sourceIndex] = firstId + static_cast<int>(index);
+                }
+                const auto encoded = compressSpriteSheet(bitmap, header, templateData);
+                stagedFiles.emplace_back(stagedPath, targetPath);
+                {
+                    std::ofstream staged(stagedPath, std::ios::binary | std::ios::trunc);
+                    if (!staged)
+                        throw stdext::exception("unable to stage an imported sprite sheet");
+                    staged.write(reinterpret_cast<const char*>(encoded.data()), static_cast<std::streamsize>(encoded.size()));
+                    staged.flush();
+                    if (!staged)
+                        throw stdext::exception("unable to write a staged sprite sheet");
+                }
+                catalog.push_back({
+                    { "type", "sprite" },
+                    { "file", relativePath.generic_string() },
+                    { "spritetype", layoutValue },
+                    { "firstspriteid", firstId },
+                    { "lastspriteid", lastId },
+                    { "area", 0 }
+                });
+                nextSpriteId = lastId + 1;
+            }
+        }
+
+        for (const auto& [stagedPath, targetPath] : stagedFiles) {
+            fs::rename(stagedPath, targetPath);
+            committedFiles.push_back(targetPath);
+        }
+
+        const std::string serializedCatalog = catalog.dump(2);
+        const std::vector<uint8_t> catalogBytes(serializedCatalog.begin(), serializedCatalog.end());
+        writeFileAtomically(catalogPath, catalogBytes);
+    } catch (...) {
+        std::error_code error;
+        for (const auto& path : committedFiles)
+            fs::remove(path, error);
+        for (const auto& [stagedPath, targetPath] : stagedFiles)
+            fs::remove(stagedPath, error);
+        throw;
+    }
+
+    return importedIds;
+}
+
+std::string SpriteAppearances::importSpritesFromDirectory(const std::string& directory, const int version)
+{
+    namespace fs = std::filesystem;
+    if (version < 1500 || version >= 1600)
+        throw stdext::exception("batch sprite import is supported only for client versions 15.x");
+
+    const fs::path sourceDirectory(directory);
+    if (directory.empty() || !sourceDirectory.is_absolute() || !fs::is_directory(sourceDirectory))
+        throw stdext::exception("choose an existing absolute folder containing prepared PNG sprites");
+
+    struct PreparedSprite {
+        fs::path path;
+        ImagePtr image;
+        SpriteLayout layout;
+    };
+    std::vector<fs::path> paths;
+    std::error_code error;
+    fs::directory_iterator iterator(sourceDirectory, error);
+    if (error)
+        throw stdext::exception("unable to read the selected PNG folder: {}", error.message());
+    for (const fs::directory_iterator end; iterator != end; iterator.increment(error)) {
+        if (error)
+            throw stdext::exception("unable to read the selected PNG folder: {}", error.message());
+        const auto status = iterator->symlink_status(error);
+        if (error)
+            throw stdext::exception("unable to inspect a file in the selected PNG folder: {}", error.message());
+        if (fs::is_symlink(status) || !fs::is_regular_file(status))
+            continue;
+
+        auto extension = iterator->path().extension().string();
+        std::ranges::transform(extension, extension.begin(), [](const unsigned char value) {
+            return static_cast<char>(std::tolower(value));
+        });
+        if (extension == ".png")
+            paths.push_back(iterator->path());
+    }
+    if (paths.empty())
+        throw stdext::exception("the selected folder does not contain any PNG files");
+    constexpr size_t MAX_BATCH_SPRITES = 256;
+    if (paths.size() > MAX_BATCH_SPRITES)
+        throw stdext::exception("select a folder with no more than {} PNG files per batch", MAX_BATCH_SPRITES);
+
+    std::ranges::sort(paths, [](const fs::path& left, const fs::path& right) {
+        auto leftName = left.filename().string();
+        auto rightName = right.filename().string();
+        std::ranges::transform(leftName, leftName.begin(), [](const unsigned char value) {
+            return static_cast<char>(std::tolower(value));
+        });
+        std::ranges::transform(rightName, rightName.begin(), [](const unsigned char value) {
+            return static_cast<char>(std::tolower(value));
+        });
+        return leftName < rightName;
+    });
+
+    std::vector<PreparedSprite> sprites;
+    sprites.reserve(paths.size());
+    size_t decodedBytes = 0;
+    for (const auto& path : paths) {
+        try {
+            auto image = loadPreparedSprite(path.generic_string(), Size(0, 0));
+            decodedBytes += image->getSize().area() * 4;
+            if (decodedBytes > 64 * 1024 * 1024)
+                throw stdext::exception("the batch exceeds the 64 MiB decoded image limit");
+            sprites.push_back({ path, image, getSpriteLayout(image->getSize()) });
+        } catch (const std::exception& exception) {
+            throw stdext::exception("PNG '{}' is invalid: {}. No sprites were imported.",
+                path.filename().string(), exception.what());
+        }
+    }
+    std::ranges::stable_sort(sprites, [](const PreparedSprite& left, const PreparedSprite& right) {
+        if (left.layout != right.layout)
+            return static_cast<int>(left.layout) < static_cast<int>(right.layout);
+        return left.path.filename().string() < right.path.filename().string();
+    });
+
+    std::vector<std::pair<ImagePtr, SpriteLayout>> prepared;
+    prepared.reserve(sprites.size());
+    for (const auto& sprite : sprites)
+        prepared.emplace_back(sprite.image, sprite.layout);
+    const auto ids = importNewSprites(prepared, version);
+
+    json result = { { "imported", ids.size() }, { "items", json::array() }, { "error", "" } };
+    for (size_t index = 0; index < sprites.size(); ++index) {
+        const auto& sprite = sprites[index];
+        result["items"].push_back({
+            { "file", sprite.path.filename().string() },
+            { "id", ids[index] },
+            { "width", sprite.image->getSize().width() },
+            { "height", sprite.image->getSize().height() }
+        });
+    }
+    return result.dump();
+}
+
+std::string SpriteAppearances::importSpritesFromSheet(const std::string& fileName, const int version,
+                                                      const int spriteWidth, const int spriteHeight)
+{
+    if (version < 1500 || version >= 1600)
+        throw stdext::exception("sprite sheet import is supported only for client versions 15.x");
+
+    const auto sheet = loadPreparedSpriteSheet(fileName);
+    const Size spriteSize(spriteWidth, spriteHeight);
+    const auto spriteLayout = getSpriteLayout(spriteSize);
+    if (sheet->getWidth() % spriteWidth != 0 || sheet->getHeight() % spriteHeight != 0)
+        throw stdext::exception("sprite sheet dimensions must be exact multiples of the selected cell size");
+
+    const int columns = sheet->getWidth() / spriteWidth;
+    const int rows = sheet->getHeight() / spriteHeight;
+    const size_t spriteCount = static_cast<size_t>(columns) * rows;
+    constexpr size_t MAX_SHEET_SPRITES = 64;
+    if (spriteCount == 0 || spriteCount > MAX_SHEET_SPRITES)
+        throw stdext::exception("select a sprite sheet containing no more than {} cells", MAX_SHEET_SPRITES);
+
+    std::vector<ImagePtr> sprites;
+    sprites.reserve(spriteCount);
+    const auto& sourcePixels = sheet->getPixels();
+    for (int row = 0; row < rows; ++row) {
+        for (int column = 0; column < columns; ++column) {
+            std::vector<uint8_t> pixels(static_cast<size_t>(spriteWidth) * spriteHeight * 4);
+            for (int y = 0; y < spriteHeight; ++y) {
+                const size_t sourceOffset =
+                    (static_cast<size_t>(row * spriteHeight + y) * sheet->getWidth() + column * spriteWidth) * 4;
+                const size_t targetOffset = static_cast<size_t>(y) * spriteWidth * 4;
+                std::memcpy(pixels.data() + targetOffset, sourcePixels.data() + sourceOffset,
+                            static_cast<size_t>(spriteWidth) * 4);
+            }
+            sprites.push_back(std::make_shared<Image>(spriteSize, 4, pixels.data()));
+        }
+    }
+
+    size_t decodedBytes = 0;
+    std::vector<std::pair<ImagePtr, SpriteLayout>> prepared;
+    prepared.reserve(sprites.size());
+    for (const auto& sprite : sprites) {
+        decodedBytes += sprite->getSize().area() * 4;
+        if (decodedBytes > 64 * 1024 * 1024)
+            throw stdext::exception("the sprite sheet exceeds the 64 MiB decoded image limit");
+        prepared.emplace_back(sprite, spriteLayout);
+    }
+    const auto ids = importNewSprites(prepared, version);
+    json result = { { "imported", ids.size() }, { "items", json::array() }, { "error", "" } };
+    for (size_t index = 0; index < sprites.size(); ++index) {
+        result["items"].push_back({
+            { "id", ids[index] },
+            { "column", static_cast<int>(index % columns) + 1 },
+            { "row", static_cast<int>(index / columns) + 1 },
+            { "width", spriteWidth },
+            { "height", spriteHeight }
+        });
+    }
+    return result.dump();
+}
+
 int SpriteAppearances::importNewSprite(const ImagePtr& image, const int version, const SpriteLayout spriteLayout)
 {
     const SpriteSheet layoutTemplate(0, 0, spriteLayout, {});
@@ -1379,9 +1727,12 @@ int SpriteAppearances::importNewSprite(const ImagePtr& image, const int version,
         const auto file = entry.at("file").get<std::string>();
         const int capacity = SpriteSheet(firstId, lastId, static_cast<SpriteLayout>(layout), file).getSpritesPerSheet();
         if (file.starts_with("sprite-editor-") && layout == static_cast<int>(spriteLayout) &&
+            lastId == maximumSpriteId &&
             lastId < firstId + capacity - 1 && (!reusableSheet || lastId > reusableSheet->at("lastspriteid").get<int>()))
             reusableSheet = &entry;
     }
+    if (reusableSheet && reusableSheet->at("lastspriteid").get<int>() != maximumSpriteId)
+        reusableSheet = nullptr;
     if (!templateSheet || maximumSpriteId < 0)
         throw stdext::exception("the active sprite catalog does not contain a sheet with the selected sprite layout");
     if (maximumSpriteId == std::numeric_limits<int>::max())

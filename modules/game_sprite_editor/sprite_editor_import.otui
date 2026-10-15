@@ -17,21 +17,47 @@ Panel
     margin-top: 5
     height: 24
     layout: horizontalBox
-    spacing: 5
+    spacing: 3
 
     AppearanceNavigationButton
       id: replaceFrameTabButton
-      !text: tr('Replace frame')
-      width: 148
+      !text: tr('Replace')
+      !tooltip: tr('Replace the selected frame with a sprite ID or a prepared PNG.')
+      width: 64
       height: 24
       @onClick: modules.game_sprite_editor.setImportSection('replace')
 
     AppearanceNavigationButton
       id: newAppearanceTabButton
-      !text: tr('New appearance')
-      width: 148
+      !text: tr('Create')
+      !tooltip: tr('Create an appearance from a sprite ID or prepared PNG.')
+      width: 58
       height: 24
       @onClick: modules.game_sprite_editor.setImportSection('create')
+
+    AppearanceNavigationButton
+      id: batchPngsTabButton
+      !text: tr('Batch PNGs')
+      !tooltip: tr('Add several prepared PNG sprites to the working copy.')
+      width: 58
+      height: 24
+      @onClick: modules.game_sprite_editor.setImportSection('batch')
+
+    AppearanceNavigationButton
+      id: spriteSheetTabButton
+      !text: tr('Sheet')
+      !tooltip: tr('Slice a regular PNG grid into new sprite IDs.')
+      width: 54
+      height: 24
+      @onClick: modules.game_sprite_editor.setImportSection('sheet')
+
+    AppearanceNavigationButton
+      id: appearanceBundleTabButton
+      !text: tr('Bundle')
+      !tooltip: tr('Import a complete appearance and its sprites from a portable bundle.')
+      width: 58
+      height: 24
+      @onClick: modules.game_sprite_editor.setImportSection('bundle')
 
   Panel
     id: replaceFramePanel
@@ -251,6 +277,233 @@ Panel
           width: 88
           height: 23
           @onClick: modules.game_sprite_editor.configureSpriteEditor()
+
+  Panel
+    id: batchPngsPanel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: importActionTabs.bottom
+    anchors.bottom: parent.bottom
+    margin-top: 5
+    visible: false
+
+    AppearanceCenteredSectionHeader
+      !text: tr('Import prepared PNG sprites')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+
+    Label
+      id: batchPngsHelpLabel
+      !text: tr('Import up to 256 prepared PNG files at once. Each image becomes a new sprite ID; use New appearance to link sprites to objects.')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: prev.bottom
+      margin-top: 7
+      height: 54
+      text-wrap: true
+
+    AppearanceTextEdit
+      id: batchPngFolderEdit
+      anchors.left: parent.left
+      anchors.right: batchPngFolderBrowseButton.left
+      anchors.top: batchPngsHelpLabel.bottom
+      margin-top: 8
+      margin-right: 5
+      height: 22
+      !placeholder: tr('Folder with prepared PNG files')
+
+    AppearanceActionButton
+      id: batchPngFolderBrowseButton
+      !text: tr('Browse...')
+      anchors.right: parent.right
+      anchors.top: batchPngsHelpLabel.bottom
+      margin-top: 8
+      width: 82
+      height: 22
+      @onClick: modules.game_sprite_editor.openPngFilePicker('batch')
+
+    Label
+      id: batchPngsHintLabel
+      !text: tr('Every PNG is checked and staged before the catalog changes. The batch is limited to 64 MiB of decoded image data.')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: batchPngFolderEdit.bottom
+      margin-top: 8
+      height: 42
+      text-wrap: true
+
+    AppearanceActionButton
+      id: batchPngImportButton
+      !text: tr('Import PNGs')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: batchPngsHintLabel.bottom
+      margin-top: 8
+      height: 24
+      @onClick: modules.game_sprite_editor.importPngFolder()
+
+  Panel
+    id: spriteSheetPanel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: importActionTabs.bottom
+    anchors.bottom: parent.bottom
+    margin-top: 5
+    visible: false
+
+    AppearanceCenteredSectionHeader
+      !text: tr('Import a sprite sheet')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+
+    Label
+      id: spriteSheetHelpLabel
+      !text: tr('Split a regular PNG grid into individual sprite IDs. Cells are read left to right, then top to bottom; every cell is imported, including transparent ones.')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: prev.bottom
+      margin-top: 7
+      height: 54
+      text-wrap: true
+
+    AppearanceTextEdit
+      id: spriteSheetPathEdit
+      anchors.left: parent.left
+      anchors.right: spriteSheetBrowseButton.left
+      anchors.top: spriteSheetHelpLabel.bottom
+      margin-top: 7
+      margin-right: 5
+      height: 22
+      !placeholder: tr('PNG sprite sheet')
+
+    AppearanceActionButton
+      id: spriteSheetBrowseButton
+      !text: tr('Browse...')
+      anchors.right: parent.right
+      anchors.top: spriteSheetHelpLabel.bottom
+      margin-top: 7
+      width: 82
+      height: 22
+      @onClick: modules.game_sprite_editor.openPngFilePicker('sheet')
+
+    AppearanceFieldLabel
+      !text: tr('Cell size')
+      anchors.left: parent.left
+      anchors.top: spriteSheetPathEdit.bottom
+      margin-top: 8
+      width: 72
+      height: 22
+
+    ComboBox
+      id: spriteSheetCellWidth
+      anchors.left: prev.right
+      anchors.top: prev.top
+      margin-left: 3
+      width: 76
+      height: 22
+
+    Label
+      !text: tr('wide x')
+      anchors.left: prev.right
+      anchors.verticalCenter: prev.verticalCenter
+      margin-left: 5
+      width: 44
+      height: 18
+
+    ComboBox
+      id: spriteSheetCellHeight
+      anchors.left: prev.right
+      anchors.top: spriteSheetCellWidth.top
+      margin-left: 3
+      width: 76
+      height: 22
+
+    Label
+      id: spriteSheetHintLabel
+      !text: tr('Choose dimensions that divide the full sheet exactly. Maximum: 64 cells per import.')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: spriteSheetCellWidth.bottom
+      margin-top: 8
+      height: 36
+      text-wrap: true
+
+    AppearanceActionButton
+      id: spriteSheetImportButton
+      !text: tr('Import cells')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: spriteSheetHintLabel.bottom
+      margin-top: 7
+      height: 24
+      @onClick: modules.game_sprite_editor.importSpriteSheet()
+
+  Panel
+    id: appearanceBundlePanel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: importActionTabs.bottom
+    anchors.bottom: parent.bottom
+    margin-top: 5
+    visible: false
+
+    AppearanceCenteredSectionHeader
+      !text: tr('Import a complete appearance')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+
+    Label
+      id: appearanceBundleHelpLabel
+      !text: tr('Import a portable 15.x appearance bundle. It creates a new appearance ID and remaps all included sprite IDs, preserving flags, patterns and animation.')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: prev.bottom
+      margin-top: 7
+      height: 58
+      text-wrap: true
+
+    AppearanceTextEdit
+      id: appearanceBundlePathEdit
+      anchors.left: parent.left
+      anchors.right: appearanceBundleBrowseButton.left
+      anchors.top: appearanceBundleHelpLabel.bottom
+      margin-top: 7
+      margin-right: 5
+      height: 22
+      !placeholder: tr('Appearance bundle folder')
+
+    AppearanceActionButton
+      id: appearanceBundleBrowseButton
+      !text: tr('Browse...')
+      anchors.right: parent.right
+      anchors.top: appearanceBundleHelpLabel.bottom
+      margin-top: 7
+      width: 82
+      height: 22
+      @onClick: modules.game_sprite_editor.openPngFilePicker('appearanceImport')
+
+    Label
+      id: appearanceBundleHintLabel
+      !text: tr('The imported appearance is added to its original category with a new available ID. Existing appearances and sprites are not replaced.')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: appearanceBundlePathEdit.bottom
+      margin-top: 8
+      height: 44
+      text-wrap: true
+
+    AppearanceActionButton
+      id: appearanceBundleImportButton
+      !text: tr('Import appearance')
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: appearanceBundleHintLabel.bottom
+      margin-top: 8
+      height: 24
+      @onClick: modules.game_sprite_editor.importAppearanceBundle()
 
   Panel
     id: newAppearancePanel
