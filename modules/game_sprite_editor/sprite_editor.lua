@@ -647,13 +647,47 @@ local function getVersions()
    local versions = {}
    for _, entry in ipairs(g_resources.listDirectoryFiles('/data/things/')) do
       local version = tonumber(entry)
-      if isSupportedAssetVersion(version) and
-            g_resources.fileExists(string.format('/data/things/%d/catalog-content.json', version)) then
+      if isSupportedAssetVersion(version) and modules.client_assets.isClientVersionInstalled(version) then
          table.insert(versions, version)
       end
    end
    table.sort(versions, function(a, b) return a > b end)
    return versions
+end
+
+local function getSelectableAssetVersions()
+   local versions = getSupportedAssetVersions()
+   table.sort(versions, function(a, b) return a > b end)
+   return versions
+end
+
+local function requestClientAssets(version, callback)
+   local clientAssets = modules.client_assets
+   if not isSupportedAssetVersion(version) then
+      callback(false, tr('This OTClient build does not support client version %s.', formatClientVersion(version or 0)))
+      return
+   end
+   if not clientAssets or not clientAssets.ensureClientVersion or not clientAssets.isClientVersionInstalled or
+         not clientAssets.isEnabled then
+      callback(false, tr('Automatic client asset downloads are unavailable.'))
+      return
+   end
+   if not clientAssets.isEnabled() then
+      callback(false, tr('Automatic client asset downloads are disabled.'))
+      return
+   end
+   if clientAssets.isClientVersionInstalled(version) then
+      callback(true)
+      return
+   end
+
+   clientAssets.ensureClientVersion(version, function(success, message)
+      if success and not clientAssets.isClientVersionInstalled(version) then
+         callback(false, tr('Client assets could not be verified after download.'))
+         return
+      end
+      callback(success, message)
+   end)
 end
 
 formatClientVersion = function(version)
@@ -2666,7 +2700,11 @@ updateExportControls = function()
       tr('Export %d filtered bundle(s)', filteredAppearanceCount))
    batchExportButton:setEnabled(isAppearanceExport and canExport and folderDestinationValid and
       batchAppearanceIds ~= nil)
-   window:recursiveGetChildById('loadAssetsButton'):setEnabled(offline and selectedVersion ~= nil)
+   local loadAssetsButton = window:recursiveGetChildById('loadAssetsButton')
+   local selectedVersionInstalled = selectedVersion and modules.client_assets.isClientVersionInstalled(selectedVersion)
+   loadAssetsButton:setText(selectedVersionInstalled and tr('Load assets') or tr('Download and load'))
+   loadAssetsButton:setEnabled(offline and selectedVersion ~= nil and
+      (selectedVersionInstalled or (modules.client_assets.isEnabled and modules.client_assets.isEnabled())))
    window:recursiveGetChildById('importPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('exportPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('historyPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
@@ -2915,7 +2953,7 @@ local function createWindow()
    window:recursiveGetChildById('spriteSheetLastCell'):setText('0')
 
    local versionBox = window:recursiveGetChildById('versionComboBox')
-   local versions = getVersions()
+   local versions = getSelectableAssetVersions()
    for _, version in ipairs(versions) do
       versionBox:addOption(formatClientVersion(version), version)
    end
@@ -3085,8 +3123,29 @@ function toggle()
       if version then
          openWorkCopyVersion(version)
       else
-         createWindow()
-         setStatus(tr('No installed client assets in version 15.x were found.'))
+         if not createWindow() then
+            return
+         end
+         local versionBox = window:recursiveGetChildById('versionComboBox')
+         local selectedVersion = selectedOption(versionBox)
+         if not selectedVersion then
+            setStatus(tr('No supported 15.x client versions are available in this build.'))
+            return
+         end
+
+         setStatus(tr('No 15.x assets are installed. Downloading client %s is required to use the editor.',
+            formatClientVersion(selectedVersion)))
+         requestClientAssets(selectedVersion, function(success, message)
+            if not success then
+               if window then
+                  setStatus(message or tr('No assets were installed. Use Download and load to retry.'))
+               end
+               return
+            end
+            if window and window:isVisible() and not g_game.isOnline() then
+               openWorkCopyVersion(selectedVersion)
+            end
+         end)
       end
    end
 end
@@ -3101,44 +3160,54 @@ function loadSelectedAssets()
       return
    end
 
-   local ok, hasWorkCopy = getWorkCopyService():exists(version)
-   if not ok then
-      displayErrorBox(tr('Assets Editor'), getUserFacingError(hasWorkCopy))
-      return
-   end
-   if not hasWorkCopy then
-      if hasAppearanceChanges() then
-         confirmUnsavedChanges(tr('Save changes before loading another assets version?'), function()
-            openWorkCopyVersion(version)
-         end)
+   requestClientAssets(version, function(success, message)
+      if not window or g_game.isOnline() then
          return
       end
-      openWorkCopyVersion(version)
-      return
-   end
+      if not success then
+         setStatus(message or tr('Unable to download client assets.'))
+         return
+      end
 
-   local messageBox
-   local function cancelReset()
-      messageBox:cancel()
-   end
-   local function resetAndLoad()
-      messageBox:ok()
-      local resetOk, result, remountFailed = getWorkCopyService():reset(version, activeWorkRoot)
-      if not resetOk then
-         local message = getUserFacingError(result)
-         if remountFailed then
-            message = tr('%s The working copy could not be remounted.', message)
-         end
-         displayErrorBox(tr('Assets Editor'), message)
+      local ok, hasWorkCopy = getWorkCopyService():exists(version)
+      if not ok then
+         displayErrorBox(tr('Assets Editor'), getUserFacingError(hasWorkCopy))
          return
       end
-      openWorkCopyVersion(version)
-   end
-   messageBox = displayGeneralBox(tr('Reload assets from the installed version?'),
-      tr('This replaces the selected working copy with the installed assets and discards its saved edits and any unsaved editor changes.'), {
-         { text = tr('Reload assets'), callback = resetAndLoad },
-         { text = tr('Cancel'), callback = cancelReset },
-      }, cancelReset, cancelReset)
+      if not hasWorkCopy then
+         if hasAppearanceChanges() then
+            confirmUnsavedChanges(tr('Save changes before loading another assets version?'), function()
+               openWorkCopyVersion(version)
+            end)
+            return
+         end
+         openWorkCopyVersion(version)
+         return
+      end
+
+      local messageBox
+      local function cancelReset()
+         messageBox:cancel()
+      end
+      local function resetAndLoad()
+         messageBox:ok()
+         local resetOk, result, remountFailed = getWorkCopyService():reset(version, activeWorkRoot)
+         if not resetOk then
+            local resetMessage = getUserFacingError(result)
+            if remountFailed then
+               resetMessage = tr('%s The working copy could not be remounted.', resetMessage)
+            end
+            displayErrorBox(tr('Assets Editor'), resetMessage)
+            return
+         end
+         openWorkCopyVersion(version)
+      end
+      messageBox = displayGeneralBox(tr('Reload assets from the installed version?'),
+         tr('This replaces the selected working copy with the installed assets and discards its saved edits and any unsaved editor changes.'), {
+            { text = tr('Reload assets'), callback = resetAndLoad },
+            { text = tr('Cancel'), callback = cancelReset },
+         }, cancelReset, cancelReset)
+   end)
 end
 
 function restoreInstalledBackup(forceDiscard, confirmed)
