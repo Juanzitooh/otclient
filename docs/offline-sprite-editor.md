@@ -8,6 +8,8 @@ Opening the editor creates or resumes a working copy at `<client write directory
 
 Use **Load assets** to select an installed version. If a working copy already exists, the editor asks before replacing it with a fresh copy of the installed assets. This discards the old working copy and its saved edits.
 
+On a clean installation with no 15.x package, opening the editor offers the newest 15.x version supported by the build through the existing client-assets download flow. Confirming downloads the package to `data/things/<version>/` and opens its working copy. If the download is canceled, the version selector remains available and **Download and load** can retry or download another supported version. The selector only lists versions supported by `modules/gamelib/game.lua`.
+
 ## Edit appearances and sprites
 
 Choose a category and appearance from the left panel. The center preview shows the selected sprite or animation frame. The Properties page edits the available flags, values, and animation settings for that appearance.
@@ -36,16 +38,17 @@ Undo and Redo revert edits in the active working copy. The editor also records p
 
 ## Manual validation for contributors
 
-The editor is built behind the CMake option `TOGGLE_FRAMEWORK_EDITOR=ON`. Build and launch the client using the normal instructions for the target platform, then open the editor while offline. Use a dedicated client write directory and a disposable copy of the installed 15.x assets; do not use a production package for destructive checks. The version selector only offers 15.x versions listed in `modules/gamelib/game.lua` (`g_game.getSupportedClients()`).
+The editor is built behind the CMake option `TOGGLE_FRAMEWORK_EDITOR=ON`. Build and launch the client using the normal instructions for the target platform, then open the editor while offline. Use a dedicated client write directory and a disposable work directory with a separate `data/things` tree; do not use a production package for destructive checks. The version selector only offers 15.x versions listed in `modules/gamelib/game.lua` (`g_game.getSupportedClients()`).
 
 Run these checks on each desktop platform being validated:
 
-1. Open a working copy, switch among Objects, Outfits, Effects, and Missiles, and confirm the selection, preview, and applicable property controls follow the selected appearance.
-2. In Import, replace a frame with an existing sprite ID, then import a same-size PNG as a new sprite and link it to that frame. Confirm the new sprite appears in the preview and in the working copy after reload.
-3. Edit a sprite through the configured external editor, save it without changing its dimensions, apply it, and verify the preview and edit-history entry. Exercise Undo and Redo.
-4. Duplicate an appearance, change its properties and flags, and verify that the source appearance remains unchanged. For an animated appearance, play the preview, edit frame timing, add a frame, and remove one only after confirming the prompt.
-5. Export to an unused supported version, load that version in the editor, and confirm its contents. Restore a selected installed backup and confirm the editor reports the package it restored. Keep these checks on the disposable assets copy.
-6. Try a version not listed by `game.lua` (for example `15.99`) and confirm that the new-version export remains disabled and direct export is rejected.
+1. With no installed 15.x package in a disposable work directory, open the editor. Confirm the missing-assets prompt offers the newest supported version, download it, and verify the working copy opens. Repeat and cancel the prompt; confirm the version selector and **Download and load** action let you retry or choose another supported version.
+2. Open a working copy, switch among Objects, Outfits, Effects, and Missiles, and confirm the selection, preview, and applicable property controls follow the selected appearance.
+3. In Import, replace a frame with an existing sprite ID, then import a same-size PNG as a new sprite and link it to that frame. Confirm the new sprite appears in the preview and in the working copy after reload.
+4. Edit a sprite through the configured external editor, save it without changing its dimensions, apply it, and verify the preview and edit-history entry. Exercise Undo and Redo.
+5. Duplicate an appearance, change its properties and flags, and verify that the source appearance remains unchanged. For an animated appearance, play the preview, edit frame timing, add a frame, and remove one only after confirming the prompt.
+6. Export to an unused supported version, load that version in the editor, and confirm its contents. Restore a selected installed backup and confirm the editor reports the package it restored. Keep these checks on the disposable assets copy.
+7. Try a version not listed by `game.lua` (for example `15.99`) and confirm that the new-version export remains disabled and direct export is rejected.
 
 On Windows, Linux, and macOS, also check that the PNG browser can navigate to a folder whose path contains spaces and non-ASCII characters, and that the configured editor opens in a separate OS window. Verify the path and launch feedback on that platform. The file browser and external-editor actions are desktop-only; Android and Web builds are not targets for those workflows. On those builds, check that the client still builds and does not expose an enabled desktop-only action.
 
