@@ -2281,6 +2281,7 @@ local function createWindow()
    window:show()
    window:raise()
    window:focus()
+   if topMenuButton then topMenuButton:setOn(true) end
    if activeVersion then
       refreshAppearanceCatalog(selectedAppearanceCategory)
       refreshSpritePicker()
@@ -2352,14 +2353,25 @@ function init()
    end
    g_ui.importStyle('sprite_editor_widgets')
    gameStartCallback = function()
-      if topMenuButton then topMenuButton:setVisible(false) end
+      if topMenuButton then
+         topMenuButton:setOn(false)
+         topMenuButton:setVisible(false)
+      end
+      if window then
+         stopPreviewAnimation()
+         window:hide()
+      end
    end
    gameEndCallback = function()
-      if topMenuButton then topMenuButton:setVisible(true) end
+      if topMenuButton then
+         topMenuButton:setVisible(true)
+         topMenuButton:setOn(false)
+      end
    end
-   topMenuButton = modules.client_topmenu.addTopRightRegularButton(
-      'offlineAssetsEditorButton', tr('Assets'), nil, toggle)
+   topMenuButton = modules.client_topmenu.addTopRightToggleButton(
+      'offlineAssetsEditorButton', tr('Offline Assets Editor'), '/images/topbuttons/assets_editor', toggle, true)
    topMenuButton:setVisible(not g_game.isOnline())
+   topMenuButton:setOn(false)
    connect(g_game, { onGameStart = gameStartCallback, onGameEnd = gameEndCallback })
 end
 
@@ -2385,11 +2397,19 @@ end
 
 function toggle()
    if g_game.isOnline() then
+      if topMenuButton then topMenuButton:setOn(false) end
       displayErrorBox(tr('Assets Editor'), tr('Disconnect before opening the offline assets editor.'))
       return
    end
    if window then
-      requestClose()
+      if window:isVisible() then
+         requestClose()
+      else
+         window:show()
+         window:raise()
+         window:focus()
+         if topMenuButton then topMenuButton:setOn(true) end
+      end
    elseif activeVersion then
       createWindow()
    else
@@ -3570,4 +3590,5 @@ function requestClose(forceDiscard, pendingEditConfirmed)
       end
    end
    destroyWindow()
+   if topMenuButton then topMenuButton:setOn(false) end
 end
