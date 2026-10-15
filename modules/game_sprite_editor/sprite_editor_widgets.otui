@@ -157,6 +157,31 @@ AppearanceValueSelectRow < Panel
     margin-left: 5
     height: 20
 
+AppearanceTextValueRow < AppearanceValueRow
+
+AppearanceMultiValueGroup < Panel
+  height: 24
+
+  AppearanceFieldLabel
+    id: propertyLabel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: parent.top
+    height: 20
+    text-wrap: false
+
+  Panel
+    id: propertyOptions
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: propertyLabel.bottom
+    anchors.bottom: parent.bottom
+    layout: verticalBox
+    spacing: 0
+
+AppearanceMultiValueCheckBox < AppearanceFlagCheckBox
+  height: 19
+
 AppearanceTimelineFrame < Button
   size: 28 22
   text-wrap: false

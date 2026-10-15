@@ -11,7 +11,7 @@ local selectedSpriteId
 local appearanceCatalog
 local appearanceProperties
 local appearanceOriginal
-local appearanceChanges = { bools = {}, values = {}, strings = {}, animation = { groups = {} } }
+local appearanceChanges = { bools = {}, values = {}, strings = {}, textValues = {}, multiValues = {}, animation = { groups = {} } }
 local animationWidgets = {}
 local buildingAppearanceProperties = false
 local currentPage = 'editor'
@@ -182,6 +182,11 @@ local function getAppearanceCatalogComponent()
       select_appearance = function(category, id)
          selectAppearance(category, id)
       end,
+      on_filter_change = function()
+         if updateExportControls then
+            updateExportControls()
+         end
+      end,
    })
    return appearanceCatalog
 end
@@ -320,6 +325,8 @@ local function hasAppearanceChanges()
    if next(appearanceChanges.bools) ~= nil or
          next(appearanceChanges.values) ~= nil or
          next(appearanceChanges.strings) ~= nil or
+         next(appearanceChanges.textValues) ~= nil or
+         next(appearanceChanges.multiValues) ~= nil or
          next(appearanceChanges.animation.groups) ~= nil then
       return true
    end
@@ -359,7 +366,7 @@ local function hasAppearanceChanges()
 end
 
 local function clearAppearanceChanges()
-   appearanceChanges = { bools = {}, values = {}, strings = {}, animation = { groups = {} } }
+   appearanceChanges = { bools = {}, values = {}, strings = {}, textValues = {}, multiValues = {}, animation = { groups = {} } }
 end
 
 local function selectedOption(comboBox)
@@ -583,6 +590,9 @@ updateSpriteReplacementTarget = function()
    window:recursiveGetChildById('spriteSheetBrowseButton'):setEnabled(canEditAssets and g_platform.isDesktop())
    window:recursiveGetChildById('spriteSheetCellWidth'):setEnabled(canEditAssets)
    window:recursiveGetChildById('spriteSheetCellHeight'):setEnabled(canEditAssets)
+   window:recursiveGetChildById('spriteSheetFirstCell'):setEnabled(canEditAssets)
+   window:recursiveGetChildById('spriteSheetLastCell'):setEnabled(canEditAssets)
+   window:recursiveGetChildById('spriteSheetSkipTransparent'):setEnabled(canEditAssets)
    window:recursiveGetChildById('spriteSheetImportButton'):setEnabled(
       canEditAssets and spriteSheetPathEdit:getText():trim() ~= '')
    local pngPathEdit = window:recursiveGetChildById('previewSpritePathEdit')
@@ -612,6 +622,8 @@ updateSpriteReplacementTarget = function()
    window:recursiveGetChildById('newAppearancePngModeButton'):setEnabled(canEditAssets)
    window:recursiveGetChildById('duplicateAppearanceButton'):setEnabled(
       selectedAppearanceId ~= nil and activeVersion ~= nil and not g_game.isOnline())
+   window:recursiveGetChildById('deleteAppearanceButton'):setEnabled(
+      selectedAppearanceId ~= nil and activeVersion ~= nil and not g_game.isOnline() and pendingSpriteEdit == nil)
    window:recursiveGetChildById('createAppearanceShortcutButton'):setEnabled(
       activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('previewHintLabel'):setText(
@@ -1963,6 +1975,7 @@ updateExportControls = function()
    local isAppearanceExport = currentExportMode == 'appearance'
    local isDirectoryExport = isFolderExport or isAppearanceExport
    local canExportAppearance = canExport and selectedAppearanceId ~= nil and selectedAppearanceCategory ~= nil
+   local batchAppearanceIds, filteredAppearanceCount = getAppearanceCatalogComponent():get_filtered_ids(8)
    local selectedVersion = selectedOption(window:recursiveGetChildById('versionComboBox'))
    local targetVersion = parseClientVersion(window:recursiveGetChildById('newVersionEdit'):getText())
    local destinationRoot = window:recursiveGetChildById('exportFolderEdit'):getText():trim()
@@ -2013,7 +2026,7 @@ updateExportControls = function()
             tr('Replace %s', activeVersion and formatClientVersion(activeVersion) or ''))))
    window:recursiveGetChildById('exportHint'):setText(isFolderExport and
       tr('Creates a data/things/%d package. Existing packages are never overwritten.', activeVersion or 0) or
-      (isAppearanceExport and tr('Includes appearance metadata and unique referenced sprites. Existing bundles are never overwritten.') or
+      (isAppearanceExport and tr('Includes appearance metadata and referenced sprites. Batch export follows the left list filter and handles up to 8 appearances.') or
          (isNewVersion and tr('The source stays unchanged. Choose an unused version to add it to the client.') or
             tr('The current package is backed up before replacement.'))))
    local exportTargetValid = isAppearanceExport and folderDestinationValid or isFolderExport and folderDestinationValid or
@@ -2022,6 +2035,12 @@ updateExportControls = function()
       exportTargetValid = folderDestinationValid and selectedAppearanceId ~= nil
    end
    exportButton:setEnabled((isAppearanceExport and canExportAppearance or canExport) and exportTargetValid)
+   local batchExportButton = window:recursiveGetChildById('exportAppearanceBatchButton')
+   batchExportButton:setVisible(isAppearanceExport)
+   batchExportButton:setText(filteredAppearanceCount > 8 and tr('Filter to 8 or fewer appearances') or
+      tr('Export %d filtered bundle(s)', filteredAppearanceCount))
+   batchExportButton:setEnabled(isAppearanceExport and canExport and folderDestinationValid and
+      batchAppearanceIds ~= nil)
    window:recursiveGetChildById('loadAssetsButton'):setEnabled(offline and selectedVersion ~= nil)
    window:recursiveGetChildById('importPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('exportPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
@@ -2038,6 +2057,74 @@ function setExportMode(mode)
    if window then
       window:recursiveGetChildById('exportStatus'):setText('')
       updateExportControls()
+   end
+end
+
+function exportFilteredAppearanceBundles(confirmed)
+   if currentExportMode ~= 'appearance' or not activeVersion or g_game.isOnline() or
+         selectedAppearanceCategory == nil then
+      return
+   end
+   local ids = getAppearanceCatalogComponent():get_filtered_ids(8)
+   if not ids then
+      setStatus(tr('Filter the appearance list to 8 or fewer results before batch export.'))
+      return
+   end
+   local destination = window:recursiveGetChildById('exportFolderEdit'):getText():trim()
+   local absolute = destination:sub(1, 1) == '/' or destination:match('^%a:[/\\]') ~= nil or
+      destination:match('^[/\\][/\\]') ~= nil
+   if not absolute then
+      setStatus(tr('Choose an absolute destination folder.'))
+      return
+   end
+   if hasAppearanceChanges() then
+      confirmUnsavedChanges(tr('Save changes before exporting appearance bundles?'), function()
+         exportFilteredAppearanceBundles(true)
+      end)
+      return
+   end
+   if not confirmed then
+      local box
+      local function cancelExport()
+         box:cancel()
+      end
+      local function confirmExport()
+         box:ok()
+         exportFilteredAppearanceBundles(true)
+      end
+      box = displayGeneralBox(tr('Export filtered appearances?'),
+         tr('Exports %d appearances from the current filtered list to %s. Existing bundle folders are kept unchanged.',
+            #ids, destination), {
+            { text = tr('Export bundles'), callback = confirmExport },
+            { text = tr('Cancel'), callback = cancelExport },
+         }, cancelExport, cancelExport)
+      return
+   end
+
+   local called, response = pcall(g_things.exportAppearanceBundles, activeVersion,
+      selectedAppearanceCategory, json.encode(ids), destination)
+   if not called then
+      setStatus(getUserFacingError(response))
+      return
+   end
+   local decoded, result = pcall(json.decode, response)
+   if not decoded or type(result) ~= 'table' or type(result.items) ~= 'table' or
+         type(result.failures) ~= 'table' then
+      setStatus(tr('The batch bundle export returned an invalid result. Check the client log.'))
+      return
+   end
+   if tonumber(result.exported) == 0 then
+      local failure = result.failures[1]
+      setStatus(failure and tr('No bundles were exported. Appearance %d: %s', failure.id, failure.error) or
+         tr('No appearance bundles were exported.'))
+      return
+   end
+   if tonumber(result.failed) > 0 then
+      local failure = result.failures[1]
+      setStatus(tr('Exported %d bundle(s); %d failed. First failure for appearance %d: %s',
+         result.exported, result.failed, failure.id, failure.error))
+   else
+      setStatus(tr('Exported %d appearance bundle(s) to %s.', result.exported, destination))
    end
 end
 
@@ -2160,6 +2247,8 @@ local function createWindow()
       end
       sizeBox:setCurrentOptionByData(64, true)
    end
+   window:recursiveGetChildById('spriteSheetFirstCell'):setText('1')
+   window:recursiveGetChildById('spriteSheetLastCell'):setText('0')
 
    local versionBox = window:recursiveGetChildById('versionComboBox')
    local versions = getVersions()
@@ -2444,25 +2533,40 @@ function importAppearanceBundle(forceDiscard)
       return
    end
 
-   local imported, response = pcall(g_things.importAppearanceBundle, activeVersion, bundleDirectory)
+   local imported, response = pcall(g_things.importAppearanceBundlesFromDirectory, activeVersion, bundleDirectory)
    if not imported then
       setStatus(getUserFacingError(response))
       return
    end
    local decoded, result = pcall(json.decode, response)
-   if not decoded or type(result) ~= 'table' or not tonumber(result.id) or not tonumber(result.category) then
+   if not decoded or type(result) ~= 'table' or type(result.items) ~= 'table' or
+         type(result.failures) ~= 'table' then
       setStatus(tr('The appearance bundle import returned an invalid result. Check the client log.'))
       return
    end
+   local firstItem = result.items[1]
+   if not firstItem then
+      local failure = result.failures[1]
+      setStatus(failure and tr('No bundles were imported. %s: %s', failure.bundle, failure.error) or
+         tr('No appearance bundles were imported.'))
+      return
+   end
    if not reloadAssets() then
-      setStatus(tr('Appearance %d was imported, but the work copy could not be reloaded.', result.id))
+      setStatus(tr('%d bundle(s) were imported, but the work copy could not be reloaded.', result.imported))
       return
    end
 
-   refreshAppearanceCatalog(result.category)
-   if loadAppearanceRecord(result.category, result.id, true, true) then
+   refreshAppearanceCatalog(firstItem.category)
+   if loadAppearanceRecord(firstItem.category, firstItem.id, true, true) then
       setActivePage('editor')
-      setStatus(tr('Imported appearance %d with %d remapped sprites.', result.id, tonumber(result.sprites) or 0))
+      if tonumber(result.failed) > 0 then
+         local failure = result.failures[1]
+         setStatus(tr('Imported %d bundle(s); %d failed. First failure: %s: %s', result.imported,
+            result.failed, failure.bundle, failure.error))
+      else
+         setStatus(tr('Imported %d appearance bundle(s). Selected appearance %d has %d remapped sprites.',
+            result.imported, firstItem.id, tonumber(firstItem.sprites) or 0))
+      end
    end
 end
 
@@ -2520,6 +2624,72 @@ function duplicateSelectedAppearance(forceDiscard)
       list:updateScrollBars()
       setStatus(tr('Duplicated %d as %d. Sprite IDs remain shared.', sourceId, duplicateId))
    end
+end
+
+function deleteSelectedAppearance(forceDiscard)
+   if hasAppearanceChanges() and not forceDiscard then
+      confirmUnsavedChanges(tr('Save changes before deleting this appearance?'), function()
+         deleteSelectedAppearance(true)
+      end)
+      return
+   end
+   if not activeVersion or g_game.isOnline() or not selectedAppearanceId then
+      setStatus(tr('Select an appearance in an offline 15.x work copy first.'))
+      return
+   end
+   if pendingSpriteEdit then
+      setStatus(tr('Apply or discard the pending sprite edit before deleting an appearance.'))
+      return
+   end
+
+   local appearanceId = selectedAppearanceId
+   local category = selectedAppearanceCategory
+   local messageBox
+   local function cancelDeletion()
+      messageBox:cancel()
+   end
+   local function confirmDeletion()
+      messageBox:ok()
+      local ok, deleted = pcall(g_things.deleteAppearance, activeVersion, category, appearanceId)
+      if not ok then
+         setStatus(getUserFacingError(deleted))
+         return
+      end
+      if not deleted then
+         setStatus(tr('Appearance %d could not be deleted.', appearanceId))
+         return
+      end
+      if not reloadAssets() then
+         selectedAppearanceId = nil
+         appearanceOriginal = nil
+         clearAppearanceProperties()
+         updateExportControls()
+         refreshAppearanceCatalog(category)
+         setStatus(tr('Appearance %d was deleted, but the work copy could not be reloaded.', appearanceId))
+         return
+      end
+
+      local searchEdit = window:recursiveGetChildById('appearanceSearch')
+      if searchEdit:getText() ~= '' then
+         searchEdit:setText('')
+      end
+      selectedAppearanceId = nil
+      appearanceOriginal = nil
+      refreshAppearanceCatalog(category)
+      updateExportControls()
+      local nextEntry = getFilteredAppearanceEntry(1)
+      if nextEntry then
+         loadAppearanceRecord(category, nextEntry.id, true, true)
+      else
+         clearAppearanceProperties()
+      end
+      setStatus(tr('Appearance %d was removed from the working copy. Its sprites were kept.', appearanceId))
+   end
+   messageBox = displayGeneralBox(tr('Delete appearance'),
+      tr('Remove appearance %d from this working copy? Sprite data will be kept. To restore the appearance, reload assets from the installed version.', appearanceId), {
+         { text = tr('Delete'), callback = confirmDeletion },
+         { text = tr('Cancel'), callback = cancelDeletion },
+      }, cancelDeletion, cancelDeletion)
 end
 
 function importPngAndReplace(forceDiscard)
@@ -3038,9 +3208,17 @@ function importSpriteSheet(forceDiscard)
       setStatus(tr('Choose the width and height of each sprite cell.'))
       return
    end
+   local firstCell = tonumber(window:recursiveGetChildById('spriteSheetFirstCell'):getText():trim())
+   local lastCell = tonumber(window:recursiveGetChildById('spriteSheetLastCell'):getText():trim())
+   if not firstCell or firstCell < 1 or firstCell % 1 ~= 0 or not lastCell or lastCell < 0 or
+         lastCell % 1 ~= 0 or (lastCell ~= 0 and lastCell < firstCell) then
+      setStatus(tr('Enter a valid cell range. The last cell can be 0 to include the rest of the sheet.'))
+      return
+   end
 
    local imported, response = pcall(g_spriteAppearances.importSpritesFromSheet,
-      fileName, activeVersion, spriteWidth, spriteHeight)
+      fileName, activeVersion, spriteWidth, spriteHeight, firstCell, lastCell,
+      window:recursiveGetChildById('spriteSheetSkipTransparent'):isChecked())
    if not imported then
       setStatus(getUserFacingError(response))
       return
@@ -3068,8 +3246,13 @@ function importSpriteSheet(forceDiscard)
 
    local firstId = tonumber(result.items[1].id)
    local lastId = tonumber(result.items[importedCount].id)
-   setStatus(tr('Imported %d cells from the sprite sheet as IDs %d-%d, in row-major order.',
-      importedCount, firstId, lastId))
+   local skippedCount = tonumber(result.skipped) or 0
+   if skippedCount > 0 then
+      setStatus(tr('Imported %d sprites as IDs %d-%d; skipped %d fully transparent cells.',
+         importedCount, firstId, lastId, skippedCount))
+   else
+      setStatus(tr('Imported %d sprites as IDs %d-%d, in row-major order.', importedCount, firstId, lastId))
+   end
 end
 
 collectAnimationWidgetChanges = function()

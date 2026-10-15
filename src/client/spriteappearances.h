@@ -146,7 +146,8 @@ public:
     int importSpriteFromFile(int id, const std::string& fileName, int version);
     int importSpriteForAppearance(int referenceSpriteId, const std::string& fileName, int version);
     std::string importSpritesFromDirectory(const std::string& directory, int version);
-    std::string importSpritesFromSheet(const std::string& fileName, int version, int spriteWidth, int spriteHeight);
+    std::string importSpritesFromSheet(const std::string& fileName, int version, int spriteWidth, int spriteHeight,
+                                       int firstCell, int lastCell, bool skipTransparentCells);
     void releaseSpriteSheetsExcept(int id);
     void releaseDecodedSpriteSheets();
 #endif

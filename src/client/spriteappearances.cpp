@@ -1633,10 +1633,14 @@ std::string SpriteAppearances::importSpritesFromDirectory(const std::string& dir
 }
 
 std::string SpriteAppearances::importSpritesFromSheet(const std::string& fileName, const int version,
-                                                      const int spriteWidth, const int spriteHeight)
+                                                      const int spriteWidth, const int spriteHeight,
+                                                      const int firstCell, const int lastCell,
+                                                      const bool skipTransparentCells)
 {
     if (version < 1500 || version >= 1600)
         throw stdext::exception("sprite sheet import is supported only for client versions 15.x");
+    if (spriteWidth < 1 || spriteHeight < 1 || firstCell < 1 || lastCell < 0)
+        throw stdext::exception("sprite sheet cell size and range must be positive");
 
     const auto sheet = loadPreparedSpriteSheet(fileName);
     const Size spriteSize(spriteWidth, spriteHeight);
@@ -1646,27 +1650,48 @@ std::string SpriteAppearances::importSpritesFromSheet(const std::string& fileNam
 
     const int columns = sheet->getWidth() / spriteWidth;
     const int rows = sheet->getHeight() / spriteHeight;
-    const size_t spriteCount = static_cast<size_t>(columns) * rows;
+    const size_t totalCellCount = static_cast<size_t>(columns) * rows;
+    const size_t firstCellIndex = static_cast<size_t>(firstCell - 1);
+    const size_t lastCellIndex = lastCell == 0 ? totalCellCount - 1 : static_cast<size_t>(lastCell - 1);
+    if (firstCellIndex >= totalCellCount || lastCellIndex >= totalCellCount || lastCellIndex < firstCellIndex)
+        throw stdext::exception("sprite sheet cell range is outside the sheet");
+    const size_t spriteCount = lastCellIndex - firstCellIndex + 1;
     constexpr size_t MAX_SHEET_SPRITES = 64;
-    if (spriteCount == 0 || spriteCount > MAX_SHEET_SPRITES)
-        throw stdext::exception("select a sprite sheet containing no more than {} cells", MAX_SHEET_SPRITES);
+    if (spriteCount > MAX_SHEET_SPRITES)
+        throw stdext::exception("select a range containing no more than {} cells per import", MAX_SHEET_SPRITES);
 
     std::vector<ImagePtr> sprites;
     sprites.reserve(spriteCount);
+    std::vector<size_t> sourceCellIndexes;
+    sourceCellIndexes.reserve(spriteCount);
     const auto& sourcePixels = sheet->getPixels();
-    for (int row = 0; row < rows; ++row) {
-        for (int column = 0; column < columns; ++column) {
-            std::vector<uint8_t> pixels(static_cast<size_t>(spriteWidth) * spriteHeight * 4);
-            for (int y = 0; y < spriteHeight; ++y) {
-                const size_t sourceOffset =
-                    (static_cast<size_t>(row * spriteHeight + y) * sheet->getWidth() + column * spriteWidth) * 4;
-                const size_t targetOffset = static_cast<size_t>(y) * spriteWidth * 4;
-                std::memcpy(pixels.data() + targetOffset, sourcePixels.data() + sourceOffset,
-                            static_cast<size_t>(spriteWidth) * 4);
+    for (size_t cellIndex = firstCellIndex; cellIndex <= lastCellIndex; ++cellIndex) {
+        const int row = static_cast<int>(cellIndex / columns);
+        const int column = static_cast<int>(cellIndex % columns);
+        std::vector<uint8_t> pixels(static_cast<size_t>(spriteWidth) * spriteHeight * 4);
+        bool hasVisiblePixel = false;
+        for (int y = 0; y < spriteHeight; ++y) {
+            const size_t sourceOffset =
+                (static_cast<size_t>(row * spriteHeight + y) * sheet->getWidth() + column * spriteWidth) * 4;
+            const size_t targetOffset = static_cast<size_t>(y) * spriteWidth * 4;
+            std::memcpy(pixels.data() + targetOffset, sourcePixels.data() + sourceOffset,
+                        static_cast<size_t>(spriteWidth) * 4);
+            if (!hasVisiblePixel) {
+                for (int x = 0; x < spriteWidth; ++x) {
+                    if (pixels[targetOffset + static_cast<size_t>(x) * 4 + 3] != 0) {
+                        hasVisiblePixel = true;
+                        break;
+                    }
+                }
             }
-            sprites.push_back(std::make_shared<Image>(spriteSize, 4, pixels.data()));
         }
+        if (skipTransparentCells && !hasVisiblePixel)
+            continue;
+        sprites.push_back(std::make_shared<Image>(spriteSize, 4, pixels.data()));
+        sourceCellIndexes.push_back(cellIndex);
     }
+    if (sprites.empty())
+        throw stdext::exception("the selected range contains no visible sprite cells");
 
     size_t decodedBytes = 0;
     std::vector<std::pair<ImagePtr, SpriteLayout>> prepared;
@@ -1678,12 +1703,20 @@ std::string SpriteAppearances::importSpritesFromSheet(const std::string& fileNam
         prepared.emplace_back(sprite, spriteLayout);
     }
     const auto ids = importNewSprites(prepared, version);
-    json result = { { "imported", ids.size() }, { "items", json::array() }, { "error", "" } };
+    json result = {
+        { "imported", ids.size() },
+        { "selected", spriteCount },
+        { "skipped", spriteCount - ids.size() },
+        { "items", json::array() },
+        { "error", "" }
+    };
     for (size_t index = 0; index < sprites.size(); ++index) {
+        const size_t cellIndex = sourceCellIndexes[index];
         result["items"].push_back({
             { "id", ids[index] },
-            { "column", static_cast<int>(index % columns) + 1 },
-            { "row", static_cast<int>(index / columns) + 1 },
+            { "cell", cellIndex + 1 },
+            { "column", static_cast<int>(cellIndex % columns) + 1 },
+            { "row", static_cast<int>(cellIndex / columns) + 1 },
             { "width", spriteWidth },
             { "height", spriteHeight }
         });

@@ -163,8 +163,11 @@ void Client::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_things", "replaceAppearanceSprite", &ThingTypeManager::replaceAppearanceSprite, &g_things);
     g_lua.bindSingletonFunction("g_things", "createAppearanceFromSprite", &ThingTypeManager::createAppearanceFromSprite, &g_things);
     g_lua.bindSingletonFunction("g_things", "duplicateAppearance", &ThingTypeManager::duplicateAppearance, &g_things);
+    g_lua.bindSingletonFunction("g_things", "deleteAppearance", &ThingTypeManager::deleteAppearance, &g_things);
     g_lua.bindSingletonFunction("g_things", "exportAppearanceBundle", &ThingTypeManager::exportAppearanceBundle, &g_things);
+    g_lua.bindSingletonFunction("g_things", "exportAppearanceBundles", &ThingTypeManager::exportAppearanceBundles, &g_things);
     g_lua.bindSingletonFunction("g_things", "importAppearanceBundle", &ThingTypeManager::importAppearanceBundle, &g_things);
+    g_lua.bindSingletonFunction("g_things", "importAppearanceBundlesFromDirectory", &ThingTypeManager::importAppearanceBundlesFromDirectory, &g_things);
 #endif
 
     g_lua.bindGlobalFunction("setDrawViewportEdge", [](const bool force) {

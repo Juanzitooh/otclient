@@ -27,6 +27,7 @@
 #ifdef FRAMEWORK_EDITOR
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -179,18 +180,61 @@ const appearances::Appearance* findAppearance(const appearances::Appearances& li
     return nullptr;
 }
 
-void collectAppearanceFields(const google::protobuf::Message& message, const std::string& prefix, nlohmann::json& booleans, nlohmann::json& values)
+std::string getAppearanceEnumLabel(const google::protobuf::EnumDescriptor* descriptor,
+                                   const google::protobuf::EnumValueDescriptor* value)
+{
+    std::string label(value->name());
+    const std::string prefix = std::string(descriptor->name()) + "_";
+    if (label.starts_with(prefix))
+        label.erase(0, prefix.size());
+
+    bool capitalize = true;
+    for (auto& character : label) {
+        if (character == '_') {
+            character = ' ';
+            capitalize = true;
+        } else {
+            character = capitalize ? static_cast<char>(std::toupper(static_cast<unsigned char>(character)))
+                                   : static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+            capitalize = false;
+        }
+    }
+    return label;
+}
+
+nlohmann::json getAppearanceEnumOptions(const google::protobuf::EnumDescriptor* descriptor)
+{
+    nlohmann::json options = nlohmann::json::array();
+    for (int index = 0; index < descriptor->value_count(); ++index) {
+        const auto* option = descriptor->value(index);
+        options.push_back({ { "label", getAppearanceEnumLabel(descriptor, option) }, { "value", option->number() } });
+    }
+    return options;
+}
+
+void collectAppearanceFields(const google::protobuf::Message& message, const std::string& prefix,
+                             nlohmann::json& booleans, nlohmann::json& values, nlohmann::json& textValues,
+                             nlohmann::json& enumOptions, nlohmann::json& multiValues,
+                             nlohmann::json& unsetValues)
 {
     const auto* descriptor = message.GetDescriptor();
     const auto* reflection = message.GetReflection();
     for (int index = 0; index < descriptor->field_count(); ++index) {
         const auto* field = descriptor->field(index);
-        if (field->is_repeated())
-            continue;
         const auto fieldName = std::string(field->name());
         const auto name = prefix.empty() ? fieldName : prefix + "." + fieldName;
+        if (field->is_repeated()) {
+            if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_ENUM) {
+                auto& fieldValues = multiValues[name] = nlohmann::json::array();
+                for (int itemIndex = 0; itemIndex < reflection->FieldSize(message, field); ++itemIndex)
+                    fieldValues.push_back(reflection->GetRepeatedEnumValue(message, field, itemIndex));
+                enumOptions[name] = getAppearanceEnumOptions(field->enum_type());
+            }
+            continue;
+        }
         if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
-            collectAppearanceFields(reflection->GetMessage(message, field), name, booleans, values);
+            collectAppearanceFields(reflection->GetMessage(message, field), name, booleans, values,
+                                    textValues, enumOptions, multiValues, unsetValues);
             continue;
         }
 
@@ -200,18 +244,31 @@ void collectAppearanceFields(const google::protobuf::Message& message, const std
                 break;
             case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
                 values[name] = reflection->GetInt32(message, field);
+                if (field->has_presence() && !reflection->HasField(message, field))
+                    unsetValues[name] = true;
                 break;
             case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
                 values[name] = reflection->GetInt64(message, field);
+                if (field->has_presence() && !reflection->HasField(message, field))
+                    unsetValues[name] = true;
                 break;
             case google::protobuf::FieldDescriptor::CPPTYPE_UINT32:
                 values[name] = reflection->GetUInt32(message, field);
+                if (field->has_presence() && !reflection->HasField(message, field))
+                    unsetValues[name] = true;
                 break;
             case google::protobuf::FieldDescriptor::CPPTYPE_UINT64:
                 values[name] = reflection->GetUInt64(message, field);
+                if (field->has_presence() && !reflection->HasField(message, field))
+                    unsetValues[name] = true;
                 break;
             case google::protobuf::FieldDescriptor::CPPTYPE_ENUM:
-                values[name] = reflection->GetEnumValue(message, field);
+                values[name] = field->has_presence() && !reflection->HasField(message, field)
+                    ? nlohmann::json(nullptr) : nlohmann::json(reflection->GetEnumValue(message, field));
+                enumOptions[name] = getAppearanceEnumOptions(field->enum_type());
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
+                textValues[name] = reflection->GetString(message, field);
                 break;
             default:
                 break;
@@ -231,7 +288,17 @@ void setAppearanceScalar(google::protobuf::Message& message, const std::string& 
     if (separator != std::string::npos) {
         if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE)
             throw stdext::exception("invalid appearance property path");
-        setAppearanceScalar(*reflection->MutableMessage(&message, field), path.substr(separator + 1), value);
+        auto* nested = reflection->MutableMessage(&message, field);
+        setAppearanceScalar(*nested, path.substr(separator + 1), value);
+        std::vector<const google::protobuf::FieldDescriptor*> presentFields;
+        nested->GetReflection()->ListFields(*nested, &presentFields);
+        if (presentFields.empty())
+            reflection->ClearField(&message, field);
+        return;
+    }
+
+    if (value.is_number_integer() && value.get<int64_t>() == std::numeric_limits<int32_t>::min()) {
+        reflection->ClearField(&message, field);
         return;
     }
 
@@ -265,14 +332,66 @@ void setAppearanceScalar(google::protobuf::Message& message, const std::string& 
         case google::protobuf::FieldDescriptor::CPPTYPE_ENUM: {
             if (!value.is_number_integer()) throw stdext::exception("appearance enum '{}' must be an integer", path);
             const auto number = value.get<int32_t>();
+            if (number == std::numeric_limits<int32_t>::min()) {
+                reflection->ClearField(&message, field);
+                return;
+            }
             const auto* enumValue = field->enum_type()->FindValueByNumber(number);
             if (!enumValue) throw stdext::exception("unknown value for appearance enum '{}'", path);
             reflection->SetEnum(&message, field, enumValue);
             return;
         }
+        case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
+            if (!value.is_string()) throw stdext::exception("appearance value '{}' must be text", path);
+            if (value.get_ref<const std::string&>().size() > 128)
+                throw stdext::exception("appearance value '{}' is too long", path);
+            if (value.get_ref<const std::string&>().empty())
+                reflection->ClearField(&message, field);
+            else
+                reflection->SetString(&message, field, value.get<std::string>());
+            return;
         default:
             throw stdext::exception("appearance property '{}' is not an editable scalar", path);
     }
+}
+
+void setAppearanceEnumList(google::protobuf::Message& message, const std::string& path, const nlohmann::json& values)
+{
+    const auto separator = path.find('.');
+    const auto* field = message.GetDescriptor()->FindFieldByName(path.substr(0, separator));
+    if (!field)
+        throw stdext::exception("unknown appearance property '{}'", path);
+    auto* reflection = message.GetReflection();
+    if (separator != std::string::npos) {
+        if (field->is_repeated() || field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE)
+            throw stdext::exception("invalid appearance property path");
+        auto* nested = reflection->MutableMessage(&message, field);
+        setAppearanceEnumList(*nested, path.substr(separator + 1), values);
+        std::vector<const google::protobuf::FieldDescriptor*> presentFields;
+        nested->GetReflection()->ListFields(*nested, &presentFields);
+        if (presentFields.empty())
+            reflection->ClearField(&message, field);
+        return;
+    }
+    if (!field->is_repeated() || field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_ENUM || !values.is_array())
+        throw stdext::exception("appearance property '{}' must be a list of enum values", path);
+    if (values.size() > 32)
+        throw stdext::exception("appearance property '{}' contains too many values", path);
+
+    std::set<int> uniqueValues;
+    for (const auto& value : values) {
+        if (!value.is_number_integer())
+            throw stdext::exception("appearance property '{}' contains a non-integer enum value", path);
+        const int number = value.get<int>();
+        const auto* enumValue = field->enum_type()->FindValueByNumber(number);
+        if (!enumValue)
+            throw stdext::exception("appearance property '{}' contains an unknown enum value", path);
+        uniqueValues.insert(number);
+    }
+
+    reflection->ClearField(&message, field);
+    for (const auto number : uniqueValues)
+        reflection->AddEnum(&message, field, field->enum_type()->FindValueByNumber(number));
 }
 
 void readAppearancesFile(const std::filesystem::path& path, appearances::Appearances& library)
@@ -451,9 +570,17 @@ std::string ThingTypeManager::getAppearanceEditorData(const int version, const i
     if (!appearance)
         throw stdext::exception("appearance {} was not found", id);
 
-    nlohmann::json result = { { "bools", nlohmann::json::object() }, { "values", nlohmann::json::object() } };
+    nlohmann::json result = {
+        { "bools", nlohmann::json::object() },
+        { "values", nlohmann::json::object() },
+        { "textValues", nlohmann::json::object() },
+        { "enumOptions", nlohmann::json::object() },
+        { "multiValues", nlohmann::json::object() },
+        { "unsetValues", nlohmann::json::object() }
+    };
     if (category == ThingCategoryItem)
-        collectAppearanceFields(appearance->flags(), "", result["bools"], result["values"]);
+        collectAppearanceFields(appearance->flags(), "", result["bools"], result["values"], result["textValues"],
+                                result["enumOptions"], result["multiValues"], result["unsetValues"]);
     result["name"] = appearance->name();
     result["description"] = appearance->description();
     result["frameGroups"] = nlohmann::json::array();
@@ -571,6 +698,27 @@ bool ThingTypeManager::saveAppearanceEditorData(const int version, const int cat
                 }
             }
             setAppearanceScalar(*flags, field.key(), field.value());
+        }
+    }
+
+    for (const auto* section : { "textValues", "multiValues" }) {
+        const auto it = updates.find(section);
+        if (it == updates.end())
+            continue;
+        if (!it->is_object())
+            throw stdext::exception("appearance changes section '{}' must be an object", section);
+        if (category != ThingCategoryItem) {
+            if (!it->empty())
+                throw stdext::exception("appearance flags and values can only be edited for objects");
+            continue;
+        }
+
+        auto* flags = appearance->mutable_flags();
+        for (auto field = it->begin(); field != it->end(); ++field) {
+            if (section == std::string_view("textValues"))
+                setAppearanceScalar(*flags, field.key(), field.value());
+            else
+                setAppearanceEnumList(*flags, field.key(), field.value());
         }
     }
 
@@ -858,6 +1006,32 @@ int ThingTypeManager::duplicateAppearance(const int version, const int category,
 #endif
 }
 
+bool ThingTypeManager::deleteAppearance(const int version, const int category, const int id)
+{
+#ifdef FRAMEWORK_PROTOBUF
+    if (version < 1500 || version >= 1600)
+        throw stdext::exception("appearance deletion is supported only for client versions 15.x");
+    if (id < 1)
+        throw stdext::exception("appearance ID must be positive");
+
+    const auto path = getAppearanceEditorFile(m_catalogContentPath, version);
+    appearances::Appearances library;
+    readAppearancesFile(path, library);
+    auto* bank = getAppearanceBank(library, category);
+    for (int index = 0; index < bank->size(); ++index) {
+        if (bank->Get(index).id() != static_cast<uint32_t>(id))
+            continue;
+
+        bank->DeleteSubrange(index, 1);
+        writeAppearancesFile(path, library);
+        return true;
+    }
+    throw stdext::exception("appearance {} was not found", id);
+#else
+    throw stdext::exception("protobuf support is required to delete appearances");
+#endif
+}
+
 std::string ThingTypeManager::exportAppearanceBundle(const int version, const int category, const int id,
                                                      const std::string& destination)
 {
@@ -974,6 +1148,46 @@ std::string ThingTypeManager::exportAppearanceBundle(const int version, const in
     }
 
     return target.generic_string();
+#else
+    throw stdext::exception("protobuf support is required to export appearance bundles");
+#endif
+}
+
+std::string ThingTypeManager::exportAppearanceBundles(const int version, const int category,
+                                                      const std::string& appearanceIds,
+                                                      const std::string& destination)
+{
+#ifdef FRAMEWORK_PROTOBUF
+    if (version < 1500 || version >= 1600)
+        throw stdext::exception("appearance bundle export is supported for 15.x appearances only");
+    const auto ids = nlohmann::json::parse(appearanceIds);
+    if (!ids.is_array() || ids.empty() || ids.size() > 8)
+        throw stdext::exception("select between 1 and 8 appearances for a batch bundle export");
+    std::set<int> uniqueIds;
+    std::vector<int> orderedIds;
+    for (const auto& id : ids) {
+        if (!id.is_number_integer() || id.get<int>() < 1 || !uniqueIds.insert(id.get<int>()).second)
+            throw stdext::exception("appearance bundle export IDs must be unique positive integers");
+        orderedIds.push_back(id.get<int>());
+    }
+
+    nlohmann::json result = {
+        { "exported", 0 },
+        { "failed", 0 },
+        { "items", nlohmann::json::array() },
+        { "failures", nlohmann::json::array() }
+    };
+    for (const int id : orderedIds) {
+        try {
+            const auto path = exportAppearanceBundle(version, category, id, destination);
+            result["items"].push_back({ { "id", id }, { "path", path } });
+            result["exported"] = result["exported"].get<int>() + 1;
+        } catch (const std::exception& exception) {
+            result["failures"].push_back({ { "id", id }, { "error", exception.what() } });
+            result["failed"] = result["failed"].get<int>() + 1;
+        }
+    }
+    return result.dump();
 #else
     throw stdext::exception("protobuf support is required to export appearance bundles");
 #endif
@@ -1176,6 +1390,87 @@ std::string ThingTypeManager::importAppearanceBundle(const int version, const st
         { "id", newId },
         { "sprites", remappedIds.size() }
     }).dump();
+#else
+    throw stdext::exception("protobuf support is required to import appearance bundles");
+#endif
+}
+
+std::string ThingTypeManager::importAppearanceBundlesFromDirectory(const int version, const std::string& directory)
+{
+#ifdef FRAMEWORK_PROTOBUF
+    namespace fs = std::filesystem;
+    if (version < 1500 || version >= 1600)
+        throw stdext::exception("appearance bundle import is supported only for client versions 15.x");
+    const fs::path requestedDirectory(directory);
+    if (directory.empty() || !requestedDirectory.is_absolute())
+        throw stdext::exception("choose an absolute folder containing appearance bundles");
+    std::error_code error;
+    const auto status = fs::symlink_status(requestedDirectory, error);
+    if (error || fs::is_symlink(status) || !fs::is_directory(status))
+        throw stdext::exception("the selected appearance bundle folder is invalid");
+
+    const auto root = fs::canonical(requestedDirectory, error);
+    if (error)
+        throw stdext::exception("unable to resolve the selected folder: {}", error.message());
+    if (fs::is_regular_file(root / "manifest.json")) {
+        const auto importedResponse = importAppearanceBundle(version, root.generic_string());
+        const auto imported = nlohmann::json::parse(importedResponse);
+        return nlohmann::json({
+            { "imported", 1 },
+            { "failed", 0 },
+            { "items", nlohmann::json::array({ {
+                { "bundle", root.filename().string() },
+                { "category", imported.at("category") },
+                { "id", imported.at("id") },
+                { "sprites", imported.at("sprites") }
+            } }) },
+            { "failures", nlohmann::json::array() }
+        }).dump();
+    }
+
+    std::vector<fs::path> bundles;
+    for (const fs::directory_entry& entry : fs::directory_iterator(root)) {
+        const auto entryStatus = entry.symlink_status();
+        if (fs::is_symlink(entryStatus) || !fs::is_directory(entryStatus))
+            continue;
+        if (fs::exists(entry.path() / "manifest.json"))
+            bundles.push_back(entry.path());
+    }
+    std::ranges::sort(bundles, [](const fs::path& left, const fs::path& right) {
+        return left.filename().string() < right.filename().string();
+    });
+    constexpr size_t MAX_BUNDLE_IMPORTS = 64;
+    if (bundles.empty())
+        throw stdext::exception("the selected folder contains no appearance bundle folders");
+    if (bundles.size() > MAX_BUNDLE_IMPORTS)
+        throw stdext::exception("select a folder with no more than {} appearance bundles", MAX_BUNDLE_IMPORTS);
+
+    nlohmann::json result = {
+        { "imported", 0 },
+        { "failed", 0 },
+        { "items", nlohmann::json::array() },
+        { "failures", nlohmann::json::array() }
+    };
+    for (const auto& bundle : bundles) {
+        try {
+            const auto importedResponse = importAppearanceBundle(version, bundle.generic_string());
+            const auto imported = nlohmann::json::parse(importedResponse);
+            result["items"].push_back({
+                { "bundle", bundle.filename().string() },
+                { "category", imported.at("category") },
+                { "id", imported.at("id") },
+                { "sprites", imported.at("sprites") }
+            });
+            result["imported"] = result["imported"].get<int>() + 1;
+        } catch (const std::exception& exception) {
+            result["failures"].push_back({
+                { "bundle", bundle.filename().string() },
+                { "error", exception.what() }
+            });
+            result["failed"] = result["failed"].get<int>() + 1;
+        }
+    }
+    return result.dump();
 #else
     throw stdext::exception("protobuf support is required to import appearance bundles");
 #endif

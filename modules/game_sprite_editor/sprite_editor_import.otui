@@ -420,13 +420,54 @@ Panel
       width: 76
       height: 22
 
+    AppearanceFieldLabel
+      !text: tr('Cell range')
+      anchors.left: parent.left
+      anchors.top: spriteSheetCellWidth.bottom
+      margin-top: 7
+      width: 56
+      height: 22
+
+    AppearanceTextEdit
+      id: spriteSheetFirstCell
+      anchors.left: prev.right
+      anchors.top: prev.top
+      margin-left: 3
+      width: 48
+      !tooltip: tr('First cell in row-major order, starting at 1.')
+
+    Label
+      !text: tr('to')
+      anchors.left: prev.right
+      anchors.verticalCenter: prev.verticalCenter
+      margin-left: 4
+      width: 12
+      height: 18
+
+    AppearanceTextEdit
+      id: spriteSheetLastCell
+      anchors.left: prev.right
+      anchors.top: spriteSheetFirstCell.top
+      margin-left: 4
+      width: 48
+      !tooltip: tr('Last cell in row-major order. Use 0 to include through the final cell.')
+
+    AppearanceOptionCheckBox
+      id: spriteSheetSkipTransparent
+      anchors.left: prev.right
+      anchors.verticalCenter: prev.verticalCenter
+      margin-left: 6
+      width: 100
+      !text: tr('Skip empty')
+      !tooltip: tr('Do not import cells whose pixels are fully transparent.')
+
     Label
       id: spriteSheetHintLabel
-      !text: tr('Choose dimensions that divide the full sheet exactly. Maximum: 64 cells per import.')
+      !text: tr('Cells are numbered left to right, then top to bottom. Last cell 0 means the rest of the sheet; at most 64 cells per import.')
       anchors.left: parent.left
       anchors.right: parent.right
-      anchors.top: spriteSheetCellWidth.bottom
-      margin-top: 8
+      anchors.top: spriteSheetFirstCell.bottom
+      margin-top: 5
       height: 36
       text-wrap: true
 
@@ -457,7 +498,7 @@ Panel
 
     Label
       id: appearanceBundleHelpLabel
-      !text: tr('Import a portable 15.x appearance bundle. It creates a new appearance ID and remaps all included sprite IDs, preserving flags, patterns and animation.')
+      !text: tr('Choose one portable bundle folder or a folder containing several bundles. Each bundle creates a new appearance and remaps its sprite IDs.')
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: prev.bottom
@@ -487,7 +528,7 @@ Panel
 
     Label
       id: appearanceBundleHintLabel
-      !text: tr('The imported appearance is added to its original category with a new available ID. Existing appearances and sprites are not replaced.')
+      !text: tr('Each bundle imports independently. If one fails, successful imports remain in the working copy; reload installed assets to discard them.')
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: appearanceBundlePathEdit.bottom
@@ -497,7 +538,7 @@ Panel
 
     AppearanceActionButton
       id: appearanceBundleImportButton
-      !text: tr('Import appearance')
+      !text: tr('Import bundle(s)')
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: appearanceBundleHintLabel.bottom
