@@ -25,9 +25,15 @@
 #include <nlohmann/json.hpp>
 
 #ifdef FRAMEWORK_EDITOR
+#include <algorithm>
+#include <array>
+#include <exception>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits>
+#include <map>
+#include <set>
 #include <string_view>
 #endif
 
@@ -36,6 +42,8 @@
 #include "thingtype.h"
 #include "framework/core/filestream.h"
 #include "framework/core/resourcemanager.h"
+#include "framework/graphics/apngloader.h"
+#include "framework/graphics/image.h"
 #include "framework/otml/otmldocument.h"
 #ifdef FRAMEWORK_PROTOBUF
 #include <appearances.pb.h>
@@ -319,6 +327,100 @@ void writeAppearancesFile(const std::filesystem::path& path, const appearances::
         std::error_code rollbackError;
         fs::rename(backup, path, rollbackError);
         throw stdext::exception("could not replace the appearances file: {}", error.message());
+    }
+    fs::remove(backup, error);
+}
+
+bool isBundlePathWithin(const std::filesystem::path& root, const std::filesystem::path& path)
+{
+    const auto relative = path.lexically_relative(root);
+    return !relative.empty() && relative != "." && !relative.is_absolute() && *relative.begin() != "..";
+}
+
+std::filesystem::path getBundleFile(const std::filesystem::path& root, const std::string& relativeFile)
+{
+    namespace fs = std::filesystem;
+    auto relative = fs::path(relativeFile).lexically_normal();
+    if (relative.empty() || relative.is_absolute() || relative.has_root_name() || relative.has_root_directory())
+        throw stdext::exception("appearance bundle contains an invalid file path");
+    for (const auto& part : relative) {
+        if (part == ".." || part == ".")
+            throw stdext::exception("appearance bundle contains an invalid file path");
+    }
+
+    auto current = root;
+    std::error_code error;
+    for (const auto& part : relative) {
+        current /= part;
+        const auto status = fs::symlink_status(current, error);
+        if (error == std::errc::no_such_file_or_directory)
+            throw stdext::exception("appearance bundle is missing a required file");
+        if (error)
+            throw stdext::exception("unable to inspect an appearance bundle file: {}", error.message());
+        if (fs::is_symlink(status))
+            throw stdext::exception("appearance bundles cannot contain symbolic links");
+    }
+    if (!isBundlePathWithin(root, current) || !fs::is_regular_file(current))
+        throw stdext::exception("appearance bundle contains a missing or unsupported file");
+    return current;
+}
+
+std::string getAppearanceCategoryName(const int category)
+{
+    switch (category) {
+        case ThingCategoryItem: return "objects";
+        case ThingCategoryCreature: return "outfits";
+        case ThingCategoryEffect: return "effects";
+        case ThingCategoryMissile: return "missiles";
+        default: throw stdext::exception("invalid appearance category");
+    }
+}
+
+std::string readFileText(const std::filesystem::path& path)
+{
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream)
+        throw stdext::exception("unable to read the asset catalog before appearance import");
+    return { std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>() };
+}
+
+void restoreFileSnapshot(const std::filesystem::path& path, const std::string& contents)
+{
+    namespace fs = std::filesystem;
+    const fs::path temporary(path.string() + ".bundle-rollback.tmp");
+    const fs::path backup(path.string() + ".bundle-rollback.bak");
+    std::error_code error;
+    for (const auto& candidate : { temporary, backup }) {
+        const auto status = fs::symlink_status(candidate, error);
+        if (!error && fs::is_symlink(status))
+            throw stdext::exception("appearance import rollback found an unsafe temporary path");
+        if (error == std::errc::no_such_file_or_directory)
+            error.clear();
+        else if (error)
+            throw stdext::exception("unable to validate appearance import rollback path: {}", error.message());
+    }
+    fs::remove(backup, error);
+    if (error)
+        throw stdext::exception("unable to clear the previous appearance rollback file: {}", error.message());
+
+    {
+        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+        if (!stream)
+            throw stdext::exception("unable to stage the asset catalog rollback");
+        stream.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+        stream.flush();
+        if (!stream)
+            throw stdext::exception("unable to write the asset catalog rollback");
+    }
+
+    fs::rename(path, backup, error);
+    if (error)
+        throw stdext::exception("unable to stage the asset catalog rollback: {}", error.message());
+    fs::rename(temporary, path, error);
+    if (error) {
+        std::error_code rollbackError;
+        fs::rename(backup, path, rollbackError);
+        throw stdext::exception("unable to restore the asset catalog: {}", error.message());
     }
     fs::remove(backup, error);
 }
@@ -753,6 +855,329 @@ int ThingTypeManager::duplicateAppearance(const int version, const int category,
     return static_cast<int>(id);
 #else
     throw stdext::exception("protobuf support is required to duplicate appearances");
+#endif
+}
+
+std::string ThingTypeManager::exportAppearanceBundle(const int version, const int category, const int id,
+                                                     const std::string& destination)
+{
+#ifdef FRAMEWORK_PROTOBUF
+    namespace fs = std::filesystem;
+    if (version < 1500 || version >= 1600 || id < 1)
+        throw stdext::exception("appearance bundle export is supported for 15.x appearances only");
+    if (destination.empty() || !fs::path(destination).is_absolute())
+        throw stdext::exception("choose an absolute destination folder for the appearance bundle");
+
+    const auto appearanceFile = getAppearanceEditorFile(m_catalogContentPath, version);
+    const auto sourcePackage = fs::weakly_canonical(appearanceFile.parent_path());
+    std::error_code error;
+    const auto parent = fs::canonical(fs::path(destination), error);
+    if (error || !fs::is_directory(parent))
+        throw stdext::exception("the appearance bundle destination must be an existing folder");
+
+    appearances::Appearances library;
+    readAppearancesFile(appearanceFile, library);
+    const auto* selectedAppearance = findAppearance(library, category, id);
+    if (!selectedAppearance)
+        throw stdext::exception("appearance {} was not found", id);
+    const appearances::Appearance appearance = *selectedAppearance;
+
+    std::set<uint32_t> spriteIds;
+    for (const auto& frameGroup : appearance.frame_group()) {
+        if (!frameGroup.has_sprite_info())
+            throw stdext::exception("the appearance contains a frame group without sprite data");
+        for (const auto spriteId : frameGroup.sprite_info().sprite_id()) {
+            if (spriteId == 0)
+                throw stdext::exception("the appearance contains an invalid sprite ID");
+            spriteIds.insert(spriteId);
+        }
+    }
+    if (spriteIds.empty() || spriteIds.size() > 256)
+        throw stdext::exception("appearance bundles require between 1 and 256 referenced sprites");
+
+    const auto bundleName = fmt::format("appearance-{}-{}", getAppearanceCategoryName(category), id);
+    const auto target = parent / bundleName;
+    const auto temporary = parent / (bundleName + ".sprite-editor.tmp");
+    if (isBundlePathWithin(sourcePackage, target) || isBundlePathWithin(target, sourcePackage))
+        throw stdext::exception("export the appearance bundle outside the active work copy");
+    if (fs::exists(target) || fs::exists(temporary))
+        throw stdext::exception("an appearance bundle already exists at the destination; it will not be overwritten");
+
+    try {
+        fs::create_directories(temporary / "sprites");
+        nlohmann::json manifest = {
+            { "format", "otclient-appearance-bundle" },
+            { "formatVersion", 1 },
+            { "clientVersion", version },
+            { "category", category },
+            { "appearanceId", id },
+            { "appearanceFile", "appearance.pb" },
+            { "sprites", nlohmann::json::array() }
+        };
+
+        for (const auto spriteId : spriteIds) {
+            const auto sheet = g_spriteAppearances.getSheetBySpriteId(static_cast<int>(spriteId), false);
+            const auto image = g_spriteAppearances.getSpriteImage(static_cast<int>(spriteId));
+            if (!sheet || !image)
+                throw stdext::exception("sprite {} is missing from the active work copy", spriteId);
+            const auto fileName = fmt::format("sprites/{}.png", spriteId);
+            std::stringstream pngData;
+            save_png(pngData, image->getSize().width(), image->getSize().height(), 4, image->getPixelData());
+            const auto pngBytes = pngData.str();
+            std::ofstream pngFile(temporary / fileName, std::ios::binary | std::ios::trunc);
+            if (!pngFile)
+                throw stdext::exception("unable to create an exported sprite PNG");
+            pngFile.write(pngBytes.data(), static_cast<std::streamsize>(pngBytes.size()));
+            pngFile.flush();
+            if (!pngFile)
+                throw stdext::exception("unable to finish writing an exported sprite PNG");
+            manifest["sprites"].push_back({
+                { "id", spriteId },
+                { "file", fileName },
+                { "width", image->getSize().width() },
+                { "height", image->getSize().height() }
+            });
+        }
+
+        {
+            std::ofstream stream(temporary / "appearance.pb", std::ios::binary | std::ios::trunc);
+            if (!stream || !appearance.SerializeToOstream(&stream))
+                throw stdext::exception("unable to write the appearance data file");
+            stream.flush();
+            if (!stream)
+                throw stdext::exception("unable to finish writing the appearance data file");
+        }
+        {
+            std::ofstream stream(temporary / "manifest.json", std::ios::binary | std::ios::trunc);
+            if (!stream)
+                throw stdext::exception("unable to write the appearance bundle manifest");
+            stream << manifest.dump(2);
+            stream.flush();
+            if (!stream)
+                throw stdext::exception("unable to finish writing the appearance bundle manifest");
+        }
+
+        appearances::Appearance verifiedAppearance;
+        std::ifstream appearanceStream(temporary / "appearance.pb", std::ios::binary);
+        if (!appearanceStream || !verifiedAppearance.ParseFromIstream(&appearanceStream) ||
+            verifiedAppearance.id() != appearance.id())
+            throw stdext::exception("appearance bundle verification failed");
+        for (const auto& sprite : manifest.at("sprites")) {
+            const auto png = temporary / sprite.at("file").get<std::string>();
+            if (!fs::is_regular_file(png) || fs::file_size(png) == 0)
+                throw stdext::exception("appearance bundle is missing an exported sprite image");
+        }
+        fs::rename(temporary, target);
+    } catch (...) {
+        fs::remove_all(temporary, error);
+        throw;
+    }
+
+    return target.generic_string();
+#else
+    throw stdext::exception("protobuf support is required to export appearance bundles");
+#endif
+}
+
+std::string ThingTypeManager::importAppearanceBundle(const int version, const std::string& bundleDirectory)
+{
+#ifdef FRAMEWORK_PROTOBUF
+    namespace fs = std::filesystem;
+    if (version < 1500 || version >= 1600)
+        throw stdext::exception("appearance bundle import is supported only for client versions 15.x");
+    const fs::path requestedBundle(bundleDirectory);
+    if (bundleDirectory.empty() || !requestedBundle.is_absolute())
+        throw stdext::exception("choose an absolute appearance bundle folder");
+    std::error_code error;
+    const auto rootStatus = fs::symlink_status(requestedBundle, error);
+    if (error || fs::is_symlink(rootStatus) || !fs::is_directory(rootStatus))
+        throw stdext::exception("the selected appearance bundle folder is invalid");
+    const auto root = fs::canonical(requestedBundle, error);
+    if (error)
+        throw stdext::exception("unable to resolve the appearance bundle folder: {}", error.message());
+
+    const auto manifestPath = getBundleFile(root, "manifest.json");
+    if (fs::file_size(manifestPath) > 1024 * 1024)
+        throw stdext::exception("appearance bundle manifest is too large");
+    std::ifstream manifestStream(manifestPath, std::ios::binary);
+    nlohmann::json manifest = nlohmann::json::parse(manifestStream);
+    if (!manifest.is_object() || manifest.value("format", std::string{}) != "otclient-appearance-bundle" ||
+        manifest.value("formatVersion", 0) != 1)
+        throw stdext::exception("the selected folder is not a supported OTClient appearance bundle");
+
+    const int sourceVersion = manifest.value("clientVersion", 0);
+    const int category = manifest.value("category", -1);
+    const int sourceId = manifest.value("appearanceId", 0);
+    if (sourceVersion < 1500 || sourceVersion >= 1600 || sourceId < 1)
+        throw stdext::exception("appearance bundle metadata is invalid");
+    getAppearanceCategoryName(category);
+    if (manifest.value("appearanceFile", std::string{}) != "appearance.pb")
+        throw stdext::exception("appearance bundle references an unsupported appearance data file");
+
+    const auto appearancePath = getBundleFile(root, "appearance.pb");
+    if (fs::file_size(appearancePath) > 32 * 1024 * 1024)
+        throw stdext::exception("appearance bundle data is too large");
+    appearances::Appearance appearance;
+    std::ifstream appearanceStream(appearancePath, std::ios::binary);
+    if (!appearanceStream || !appearance.ParseFromIstream(&appearanceStream) || appearance.id() != sourceId ||
+        appearance.frame_group_size() < 1 || appearance.frame_group_size() > 32)
+        throw stdext::exception("appearance bundle data is invalid or does not match its manifest");
+
+    std::set<uint32_t> referencedSpriteIds;
+    size_t totalSpriteReferences = 0;
+    for (const auto& frameGroup : appearance.frame_group()) {
+        if (!frameGroup.has_sprite_info() || frameGroup.sprite_info().sprite_id_size() < 1)
+            throw stdext::exception("appearance bundle contains a frame group without sprites");
+        totalSpriteReferences += static_cast<size_t>(frameGroup.sprite_info().sprite_id_size());
+        if (totalSpriteReferences > 8192)
+            throw stdext::exception("appearance bundle contains too many sprite references");
+        for (const auto spriteId : frameGroup.sprite_info().sprite_id()) {
+            if (spriteId == 0)
+                throw stdext::exception("appearance bundle contains an invalid sprite ID");
+            referencedSpriteIds.insert(spriteId);
+        }
+    }
+    const auto spriteEntries = manifest.find("sprites");
+    if (spriteEntries == manifest.end() || !spriteEntries->is_array() || spriteEntries->empty() ||
+        spriteEntries->size() > 256 || spriteEntries->size() != referencedSpriteIds.size())
+        throw stdext::exception("appearance bundle sprite inventory does not match the appearance data");
+
+    std::map<uint32_t, std::string> spriteFiles;
+    std::set<std::string> listedFiles;
+    for (const auto& entry : *spriteEntries) {
+        if (!entry.is_object() || !entry.contains("id") || !entry.contains("file") ||
+            !entry.contains("width") || !entry.contains("height"))
+            throw stdext::exception("appearance bundle contains incomplete sprite metadata");
+        const auto spriteId = entry.at("id").get<uint32_t>();
+        const auto file = entry.at("file").get<std::string>();
+        if (!referencedSpriteIds.contains(spriteId) || spriteFiles.contains(spriteId) ||
+            !file.starts_with("sprites/") || fs::path(file).extension() != ".png" ||
+            !listedFiles.insert(fs::path(file).filename().string()).second)
+            throw stdext::exception("appearance bundle contains a duplicate or unrelated sprite file");
+        const auto imagePath = getBundleFile(root, file);
+        std::ifstream imageStream(imagePath, std::ios::binary);
+        std::array<uint8_t, 24> pngHeader{};
+        imageStream.read(reinterpret_cast<char*>(pngHeader.data()), pngHeader.size());
+        const uint32_t width = (static_cast<uint32_t>(pngHeader[16]) << 24) |
+            (static_cast<uint32_t>(pngHeader[17]) << 16) | (static_cast<uint32_t>(pngHeader[18]) << 8) | pngHeader[19];
+        const uint32_t height = (static_cast<uint32_t>(pngHeader[20]) << 24) |
+            (static_cast<uint32_t>(pngHeader[21]) << 16) | (static_cast<uint32_t>(pngHeader[22]) << 8) | pngHeader[23];
+        if (!imageStream || pngHeader[0] != 137 || pngHeader[1] != 80 || pngHeader[2] != 78 ||
+            pngHeader[3] != 71 || entry.at("width").get<uint32_t>() != width ||
+            entry.at("height").get<uint32_t>() != height || width == 0 || height == 0 ||
+            width > 384 || height > 384)
+            throw stdext::exception("appearance bundle contains a sprite image with invalid dimensions");
+        spriteFiles.emplace(spriteId, file);
+    }
+
+    const auto spriteFolder = root / "sprites";
+    const auto spriteFolderStatus = fs::symlink_status(spriteFolder, error);
+    if (error || fs::is_symlink(spriteFolderStatus) || !fs::is_directory(spriteFolderStatus))
+        throw stdext::exception("appearance bundle sprite folder is missing or unsafe");
+    std::set<std::string> actualFiles;
+    for (const auto& entry : fs::directory_iterator(spriteFolder)) {
+        const auto status = entry.symlink_status();
+        if (fs::is_symlink(status) || !fs::is_regular_file(status) || entry.path().extension() != ".png")
+            throw stdext::exception("appearance bundle sprite folder contains an unsupported file");
+        actualFiles.insert(entry.path().filename().string());
+    }
+    if (actualFiles != listedFiles)
+        throw stdext::exception("appearance bundle sprite files do not match its manifest");
+
+    const auto appearanceFile = getAppearanceEditorFile(m_catalogContentPath, version);
+    const auto spriteCatalogPath = appearanceFile.parent_path() / "catalog-content.json";
+    const std::string originalCatalog = readFileText(spriteCatalogPath);
+    const auto originalCatalogJson = nlohmann::json::parse(originalCatalog);
+    std::set<std::string> originalSpriteFiles;
+    for (const auto& entry : originalCatalogJson) {
+        if (entry.is_object() && entry.value("type", std::string{}) == "sprite" && entry.contains("file"))
+            originalSpriteFiles.insert(entry.at("file").get<std::string>());
+    }
+    appearances::Appearances library;
+    readAppearancesFile(appearanceFile, library);
+    auto* bank = getAppearanceBank(library, category);
+    uint32_t maximumId = 0;
+    for (const auto& existing : *bank)
+        maximumId = std::max(maximumId, existing.id());
+    if (maximumId >= std::numeric_limits<uint16_t>::max())
+        throw stdext::exception("the selected appearance category has no available 15.x IDs");
+
+    std::map<uint32_t, uint32_t> remappedIds;
+    bool spriteImportSucceeded = false;
+    bool appearanceSaved = false;
+    const uint32_t newId = maximumId + 1;
+    try {
+        const auto importedResponse = g_spriteAppearances.importSpritesFromDirectory(spriteFolder.generic_string(), version);
+        spriteImportSucceeded = true;
+        const auto imported = nlohmann::json::parse(importedResponse);
+        if (!imported.is_object() || imported.value("imported", 0) != spriteEntries->size() ||
+            !imported.contains("items") || !imported.at("items").is_array())
+            throw stdext::exception("appearance bundle sprite import returned an invalid result");
+        for (const auto& item : imported.at("items")) {
+            const auto fileName = item.at("file").get<std::string>();
+            const auto fileIt = std::find_if(spriteFiles.begin(), spriteFiles.end(), [&](const auto& value) {
+                return fs::path(value.second).filename() == fileName;
+            });
+            if (fileIt == spriteFiles.end() || !item.contains("id"))
+                throw stdext::exception("appearance bundle sprite IDs could not be remapped");
+            remappedIds[fileIt->first] = item.at("id").get<uint32_t>();
+        }
+        if (remappedIds.size() != spriteFiles.size())
+            throw stdext::exception("appearance bundle sprite IDs could not be remapped");
+
+        appearance.set_id(newId);
+        for (auto& frameGroup : *appearance.mutable_frame_group()) {
+            auto* spriteInfo = frameGroup.mutable_sprite_info();
+            for (int index = 0; index < spriteInfo->sprite_id_size(); ++index) {
+                const auto oldId = spriteInfo->sprite_id(index);
+                const auto replacement = remappedIds.find(oldId);
+                if (replacement == remappedIds.end())
+                    throw stdext::exception("appearance bundle references a sprite that was not imported");
+                spriteInfo->set_sprite_id(index, replacement->second);
+            }
+        }
+        bank->Add()->Swap(&appearance);
+        writeAppearancesFile(appearanceFile, library);
+        appearanceSaved = true;
+    } catch (...) {
+        const auto importError = std::current_exception();
+        if (spriteImportSucceeded && !appearanceSaved) {
+            try {
+                const auto updatedCatalog = nlohmann::json::parse(readFileText(spriteCatalogPath));
+                std::vector<fs::path> newSpriteSheets;
+                const auto package = appearanceFile.parent_path();
+                for (const auto& entry : updatedCatalog) {
+                    if (!entry.is_object() || entry.value("type", std::string{}) != "sprite" || !entry.contains("file"))
+                        continue;
+                    const auto relative = fs::path(entry.at("file").get<std::string>());
+                    if (relative.has_parent_path() || relative.filename() != relative ||
+                        originalSpriteFiles.contains(relative.generic_string()) ||
+                        !relative.filename().string().starts_with("sprite-editor-"))
+                        continue;
+                    newSpriteSheets.push_back(package / relative);
+                }
+                restoreFileSnapshot(spriteCatalogPath, originalCatalog);
+                for (const auto& sheet : newSpriteSheets)
+                    fs::remove(sheet, error);
+            } catch (const std::exception& rollbackError) {
+                try {
+                    std::rethrow_exception(importError);
+                } catch (const std::exception& importException) {
+                    throw stdext::exception("appearance import failed: {}; sprite rollback also failed: {}",
+                        importException.what(), rollbackError.what());
+                }
+            }
+        }
+        std::rethrow_exception(importError);
+    }
+    invalidateTextureCache();
+    return nlohmann::json({
+        { "category", category },
+        { "id", newId },
+        { "sprites", remappedIds.size() }
+    }).dump();
+#else
+    throw stdext::exception("protobuf support is required to import appearance bundles");
 #endif
 }
 #endif

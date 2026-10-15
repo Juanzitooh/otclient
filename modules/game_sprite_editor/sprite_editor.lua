@@ -117,6 +117,7 @@ local applySpritePickerFilter
 local refreshAppearanceCatalog
 local applyAppearanceFilter
 local updateCategoryOptions
+local updateExportControls
 local importPngAsNewSprite
 local selectSpritePickerSprite
 local linkSpriteToSelectedFrame
@@ -154,7 +155,7 @@ end
 
 local function setStatus(message)
    if window then
-      window:recursiveGetChildById('statusLabel'):setText(message)
+      window:recursiveGetChildById('statusLabel'):setText(tr('Status: %s', message))
    end
 end
 
@@ -422,6 +423,35 @@ local function createPngFilePicker()
    pngFilePicker = SpriteEditorPngFilePicker.new({
       on_status = setStatus,
       on_selected = function(target, path)
+         if target == 'export' then
+            window:recursiveGetChildById('exportFolderEdit'):setText(path)
+            updateExportControls()
+            setStatus(tr('Export destination selected: %s', path))
+            return
+         end
+         if target == 'batch' then
+            window:recursiveGetChildById('batchPngFolderEdit'):setText(path)
+            updateSpriteReplacementTarget()
+            setStatus(tr('PNG folder selected: %s', path))
+            return
+         end
+         if target == 'appearanceImport' then
+            window:recursiveGetChildById('appearanceBundlePathEdit'):setText(path)
+            setStatus(tr('Appearance bundle selected: %s', path:match('([^/]+)$') or path))
+            return
+         end
+         if target == 'appearanceExport' then
+            window:recursiveGetChildById('exportFolderEdit'):setText(path)
+            updateExportControls()
+            setStatus(tr('Appearance bundle destination selected: %s', path))
+            return
+         end
+         if target == 'sheet' then
+            window:recursiveGetChildById('spriteSheetPathEdit'):setText(path)
+            updateSpriteReplacementTarget()
+            setStatus(tr('Sprite sheet selected: %s', path:match('([^/]+)$') or path))
+            return
+         end
          if target == 'create' then
             window:recursiveGetChildById('newAppearancePngPathEdit'):setText(path)
             setStatus(tr('PNG selected for the new appearance: %s', path:match('([^/]+)$') or path))
@@ -438,10 +468,13 @@ end
 
 function openPngFilePicker(target)
    target = target or 'replace'
-   if target ~= 'replace' and target ~= 'create' then
+   if target ~= 'replace' and target ~= 'create' and target ~= 'export' and target ~= 'batch' and
+         target ~= 'sheet' and target ~= 'appearanceImport' and target ~= 'appearanceExport' then
       return
    end
-   if not window or not activeVersion or g_game.isOnline() or (target == 'replace' and not selectedSpriteId) then
+   local isExportTarget = target == 'export' or target == 'appearanceExport'
+   if not window or (not isExportTarget and not activeVersion) or g_game.isOnline() or
+         (target == 'replace' and not selectedSpriteId) then
       return
    end
    if not g_platform.isDesktop() then
@@ -456,9 +489,21 @@ function openPngFilePicker(target)
       createPngFilePicker()
    end
 
-   local pathEditId = target == 'create' and 'newAppearancePngPathEdit' or 'previewSpritePathEdit'
+   local pathEditId = target == 'create' and 'newAppearancePngPathEdit' or
+      ((target == 'export' or target == 'appearanceExport') and 'exportFolderEdit' or
+         (target == 'appearanceImport' and 'appearanceBundlePathEdit' or
+            (target == 'batch' and 'batchPngFolderEdit' or
+               (target == 'sheet' and 'spriteSheetPathEdit' or 'previewSpritePathEdit'))))
    local existingPath = window:recursiveGetChildById(pathEditId):getText()
    pngFilePicker:open(target, existingPath)
+end
+
+function openExportFolderPicker()
+   openPngFilePicker(currentExportMode == 'appearance' and 'appearanceExport' or 'export')
+end
+
+function openAppearanceBundleExportPicker()
+   openPngFilePicker('appearanceExport')
 end
 
 local function updatePreviewTitle()
@@ -493,6 +538,9 @@ updateSpriteReplacementTarget = function()
    local showImport = currentPage == 'import'
    local showReplace = showImport and currentImportSection == 'replace'
    local showCreate = showImport and currentImportSection == 'create'
+   local showBatch = showImport and currentImportSection == 'batch'
+   local showSheet = showImport and currentImportSection == 'sheet'
+   local showBundle = showImport and currentImportSection == 'bundle'
    if spritePickerSourceId ~= selectedSpriteId then
       spritePickerSourceId = selectedSpriteId
       selectedReplacementSpriteId = nil
@@ -500,6 +548,9 @@ updateSpriteReplacementTarget = function()
    local targetPanel = window:recursiveGetChildById('replaceFramePanel')
    targetPanel:setVisible(showReplace)
    window:recursiveGetChildById('newAppearancePanel'):setVisible(showCreate)
+   window:recursiveGetChildById('batchPngsPanel'):setVisible(showBatch)
+   window:recursiveGetChildById('spriteSheetPanel'):setVisible(showSheet)
+   window:recursiveGetChildById('appearanceBundlePanel'):setVisible(showBundle)
    window:recursiveGetChildById('replaceSourceModes'):setVisible(showReplace and hasTarget)
    window:recursiveGetChildById('selectedSpriteTargetLabel'):setText(
       hasTarget and tr('Current frame | Sprite %d', selectedSpriteId) or tr('Select a sprite frame to continue'))
@@ -516,8 +567,24 @@ updateSpriteReplacementTarget = function()
       showCreate and currentNewAppearanceSourceMode == 'sprite')
    window:recursiveGetChildById('newAppearancePngPanel'):setVisible(
       showCreate and currentNewAppearanceSourceMode == 'png')
+   window:recursiveGetChildById('replaceFrameTabButton'):setOn(currentImportSection == 'replace')
+   window:recursiveGetChildById('newAppearanceTabButton'):setOn(currentImportSection == 'create')
+   window:recursiveGetChildById('batchPngsTabButton'):setOn(currentImportSection == 'batch')
+   window:recursiveGetChildById('spriteSheetTabButton'):setOn(currentImportSection == 'sheet')
    window:recursiveGetChildById('newAppearanceSpriteSearchEdit'):setEnabled(canEditAssets)
    window:recursiveGetChildById('newAppearanceCategory'):setEnabled(canEditAssets)
+   local batchFolderEdit = window:recursiveGetChildById('batchPngFolderEdit')
+   batchFolderEdit:setEnabled(canEditAssets)
+   window:recursiveGetChildById('batchPngFolderBrowseButton'):setEnabled(canEditAssets and g_platform.isDesktop())
+   window:recursiveGetChildById('batchPngImportButton'):setEnabled(
+      canEditAssets and batchFolderEdit:getText():trim() ~= '')
+   local spriteSheetPathEdit = window:recursiveGetChildById('spriteSheetPathEdit')
+   spriteSheetPathEdit:setEnabled(canEditAssets)
+   window:recursiveGetChildById('spriteSheetBrowseButton'):setEnabled(canEditAssets and g_platform.isDesktop())
+   window:recursiveGetChildById('spriteSheetCellWidth'):setEnabled(canEditAssets)
+   window:recursiveGetChildById('spriteSheetCellHeight'):setEnabled(canEditAssets)
+   window:recursiveGetChildById('spriteSheetImportButton'):setEnabled(
+      canEditAssets and spriteSheetPathEdit:getText():trim() ~= '')
    local pngPathEdit = window:recursiveGetChildById('previewSpritePathEdit')
    pngPathEdit:setEnabled(canReplace)
    window:recursiveGetChildById('browsePngButton'):setEnabled(canReplace and g_platform.isDesktop())
@@ -552,7 +619,7 @@ updateSpriteReplacementTarget = function()
          tr('Drop a sprite here to replace this frame | Wheel over preview: zoom | Middle-drag: pan') or
          tr('Wheel over preview: zoom | Middle-drag: pan | Checkerboard: transparency'))
    if hasTarget then updatePreviewTitle() end
-   if renderSpritePickerRows then
+   if renderSpritePickerRows and currentImportSection ~= 'batch' then
       local pickerList = getSpritePickerWidget('list')
       renderSpritePickerRows(pickerList and pickerList:getVirtualOffset().y or 0)
    end
@@ -1816,6 +1883,7 @@ local function loadAppearanceRecord(category, id, forceDiscard, forceReload)
    local categoryInfo = categories[category + 1]
    setStatus(tr('%s %d loaded.', categoryInfo and tr(categoryInfo.singular) or tr('Appearance'), id))
    renderAppearanceRows(window:recursiveGetChildById('appearanceList'):getVirtualOffset().y)
+   updateExportControls()
    return true
 end
 
@@ -1838,6 +1906,7 @@ local function changeAppearanceCategory(category, forceDiscard)
    end
    selectedAppearanceCategory = category
    selectedAppearanceId = nil
+   updateExportControls()
    appearanceOriginal = nil
    clearAppearanceChanges()
    local searchEdit = window:recursiveGetChildById('appearanceSearch')
@@ -1882,7 +1951,7 @@ local function releaseActiveWorkCopy()
    return true
 end
 
-local function updateExportControls()
+updateExportControls = function()
    if not window then
       return
    end
@@ -1890,40 +1959,79 @@ local function updateExportControls()
    local offline = not g_game.isOnline()
    local canExport = activeVersion ~= nil and offline
    local isNewVersion = currentExportMode == 'new'
+   local isFolderExport = currentExportMode == 'folder'
+   local isAppearanceExport = currentExportMode == 'appearance'
+   local isDirectoryExport = isFolderExport or isAppearanceExport
+   local canExportAppearance = canExport and selectedAppearanceId ~= nil and selectedAppearanceCategory ~= nil
    local selectedVersion = selectedOption(window:recursiveGetChildById('versionComboBox'))
    local targetVersion = parseClientVersion(window:recursiveGetChildById('newVersionEdit'):getText())
+   local destinationRoot = window:recursiveGetChildById('exportFolderEdit'):getText():trim()
+   local isAbsoluteDestination = destinationRoot:sub(1, 1) == '/' or destinationRoot:match('^%a:[/\\]') ~= nil or
+      destinationRoot:match('^[/\\][/\\]') ~= nil
    local versionDirectories = getVersionDirectories()
    local newVersionValid = targetVersion ~= nil and targetVersion ~= activeVersion and
       not versionDirectories[targetVersion]
+   local folderDestinationValid = isAbsoluteDestination and activeVersion ~= nil
 
-   window:recursiveGetChildById('replaceVersionModeButton'):setOn(not isNewVersion)
+   window:recursiveGetChildById('replaceVersionModeButton'):setOn(not isNewVersion and not isFolderExport and not isAppearanceExport)
    window:recursiveGetChildById('newVersionModeButton'):setOn(isNewVersion)
+   window:recursiveGetChildById('exportFolderModeButton'):setOn(isFolderExport)
+   window:recursiveGetChildById('exportAppearanceModeButton'):setOn(isAppearanceExport)
    window:recursiveGetChildById('replaceVersionModeButton'):setEnabled(canExport)
    window:recursiveGetChildById('newVersionModeButton'):setEnabled(canExport)
+   window:recursiveGetChildById('exportFolderModeButton'):setEnabled(canExport)
+   window:recursiveGetChildById('exportAppearanceModeButton'):setEnabled(canExportAppearance)
    window:recursiveGetChildById('targetVersionLabel'):setText(isNewVersion and
       tr('New version (15.x)') or tr('Replace current version'))
+   window:recursiveGetChildById('targetVersionLabel'):setVisible(not isDirectoryExport)
    window:recursiveGetChildById('newVersionEdit'):setEnabled(canExport and isNewVersion)
    window:recursiveGetChildById('newVersionEdit'):setVisible(isNewVersion)
-   window:recursiveGetChildById('exportSourceLabel'):setText(activeVersion and
-      tr('Source version: %s', formatClientVersion(activeVersion)) or tr('No assets version loaded.'))
-   window:recursiveGetChildById('installTargetLabel'):setText(isNewVersion and
-      (newVersionValid and string.format('data/things/%d', targetVersion) or tr('Enter a valid, unused 15.x version.')) or
-      (activeVersion and string.format('data/things/%d', activeVersion) or tr('No install destination.')))
-   window:recursiveGetChildById('exportButton'):setText(isNewVersion and tr('Install as new version') or
-      tr('Replace %s', activeVersion and formatClientVersion(activeVersion) or ''))
-   window:recursiveGetChildById('exportHint'):setText(isNewVersion and
-      tr('The source stays unchanged. Choose an unused version to add it to the client.') or
-      tr('The current package is backed up before replacement.'))
-   window:recursiveGetChildById('exportButton'):setEnabled(canExport and (not isNewVersion or newVersionValid))
+   window:recursiveGetChildById('exportFolderEdit'):setEnabled(canExport and isDirectoryExport)
+   window:recursiveGetChildById('exportFolderEdit'):setVisible(isDirectoryExport)
+   window:recursiveGetChildById('exportFolderBrowseButton'):setEnabled(canExport and isDirectoryExport and g_platform.isDesktop())
+   window:recursiveGetChildById('exportFolderBrowseButton'):setVisible(isDirectoryExport)
+   local sourceCategory = categories[(selectedAppearanceCategory or -1) + 1]
+   window:recursiveGetChildById('exportSourceLabel'):setText(isAppearanceExport and selectedAppearanceId and
+      tr('Selected: %s %d', sourceCategory and tr(sourceCategory.singular) or tr('Appearance'), selectedAppearanceId) or
+      (activeVersion and tr('Source version: %s', formatClientVersion(activeVersion)) or tr('No assets version loaded.')))
+   local category = categories[(selectedAppearanceCategory or -1) + 1]
+   local categoryName = category and category.name:lower() or 'appearance'
+   local installTarget = isFolderExport and
+      (folderDestinationValid and string.format('%s/data/things/%d', destinationRoot, activeVersion) or
+         tr('Choose an absolute destination folder.')) or
+      (isAppearanceExport and (folderDestinationValid and
+         string.format('%s/appearance-%s-%d', destinationRoot, categoryName:lower(), selectedAppearanceId or 0) or
+         tr('Choose an absolute destination folder.')) or
+      (isNewVersion and (newVersionValid and string.format('data/things/%d', targetVersion) or
+         tr('Enter a valid, unused 15.x version.')) or
+         (activeVersion and string.format('data/things/%d', activeVersion) or tr('No install destination.'))))
+   window:recursiveGetChildById('installTargetLabel'):setText(installTarget)
+   local exportButton = window:recursiveGetChildById('exportButton')
+   exportButton:setText(isAppearanceExport and tr('Export appearance bundle') or
+      (isFolderExport and tr('Copy assets to folder') or
+         (isNewVersion and tr('Install as new version') or
+            tr('Replace %s', activeVersion and formatClientVersion(activeVersion) or ''))))
+   window:recursiveGetChildById('exportHint'):setText(isFolderExport and
+      tr('Creates a data/things/%d package. Existing packages are never overwritten.', activeVersion or 0) or
+      (isAppearanceExport and tr('Includes appearance metadata and unique referenced sprites. Existing bundles are never overwritten.') or
+         (isNewVersion and tr('The source stays unchanged. Choose an unused version to add it to the client.') or
+            tr('The current package is backed up before replacement.'))))
+   local exportTargetValid = isAppearanceExport and folderDestinationValid or isFolderExport and folderDestinationValid or
+      (isNewVersion and newVersionValid) or (not isNewVersion and not isFolderExport)
+   if isAppearanceExport then
+      exportTargetValid = folderDestinationValid and selectedAppearanceId ~= nil
+   end
+   exportButton:setEnabled((isAppearanceExport and canExportAppearance or canExport) and exportTargetValid)
    window:recursiveGetChildById('loadAssetsButton'):setEnabled(offline and selectedVersion ~= nil)
    window:recursiveGetChildById('importPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('exportPageButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('reloadButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
    window:recursiveGetChildById('newAppearanceTabButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
+   window:recursiveGetChildById('appearanceBundleTabButton'):setEnabled(activeVersion ~= nil and not g_game.isOnline())
 end
 
 function setExportMode(mode)
-   if mode ~= 'replace' and mode ~= 'new' then
+   if mode ~= 'replace' and mode ~= 'new' and mode ~= 'folder' and mode ~= 'appearance' then
       return
    end
    currentExportMode = mode
@@ -2038,6 +2146,20 @@ local function createWindow()
          activeVersion ~= nil and not g_game.isOnline() and currentNewAppearanceSourceMode == 'png' and
          widget:getText() ~= '')
    end
+   window:recursiveGetChildById('batchPngFolderEdit').onTextChange = function()
+      updateSpriteReplacementTarget()
+   end
+   local spriteSheetPathEdit = window:recursiveGetChildById('spriteSheetPathEdit')
+   spriteSheetPathEdit.onTextChange = function()
+      updateSpriteReplacementTarget()
+   end
+   for _, id in ipairs({ 'spriteSheetCellWidth', 'spriteSheetCellHeight' }) do
+      local sizeBox = window:recursiveGetChildById(id)
+      for _, size in ipairs({ 32, 64, 96, 128, 192, 384 }) do
+         sizeBox:addOption(tostring(size), size)
+      end
+      sizeBox:setCurrentOptionByData(64, true)
+   end
 
    local versionBox = window:recursiveGetChildById('versionComboBox')
    local versions = getVersions()
@@ -2057,6 +2179,10 @@ local function createWindow()
       newVersionEdit:setText(formatClientVersion(suggestedVersion))
    end
    newVersionEdit.onTextChange = function()
+      updateExportControls()
+   end
+   local exportFolderEdit = window:recursiveGetChildById('exportFolderEdit')
+   exportFolderEdit.onTextChange = function()
       updateExportControls()
    end
 
@@ -2267,7 +2393,7 @@ function showEditorPage()
 end
 
 function setImportSection(section)
-   if section ~= 'replace' and section ~= 'create' then
+   if section ~= 'replace' and section ~= 'create' and section ~= 'batch' and section ~= 'sheet' and section ~= 'bundle' then
       return
    end
    local search = getSpritePickerWidget('search')
@@ -2277,14 +2403,67 @@ function setImportSection(section)
    end
    currentImportSection = section
    if window then
-      getSpritePickerWidget('search'):setText(query)
+      if section == 'replace' or section == 'create' then
+         local pickerSearch = getSpritePickerWidget('search')
+         if pickerSearch then
+            pickerSearch:setText(query)
+         end
+      end
       window:recursiveGetChildById('replaceFramePanel'):setVisible(section == 'replace')
       window:recursiveGetChildById('newAppearancePanel'):setVisible(section == 'create')
+      window:recursiveGetChildById('batchPngsPanel'):setVisible(section == 'batch')
+      window:recursiveGetChildById('spriteSheetPanel'):setVisible(section == 'sheet')
+      window:recursiveGetChildById('appearanceBundlePanel'):setVisible(section == 'bundle')
       window:recursiveGetChildById('replaceFrameTabButton'):setOn(section == 'replace')
       window:recursiveGetChildById('newAppearanceTabButton'):setOn(section == 'create')
-      applySpritePickerFilter()
+      window:recursiveGetChildById('batchPngsTabButton'):setOn(section == 'batch')
+      window:recursiveGetChildById('spriteSheetTabButton'):setOn(section == 'sheet')
+      window:recursiveGetChildById('appearanceBundleTabButton'):setOn(section == 'bundle')
+      if section == 'replace' or section == 'create' then
+         applySpritePickerFilter()
+      end
    end
    updateSpriteReplacementTarget()
+end
+
+function importAppearanceBundle(forceDiscard)
+   if hasAppearanceChanges() and not forceDiscard then
+      confirmUnsavedChanges(tr('Save changes before importing an appearance bundle?'), function()
+         importAppearanceBundle(true)
+      end)
+      return
+   end
+   if not activeVersion or g_game.isOnline() then
+      setStatus(tr('Open an offline 15.x work copy before importing an appearance bundle.'))
+      return
+   end
+
+   local bundleDirectory = window:recursiveGetChildById('appearanceBundlePathEdit'):getText():trim()
+   if bundleDirectory == '' then
+      setStatus(tr('Choose an appearance bundle folder.'))
+      return
+   end
+
+   local imported, response = pcall(g_things.importAppearanceBundle, activeVersion, bundleDirectory)
+   if not imported then
+      setStatus(getUserFacingError(response))
+      return
+   end
+   local decoded, result = pcall(json.decode, response)
+   if not decoded or type(result) ~= 'table' or not tonumber(result.id) or not tonumber(result.category) then
+      setStatus(tr('The appearance bundle import returned an invalid result. Check the client log.'))
+      return
+   end
+   if not reloadAssets() then
+      setStatus(tr('Appearance %d was imported, but the work copy could not be reloaded.', result.id))
+      return
+   end
+
+   refreshAppearanceCatalog(result.category)
+   if loadAppearanceRecord(result.category, result.id, true, true) then
+      setActivePage('editor')
+      setStatus(tr('Imported appearance %d with %d remapped sprites.', result.id, tonumber(result.sprites) or 0))
+   end
 end
 
 function setReplaceMode(mode)
@@ -2772,6 +2951,127 @@ function createAppearance(forceDiscard)
    setStatus(tr('Created appearance %d with sprite %d.', appearanceId, spriteId))
 end
 
+function importPngFolder(forceDiscard)
+   if hasAppearanceChanges() and not forceDiscard then
+      confirmUnsavedChanges(tr('Save changes before importing PNGs?'), function()
+         importPngFolder(true)
+      end)
+      return
+   end
+   if not activeVersion or g_game.isOnline() then
+      setStatus(tr('Open a 15.x work copy before importing PNGs.'))
+      return
+   end
+
+   local folder = window:recursiveGetChildById('batchPngFolderEdit'):getText():trim()
+   if folder == '' then
+      setStatus(tr('Choose a folder containing prepared PNG sprites.'))
+      return
+   end
+
+   local imported, response = pcall(g_spriteAppearances.importSpritesFromDirectory, folder, activeVersion)
+   if not imported then
+      setStatus(getUserFacingError(response))
+      return
+   end
+
+   local decoded, result = pcall(json.decode, response)
+   if not decoded or type(result) ~= 'table' then
+      setStatus(tr('The PNG import returned an invalid result. Check the client log.'))
+      return
+   end
+
+   local importedCount = tonumber(result.imported) or 0
+   if importedCount > 0 then
+      if not reloadAssets() then
+         setStatus(tr('%d sprites were written, but the work copy could not be reloaded.', importedCount))
+         return
+      end
+   end
+
+   if result.error and result.error ~= '' then
+      setStatus(result.error)
+      return
+   end
+   if importedCount == 0 then
+      setStatus(tr('No PNG sprites were imported.'))
+      return
+   end
+
+   local firstId = math.huge
+   local lastId = 0
+   for _, item in ipairs(result.items or {}) do
+      local spriteId = tonumber(item.id)
+      if spriteId then
+         firstId = math.min(firstId, spriteId)
+         lastId = math.max(lastId, spriteId)
+      end
+   end
+   if firstId == math.huge then
+      setStatus(tr('%d sprites imported. They are ready in the Sprite ID picker.', importedCount))
+   else
+      setStatus(tr('%d sprites imported (IDs %d-%d). They are ready in the Sprite ID picker.',
+         importedCount, firstId, lastId))
+   end
+end
+
+function importSpriteSheet(forceDiscard)
+   if hasAppearanceChanges() and not forceDiscard then
+      confirmUnsavedChanges(tr('Save changes before importing this sprite sheet?'), function()
+         importSpriteSheet(true)
+      end)
+      return
+   end
+   if not activeVersion or g_game.isOnline() then
+      setStatus(tr('Open a 15.x work copy before importing a sprite sheet.'))
+      return
+   end
+
+   local fileName = window:recursiveGetChildById('spriteSheetPathEdit'):getText():trim()
+   if fileName == '' then
+      setStatus(tr('Choose a PNG sprite sheet.'))
+      return
+   end
+   local spriteWidth = tonumber(selectedOption(window:recursiveGetChildById('spriteSheetCellWidth')))
+   local spriteHeight = tonumber(selectedOption(window:recursiveGetChildById('spriteSheetCellHeight')))
+   if not spriteWidth or not spriteHeight then
+      setStatus(tr('Choose the width and height of each sprite cell.'))
+      return
+   end
+
+   local imported, response = pcall(g_spriteAppearances.importSpritesFromSheet,
+      fileName, activeVersion, spriteWidth, spriteHeight)
+   if not imported then
+      setStatus(getUserFacingError(response))
+      return
+   end
+
+   local decoded, result = pcall(json.decode, response)
+   if not decoded or type(result) ~= 'table' then
+      setStatus(tr('The sprite sheet import returned an invalid result. Check the client log.'))
+      return
+   end
+
+   local importedCount = tonumber(result.imported) or 0
+   if importedCount > 0 and not reloadAssets() then
+      setStatus(tr('%d sprites were written, but the work copy could not be reloaded.', importedCount))
+      return
+   end
+   if result.error and result.error ~= '' then
+      setStatus(result.error)
+      return
+   end
+   if importedCount == 0 then
+      setStatus(tr('No sprite cells were imported.'))
+      return
+   end
+
+   local firstId = tonumber(result.items[1].id)
+   local lastId = tonumber(result.items[importedCount].id)
+   setStatus(tr('Imported %d cells from the sprite sheet as IDs %d-%d, in row-major order.',
+      importedCount, firstId, lastId))
+end
+
 collectAnimationWidgetChanges = function()
    if not animationWidgets.groupIndex then
       return true
@@ -2871,7 +3171,10 @@ function exportWorkCopy(forceContinue, confirmed)
       local function cancelMessageBox()
          messageBox:cancel()
       end
-      messageBox = displayGeneralBox(tr('Unsaved appearance properties'), tr('Save or discard the pending changes before exporting the work copy.'), {
+      local unsavedMessage = currentExportMode == 'appearance' and
+         tr('Save or discard the pending appearance changes before exporting this bundle.') or
+         tr('Save or discard the pending changes before exporting the work copy.')
+      messageBox = displayGeneralBox(tr('Unsaved appearance properties'), unsavedMessage, {
          { text = tr('Save and continue'), callback = saveAndExport },
          { text = tr('Discard edits'), callback = function()
             messageBox:ok()
@@ -2887,9 +3190,24 @@ function exportWorkCopy(forceContinue, confirmed)
       return
    end
    local isNewVersion = currentExportMode == 'new'
+   local isFolderExport = currentExportMode == 'folder'
+   local isAppearanceExport = currentExportMode == 'appearance'
    local targetVersion = activeVersion
+   local destinationRoot
    if isNewVersion then
       targetVersion = parseClientVersion(window:recursiveGetChildById('newVersionEdit'):getText())
+   elseif isFolderExport or isAppearanceExport then
+      destinationRoot = window:recursiveGetChildById('exportFolderEdit'):getText():trim()
+      local isAbsoluteDestination = destinationRoot:sub(1, 1) == '/' or destinationRoot:match('^%a:[/\\]') ~= nil or
+         destinationRoot:match('^[/\\][/\\]') ~= nil
+      if not isAbsoluteDestination then
+         window:recursiveGetChildById('exportStatus'):setText(tr('Choose an absolute destination folder.'))
+         return
+      end
+   end
+   if isAppearanceExport and not selectedAppearanceId then
+      window:recursiveGetChildById('exportStatus'):setText(tr('Select an appearance in the list before exporting its bundle.'))
+      return
    end
    if isNewVersion and (not targetVersion or targetVersion == activeVersion or getVersionDirectories()[targetVersion]) then
       window:recursiveGetChildById('exportStatus'):setText(tr('Choose an unused version from 15.00 to 15.99.'))
@@ -2904,16 +3222,54 @@ function exportWorkCopy(forceContinue, confirmed)
          messageBox:ok()
          exportWorkCopy(true, true)
       end
-      local title = isNewVersion and tr('Install client version %s?', formatClientVersion(targetVersion)) or
-         tr('Replace client version %s?', formatClientVersion(activeVersion))
-      local message = isNewVersion and
-         tr('Creates data/things/%d. Existing versions are never overwritten; source %s stays unchanged.',
-            targetVersion, formatClientVersion(activeVersion)) or
-         tr('Replaces data/things/%d. The current package is backed up first.', activeVersion)
+      local title = isAppearanceExport and tr('Export this appearance bundle?') or
+         (isFolderExport and tr('Copy assets to the selected folder?') or
+         (isNewVersion and tr('Install client version %s?', formatClientVersion(targetVersion)) or
+            tr('Replace client version %s?', formatClientVersion(activeVersion))))
+      local message = isAppearanceExport and
+         tr('Creates a new bundle in %s with the selected appearance, its flags and animation data, and copies of its referenced sprites. Existing folders are never overwritten.',
+            destinationRoot) or
+         (isFolderExport and
+         tr('Creates %s/data/things/%d. Existing packages are never overwritten.', destinationRoot, activeVersion) or
+         (isNewVersion and
+            tr('Creates data/things/%d. Existing versions are never overwritten; source %s stays unchanged.',
+               targetVersion, formatClientVersion(activeVersion)) or
+            tr('Replaces data/things/%d. The current package is backed up first.', activeVersion)))
       messageBox = displayGeneralBox(title, message, {
-            { text = isNewVersion and tr('Install new version') or tr('Replace version'), callback = confirmInstall },
+            { text = isAppearanceExport and tr('Export bundle') or
+               (isFolderExport and tr('Copy assets') or
+                  (isNewVersion and tr('Install new version') or tr('Replace version'))), callback = confirmInstall },
             { text = tr('Cancel'), callback = cancelInstall },
          }, cancelInstall, cancelInstall)
+      return
+   end
+
+   if isFolderExport then
+      local copied, result = pcall(g_spriteAppearances.exportWorkCopy, activeVersion, destinationRoot)
+      if not copied then
+         local errorMessage = getUserFacingError(result)
+         window:recursiveGetChildById('exportStatus'):setText(errorMessage)
+         setStatus(errorMessage)
+         return
+      end
+      local status = tr('Assets copied to %s. The installed version was not changed.', result)
+      window:recursiveGetChildById('exportStatus'):setText(status)
+      setStatus(tr('Work copy exported to %s.', result))
+      return
+   end
+
+   if isAppearanceExport then
+      local ok, result = pcall(g_things.exportAppearanceBundle, activeVersion,
+         selectedAppearanceCategory, selectedAppearanceId, destinationRoot)
+      if not ok then
+         local errorMessage = getUserFacingError(result)
+         window:recursiveGetChildById('exportStatus'):setText(errorMessage)
+         setStatus(errorMessage)
+         return
+      end
+      local status = tr('Appearance bundle exported to %s.', result)
+      window:recursiveGetChildById('exportStatus'):setText(status)
+      setStatus(status)
       return
    end
 

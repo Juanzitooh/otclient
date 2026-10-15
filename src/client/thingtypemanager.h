@@ -94,6 +94,8 @@ public:
                                  int frameGroupIndex, int spriteIndex, int spriteId);
     int createAppearanceFromSprite(int version, int category, int spriteId);
     int duplicateAppearance(int version, int category, int sourceId);
+    std::string exportAppearanceBundle(int version, int category, int id, const std::string& destination);
+    std::string importAppearanceBundle(int version, const std::string& bundleDirectory);
 #endif
 
 private:

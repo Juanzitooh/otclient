@@ -145,6 +145,8 @@ public:
     void saveSpriteToWorkCopy(int id, const ImagePtr& image, int version);
     int importSpriteFromFile(int id, const std::string& fileName, int version);
     int importSpriteForAppearance(int referenceSpriteId, const std::string& fileName, int version);
+    std::string importSpritesFromDirectory(const std::string& directory, int version);
+    std::string importSpritesFromSheet(const std::string& fileName, int version, int spriteWidth, int spriteHeight);
     void releaseSpriteSheetsExcept(int id);
     void releaseDecodedSpriteSheets();
 #endif
@@ -152,6 +154,7 @@ public:
 private:
 #ifdef FRAMEWORK_EDITOR
     int importNewSprite(const ImagePtr& image, int version, SpriteLayout spriteLayout);
+    std::vector<int> importNewSprites(const std::vector<std::pair<ImagePtr, SpriteLayout>>& sprites, int version);
 #endif
     uint32_t m_spritesCount{ 0 };
     std::vector<SpriteSheetPtr> m_sheets;

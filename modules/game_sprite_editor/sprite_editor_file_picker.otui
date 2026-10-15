@@ -61,7 +61,7 @@ MainWindow
     anchors.top: filePickerPathEdit.bottom
     margin-top: 5
     height: 22
-    !placeholder: tr('Filter PNG files by name')
+    !placeholder: tr('Filter files or folders by name')
 
   TextList
     id: filePickerEntries
