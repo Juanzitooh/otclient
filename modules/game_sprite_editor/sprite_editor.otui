@@ -1,17 +1,19 @@
 SpriteEditorWindow < MainWindow
   id: spriteEditorWindow
   !text: tr('Offline Assets Editor')
-  size: 1160 600
+  anchors.fill: parent
   @onEscape: modules.game_sprite_editor.requestClose()
 
   Label
     id: statusLabel
-    !text: tr('Loading the work copy…')
+    !text: tr('Status: Loading the work copy…')
     anchors.left: appearancesPanel.right
     anchors.right: pageNavigation.left
     anchors.verticalCenter: pageNavigation.verticalCenter
     margin-left: 12
     margin-right: 12
+    color: #c6c6c6
+    text-align: center
     text-wrap: true
 
   Panel
@@ -677,10 +679,11 @@ SpriteEditorWindow < MainWindow
 
   Button
     id: closeButton
-    !text: tr('Close')
+    !text: tr('Return to game')
+    !tooltip: tr('Close the editor and return to the game. The working copy remains saved.')
     anchors.right: parent.right
     anchors.bottom: parent.bottom
-    width: 80
+    width: 124
     height: 25
     @onClick: modules.game_sprite_editor.requestClose()
 
