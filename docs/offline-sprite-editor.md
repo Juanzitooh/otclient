@@ -29,3 +29,24 @@ The **Appearance** export creates a portable bundle for the selected appearance.
 The Export page installs the working copy into the standard runtime location, `data/things/<version>/`. After confirmation, the current package is moved to `data/things/backup/<version>-<timestamp>/`, the working copy replaces it, and the client reloads appearances and static data. The backup directory is ignored by Git.
 
 When the editor closes, it unmounts the working copy and restores the installed package as the runtime source. The editor only supports directory-based client assets in the 15.x range; it does not modify older `.dat`/`.spr` clients.
+
+## Edit history and recovery
+
+Undo and Redo revert edits in the active working copy. The editor also records portable edit metadata and before/after sprite images in `asset-editor-history.json` inside that package. The History page lists installed backups newest first and shows the recorded changes when available. Restoring a selected backup first preserves the currently installed package as a new safety backup.
+
+## Manual validation for contributors
+
+The editor is built behind the CMake option `TOGGLE_FRAMEWORK_EDITOR=ON`. Build and launch the client using the normal instructions for the target platform, then open the editor while offline. Use a dedicated client write directory and a disposable copy of the installed 15.x assets; do not use a production package for destructive checks. The version selector only offers 15.x versions listed in `modules/gamelib/game.lua` (`g_game.getSupportedClients()`).
+
+Run these checks on each desktop platform being validated:
+
+1. Open a working copy, switch among Objects, Outfits, Effects, and Missiles, and confirm the selection, preview, and applicable property controls follow the selected appearance.
+2. In Import, replace a frame with an existing sprite ID, then import a same-size PNG as a new sprite and link it to that frame. Confirm the new sprite appears in the preview and in the working copy after reload.
+3. Edit a sprite through the configured external editor, save it without changing its dimensions, apply it, and verify the preview and edit-history entry. Exercise Undo and Redo.
+4. Duplicate an appearance, change its properties and flags, and verify that the source appearance remains unchanged. For an animated appearance, play the preview, edit frame timing, add a frame, and remove one only after confirming the prompt.
+5. Export to an unused supported version, load that version in the editor, and confirm its contents. Restore a selected installed backup and confirm the editor reports the package it restored. Keep these checks on the disposable assets copy.
+6. Try a version not listed by `game.lua` (for example `15.99`) and confirm that the new-version export remains disabled and direct export is rejected.
+
+On Windows, Linux, and macOS, also check that the PNG browser can navigate to a folder whose path contains spaces and non-ASCII characters, and that the configured editor opens in a separate OS window. Verify the path and launch feedback on that platform. The file browser and external-editor actions are desktop-only; Android and Web builds are not targets for those workflows. On those builds, check that the client still builds and does not expose an enabled desktop-only action.
+
+For a useful report, include the OS and architecture, build configuration (including `TOGGLE_FRAMEWORK_EDITOR`), source asset version, numbered steps, expected and observed result, and the relevant client log or screenshot. Keep the working copy and backup disposable so another contributor can repeat the test safely.
