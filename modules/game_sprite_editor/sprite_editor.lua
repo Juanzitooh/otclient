@@ -28,12 +28,7 @@ local previewMoving = false
 local previewIdleGroupIndex
 local previewMovingGroupIndex
 local previewHasMovementToggle = false
-local previewPlaybackEvent
-local previewIsPlaying = false
-local previewPlaybackDirection = 1
-local previewPlaybackCycles = 0
-local previewPlaybackAppearanceId
-local previewPlaybackGroupIndex
+local previewAnimationPlayer
 local timelineScrubbing = false
 local selectedSpriteContext
 local gameStartCallback
@@ -111,7 +106,6 @@ local updateAnimationEditor
 local stopPreviewAnimation
 local updatePreviewTimelineSelection
 local selectPreviewPhase
-local schedulePreviewPlayback
 local updatePreviewPatternControls
 local refreshAppearancePreview
 local collectAnimationWidgetChanges
@@ -717,22 +711,8 @@ local function currentPreviewGroup()
 end
 
 stopPreviewAnimation = function()
-   if previewPlaybackEvent then
-      removeEvent(previewPlaybackEvent)
-      previewPlaybackEvent = nil
-   end
-   previewIsPlaying = false
-   previewPlaybackDirection = 1
-   previewPlaybackCycles = 0
-   previewPlaybackAppearanceId = nil
-   previewPlaybackGroupIndex = nil
-   if window then
-      local playButton = window:recursiveGetChildById('previewPlayButton')
-      if playButton then
-         playButton:setText(tr('Play'))
-         playButton:setTooltip(tr('Play the animation preview from the selected frame.'))
-         playButton:setOn(false)
-      end
+   if previewAnimationPlayer then
+      previewAnimationPlayer:stop()
    end
 end
 
@@ -834,74 +814,37 @@ local function getPreviewPhaseDuration(group, phaseIndex)
    return math.max(1, math.floor((minimum + maximum) / 2))
 end
 
-schedulePreviewPlayback = function()
-   if not previewIsPlaying or not window or not window:isVisible() then
-      stopPreviewAnimation()
-      return
-   end
-   local group = currentPreviewGroup()
-   if not group or group.index ~= previewPlaybackGroupIndex or selectedAppearanceId ~= previewPlaybackAppearanceId then
-      stopPreviewAnimation()
-      return
+local function getPreviewAnimationPlayer()
+   if previewAnimationPlayer then
+      return previewAnimationPlayer
    end
 
-   local phaseCount = math.max(1, group.phaseCount or 1)
-   local groupChanges = appearanceChanges.animation.groups[tostring(group.index)] or {}
-   local loopType = groupChanges.loopType ~= nil and groupChanges.loopType or group.animation.loopType
-   local loopCount = groupChanges.loopCount ~= nil and groupChanges.loopCount or group.animation.loopCount
-   previewPlaybackEvent = scheduleEvent(function()
-      previewPlaybackEvent = nil
-      if not previewIsPlaying then
-         return
-      end
-
-      local nextPhase = previewPhase + previewPlaybackDirection
-      if loopType == -1 then
-         if nextPhase < 0 or nextPhase >= phaseCount then
-            previewPlaybackDirection = -previewPlaybackDirection
-            nextPhase = previewPhase + previewPlaybackDirection
-         end
-      elseif nextPhase >= phaseCount then
-         previewPlaybackCycles = previewPlaybackCycles + 1
-         if loopType == 1 and loopCount > 0 and previewPlaybackCycles >= loopCount then
-            stopPreviewAnimation()
-            return
-         end
-         nextPhase = 0
-      end
-
-      if not selectPreviewPhase(nextPhase, true) then
-         stopPreviewAnimation()
-         return
-      end
-      schedulePreviewPlayback()
-   end, getPreviewPhaseDuration(group, previewPhase))
+   previewAnimationPlayer = SpriteEditorAnimationPlayer.new({
+      get_group = currentPreviewGroup,
+      get_appearance_id = function() return selectedAppearanceId end,
+      get_phase = function() return previewPhase end,
+      get_phase_duration = getPreviewPhaseDuration,
+      get_group_changes = function(groupIndex)
+         return appearanceChanges.animation.groups[tostring(groupIndex)] or {}
+      end,
+      get_play_button = function()
+         return window and window:recursiveGetChildById('previewPlayButton') or nil
+      end,
+      is_window_visible = function()
+         return window ~= nil and window:isVisible()
+      end,
+      collect_changes = function() return collectAnimationWidgetChanges() end,
+      select_phase = function(phaseIndex)
+         return selectPreviewPhase(phaseIndex, true)
+      end,
+   })
+   return previewAnimationPlayer
 end
 
 function togglePreviewAnimation()
-   if previewIsPlaying then
-      stopPreviewAnimation()
-      return
+   if window then
+      getPreviewAnimationPlayer():toggle()
    end
-
-   local group = currentPreviewGroup()
-   if not window or not group or not group.animation or not group.animation.enabled or (group.phaseCount or 1) < 2 then
-      return
-   end
-   if not collectAnimationWidgetChanges() then
-      return
-   end
-
-   previewIsPlaying = true
-   previewPlaybackDirection = 1
-   previewPlaybackCycles = 0
-   previewPlaybackAppearanceId = selectedAppearanceId
-   previewPlaybackGroupIndex = group.index
-   local playButton = window:recursiveGetChildById('previewPlayButton')
-   playButton:setText(tr('Pause'))
-   playButton:setTooltip(tr('Pause the animation preview.'))
-   playButton:setOn(true)
-   schedulePreviewPlayback()
 end
 
 local function setAnimationChange(groupIndex, field, value, phaseIndex)
@@ -1542,6 +1485,7 @@ updateAnimationEditor = function()
    playButton:setVisible(showPlayButton)
    playButton:setEnabled(showPlayButton)
    window:recursiveGetChildById('previewPhaseActions'):setWidth(showPlayButton and 104 or 54)
+   local previewIsPlaying = previewAnimationPlayer and previewAnimationPlayer:is_playing() or false
    playButton:setText(previewIsPlaying and tr('Pause') or tr('Play'))
    playButton:setTooltip(previewIsPlaying and tr('Pause the animation preview.') or
       tr('Play the animation preview from the selected frame.'))
