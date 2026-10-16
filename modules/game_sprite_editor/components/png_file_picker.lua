@@ -381,7 +381,7 @@ function PngFilePicker:open_folder_in_system()
    elseif os == 'mac' then
       opened = g_platform.spawnProcess('/usr/bin/open', { path })
    elseif os == 'windows' then
-      opened = g_platform.spawnProcess('explorer.exe', { path })
+      opened = g_platform.spawnProcess('explorer.exe', { path:gsub('/', '\\') })
    end
 
    if opened then
