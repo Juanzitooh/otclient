@@ -10,24 +10,30 @@ local function load_asset_data(asset_path)
    return g_things.loadStaticData(asset_path)
 end
 
-local function restore_installed_assets_after_failed_load(self, version, root)
-   local unmounted, unmount_error = self:unmount(root)
-   if not unmounted then
-      return false, unmount_error
+local function restore_assets_after_failed_load(self, version, asset_path, root, mounted_by_this_load)
+   local unmount_error
+   if mounted_by_this_load then
+      local unmounted
+      unmounted, unmount_error = self:unmount(root)
+      if not unmounted then
+         unmount_error = unmount_error or tr('Could not unmount the failed work copy.')
+      end
    end
 
    local restored, loaded_or_error = pcall(function()
       if g_game.getClientVersion() ~= version then
          g_game.setClientVersion(version)
       end
-      local installed_asset_path = resolvepath(string.format('/data/things/%d/', version))
-      return load_asset_data(installed_asset_path)
+      return load_asset_data(asset_path)
    end)
    if not restored then
       return false, loaded_or_error
    end
    if not loaded_or_error then
-      return false, tr('The installed client assets could not be reloaded.')
+      return false, tr('The previous client assets could not be reloaded.')
+   end
+   if unmount_error then
+      return false, unmount_error
    end
    return true
 end
@@ -42,11 +48,15 @@ function WorkCopyService:load(version)
       return false, root
    end
 
+   local previous_version = g_game.getClientVersion()
+   local previous_asset_path = resolvepath(string.format('/data/things/%d/', previous_version))
+   local mounted_by_this_load = false
    if not self.mounted_roots[root] then
       if not g_resources.addSearchPath(root, true) then
          return false, tr('Could not mount the work copy.')
       end
       self.mounted_roots[root] = true
+      mounted_by_this_load = true
    end
 
    local loaded, asset_path_or_error = pcall(function()
@@ -60,7 +70,8 @@ function WorkCopyService:load(version)
       return asset_path
    end)
    if not loaded or not asset_path_or_error then
-      local recovered, recovery_error = restore_installed_assets_after_failed_load(self, version, root)
+      local recovered, recovery_error = restore_assets_after_failed_load(self, previous_version,
+         previous_asset_path, root, mounted_by_this_load)
       if not recovered then
          g_logger.error('[game_sprite_editor] Unable to restore installed assets after work copy load failed: ' ..
             tostring(recovery_error))
