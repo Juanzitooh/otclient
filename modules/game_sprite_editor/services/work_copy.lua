@@ -2,6 +2,36 @@ SpriteEditorWorkCopyService = {}
 
 local WorkCopyService = {}
 
+local function load_asset_data(asset_path)
+   g_things.invalidateTextureCache()
+   if not g_things.loadAppearances(asset_path) then
+      return false
+   end
+   return g_things.loadStaticData(asset_path)
+end
+
+local function restore_installed_assets_after_failed_load(self, version, root)
+   local unmounted, unmount_error = self:unmount(root)
+   if not unmounted then
+      return false, unmount_error
+   end
+
+   local restored, loaded_or_error = pcall(function()
+      if g_game.getClientVersion() ~= version then
+         g_game.setClientVersion(version)
+      end
+      local installed_asset_path = resolvepath(string.format('/data/things/%d/', version))
+      return load_asset_data(installed_asset_path)
+   end)
+   if not restored then
+      return false, loaded_or_error
+   end
+   if not loaded_or_error then
+      return false, tr('The installed client assets could not be reloaded.')
+   end
+   return true
+end
+
 function WorkCopyService:exists(version)
    return pcall(g_spriteAppearances.workCopyExists, version)
 end
@@ -19,23 +49,35 @@ function WorkCopyService:load(version)
       self.mounted_roots[root] = true
    end
 
-   g_things.invalidateTextureCache()
-   if g_game.getClientVersion() ~= version then
-      g_game.setClientVersion(version)
-   end
-   local asset_path = resolvepath(string.format('/data/things/%d/', version))
-   if not g_things.loadAppearances(asset_path) or not g_things.loadStaticData(asset_path) then
+   local loaded, asset_path_or_error = pcall(function()
+      if g_game.getClientVersion() ~= version then
+         g_game.setClientVersion(version)
+      end
+      local asset_path = resolvepath(string.format('/data/things/%d/', version))
+      if not load_asset_data(asset_path) then
+         return nil
+      end
+      return asset_path
+   end)
+   if not loaded or not asset_path_or_error then
+      local recovered, recovery_error = restore_installed_assets_after_failed_load(self, version, root)
+      if not recovered then
+         g_logger.error('[game_sprite_editor] Unable to restore installed assets after work copy load failed: ' ..
+            tostring(recovery_error))
+      end
+      if not loaded then
+         return false, asset_path_or_error
+      end
       return false, tr('Could not load the selected work copy. Check the client log for details.')
    end
-   return true, root, asset_path
+   return true, root, asset_path_or_error
 end
 
 function WorkCopyService:reload(asset_path)
    if not asset_path then
       return false
    end
-   g_things.invalidateTextureCache()
-   return g_things.loadAppearances(asset_path) and g_things.loadStaticData(asset_path)
+   return load_asset_data(asset_path)
 end
 
 function WorkCopyService:unmount(root)
@@ -71,24 +113,14 @@ function WorkCopyService:release(version, root, work_asset_path)
    end
 
    local installed_asset_path = resolvepath(string.format('/data/things/%d/', version))
-   local reloaded, loaded = pcall(function()
-      g_things.invalidateTextureCache()
-      if not g_things.loadAppearances(installed_asset_path) then
-         return false
-      end
-      return g_things.loadStaticData(installed_asset_path)
-   end)
+   local reloaded, loaded = pcall(load_asset_data, installed_asset_path)
    if not reloaded or not loaded then
       local remounted = not root or self.mounted_roots[root] or g_resources.addSearchPath(root, true)
       if remounted and root then
          self.mounted_roots[root] = true
       end
       if remounted and work_asset_path then
-         pcall(function()
-            g_things.invalidateTextureCache()
-            g_things.loadAppearances(work_asset_path)
-            g_things.loadStaticData(work_asset_path)
-         end)
+         pcall(load_asset_data, work_asset_path)
       end
       if not reloaded then
          return false, loaded
