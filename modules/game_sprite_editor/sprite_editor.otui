@@ -1,8 +1,18 @@
 SpriteEditorWindow < MainWindow
   id: spriteEditorWindow
-  !text: tr('Offline Assets Editor')
+  !text: ''
   anchors.fill: parent
   @onEscape: modules.game_sprite_editor.requestClose()
+
+  UIWidget
+    id: editorBrand
+    image-source: /images/topbuttons/assets_editor_logo
+    anchors.left: parent.left
+    anchors.verticalCenter: pageNavigation.verticalCenter
+    margin-left: 12
+    size: 180 36
+    focusable: false
+    phantom: true
 
   Label
     id: statusLabel
@@ -13,7 +23,7 @@ SpriteEditorWindow < MainWindow
     margin-left: 12
     margin-right: 12
     color: #c6c6c6
-    text-align: center
+    text-align: left
     text-wrap: true
 
   Panel
@@ -91,20 +101,11 @@ SpriteEditorWindow < MainWindow
     margin-bottom: 33
     width: 190
 
-    Label
-      id: assetsLabel
-      !text: tr('Assets version')
-      anchors.left: parent.left
-      anchors.top: parent.top
-      width: 90
-      height: 22
-
     ComboBox
       id: versionComboBox
-      anchors.left: assetsLabel.right
+      anchors.left: parent.left
       anchors.right: parent.right
-      anchors.verticalCenter: assetsLabel.verticalCenter
-      margin-left: 4
+      anchors.top: parent.top
       height: 22
 
     AppearanceActionButton
@@ -113,7 +114,7 @@ SpriteEditorWindow < MainWindow
       !tooltip: tr('Copy the selected installed version into a working copy, or reset its existing working copy from the installed assets.')
       anchors.left: parent.left
       anchors.right: parent.right
-      anchors.top: assetsLabel.bottom
+      anchors.top: versionComboBox.bottom
       margin-top: 3
       height: 24
       @onClick: modules.game_sprite_editor.loadSelectedAssets()
@@ -255,6 +256,46 @@ SpriteEditorWindow < MainWindow
         anchors.bottom: parent.bottom
         @onClick: modules.game_sprite_editor.selectPreviewDirection(5)
 
+    Panel
+      id: previewZoomControl
+      anchors.right: canvas.right
+      anchors.bottom: parent.bottom
+      margin-right: 8
+      size: 34 126
+      background-color: #303030
+      border-width: 1
+      border-color: #4a4a4a
+      visible: false
+      focusable: false
+      !tooltip: tr('Drag the slider to change preview zoom.')
+
+      Label
+        id: previewZoomLabel
+        !text: tr('1x')
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        margin-top: 3
+        height: 18
+        text-align: center
+        text-wrap: false
+        focusable: false
+
+      VerticalScrollBar
+        id: previewZoomScroll
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: previewZoomLabel.bottom
+        anchors.bottom: parent.bottom
+        margin-left: 10
+        margin-right: 10
+        margin-top: 2
+        margin-bottom: 3
+        step: 1
+        minimum: 1
+        maximum: 64
+        pixels-scroll: false
+
   Label
     id: spriteInfoLabel
     !text: tr('Select an appearance to see its sprite.')
@@ -267,31 +308,6 @@ SpriteEditorWindow < MainWindow
     height: 18
     text-align: center
     text-wrap: false
-
-  Label
-    id: spriteContextLabel
-    anchors.left: editorCanvasFrame.left
-    anchors.right: editorCanvasFrame.right
-    anchors.top: spriteInfoLabel.bottom
-    margin-left: 8
-    margin-right: 8
-    height: 18
-    color: #c6c6c6
-    text-align: center
-    text-wrap: false
-    visible: false
-
-  Label
-    id: previewHintLabel
-    !text: tr('Wheel over preview: zoom | Middle-drag: pan | Checkerboard: transparency')
-    anchors.left: editorCanvasFrame.left
-    anchors.right: editorCanvasFrame.right
-    anchors.bottom: editorCanvasFrame.bottom
-    margin-left: 8
-    margin-right: 8
-    margin-bottom: 8
-    text-align: center
-    text-wrap: true
 
   Panel
     id: previewControls
@@ -488,6 +504,18 @@ SpriteEditorWindow < MainWindow
       margin-right: 8
       margin-top: 6
       height: 100
+
+      Panel
+        id: previewTimelineFrameGroup
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 60
+        background-color: #303030
+        border-width: 1
+        border-color: #4a4a4a
+        focusable: false
+        phantom: true
 
       Label
         id: previewTimelineLabel

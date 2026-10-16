@@ -273,7 +273,7 @@ Panel
     AppearanceActionButton
       id: restoreBackupButton
       !text: tr('Restore selected backup')
-      !tooltip: tr('Restore a previous installed package. The current package is saved as a backup first.')
+      !tooltip: tr('Restore a previous installed package. This does not create another backup.')
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.bottom: parent.bottom

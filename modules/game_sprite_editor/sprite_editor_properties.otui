@@ -2,7 +2,7 @@ Panel
   id: propertiesPanel
   anchors.fill: parent
 
-  AppearanceSectionHeader
+  AppearanceCenteredSectionHeader
     id: appearanceInfoLabel
     !text: tr('Select an appearance from the list.')
     anchors.left: parent.left
