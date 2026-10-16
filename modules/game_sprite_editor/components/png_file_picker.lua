@@ -5,6 +5,16 @@ local CELL_WIDTH = 66
 local CELL_HEIGHT = 62
 local CELL_GAP = 3
 
+local function get_action_label(target)
+   if target == 'replace' then
+      return tr('Import and replace')
+   end
+   if target == 'create' then
+      return tr('Create appearance')
+   end
+   return tr('Use PNG')
+end
+
 local function is_directory_target(target)
    return target == 'export' or target == 'batch' or target == 'appearanceImport' or target == 'appearanceExport'
 end
@@ -108,6 +118,7 @@ function PngFilePicker:render_entries(scroll_y)
    if not list or not content then
       return
    end
+   self.scrollY = scroll_y or self.scrollY or 0
 
    local column_count = math.max(1, math.floor((list:getWidth() + CELL_GAP) / (CELL_WIDTH + CELL_GAP)))
    local row_height = CELL_HEIGHT + CELL_GAP
@@ -214,8 +225,8 @@ function PngFilePicker:render()
    self.rendering = true
    self:get_widget('filePickerPathEdit'):setText(self.directory)
    self.rendering = false
-   self:get_widget('filePickerUseButton'):setVisible(directory_mode)
-   self:get_widget('filePickerUseButton'):setEnabled(directory_mode and self.selection ~= nil)
+   self:get_widget('filePickerUseButton'):setVisible(true)
+   self:get_widget('filePickerUseButton'):setEnabled(self.selection ~= nil)
 
    local ok, entries = pcall(g_platform.listDirectoryEntries, self.directory)
    if not ok then
@@ -253,15 +264,15 @@ function PngFilePicker:render()
    self:get_widget('filePickerEntries'):setVirtualOffset({ x = 0, y = 0 })
    self:render_entries(0)
    self:get_widget('filePickerEntries'):updateScrollBars()
-   self:get_widget('filePickerParentButton'):setEnabled(get_parent_directory(self.directory) ~= nil)
    self:get_widget('filePickerCountLabel'):setText(directory_mode and tr('%d folders', #self.visible_entries) or
       tr('%d PNG files and folders', #self.visible_entries))
    self.window:setText(directory_mode and folder_title or tr('Choose a PNG file'))
    self:get_widget('filePickerHintLabel'):setText(directory_mode and folder_hint or
-      (self.target == 'replace' and
-         tr('Click selects. Hover shows name. Drag to replace.') or
-         tr('Click a PNG to select it.')))
-   self:get_widget('filePickerUseButton'):setText(directory_mode and tr('Use folder') or tr('Use PNG'))
+      (self.target == 'replace' and tr('Select a PNG, then import it to replace this frame.') or
+         (self.target == 'create' and tr('Select a PNG, then create the appearance.') or
+            tr('Select a PNG to continue.'))))
+   self:get_widget('filePickerUseButton'):setText(directory_mode and tr('Use folder') or get_action_label(self.target))
+   self:get_widget('filePickerUseButton'):setWidth((self.target == 'replace' or self.target == 'create') and 154 or 94)
 
    if self.selection then
       local selected_path = directory_mode and normalize_directory_path(self.selection) or self.selection
@@ -294,11 +305,15 @@ function PngFilePicker:select_entry(widget)
       self:get_widget('filePickerUseButton'):setEnabled(false)
       self:get_widget('filePickerSelectedLabel'):setText(
          tr('Double-click to open %s', get_path_name(widget.filePickerPath)))
+      self:render_entries(self.scrollY)
       return
    end
 
    self.selection = widget.filePickerPath
-   self:use_selected()
+   self:get_widget('filePickerSelectedLabel'):setText(get_path_name(self.selection))
+   self:get_widget('filePickerSelectedLabel'):setTooltip(self.selection)
+   self:get_widget('filePickerUseButton'):setEnabled(true)
+   self:render_entries(self.scrollY)
 end
 
 function PngFilePicker:activate_entry(widget)
@@ -312,7 +327,7 @@ function PngFilePicker:activate_entry(widget)
    end
 
    self.selection = widget.filePickerPath
-   self:use_selected()
+   self:select_entry(widget)
 end
 
 function PngFilePicker:destroy()
@@ -353,17 +368,26 @@ function PngFilePicker:navigate()
    self:render()
 end
 
-function PngFilePicker:go_to_parent()
+function PngFilePicker:open_folder_in_system()
    if not self.window then
       return
    end
-   local parent = get_parent_directory(self.directory)
-   if parent then
-      self.directory = parent
-      if is_directory_target(self.target) then
-         self.selection = self.directory
-      end
-      self:render()
+
+   local path = normalize_directory_path(self:get_widget('filePickerPathEdit'):getText())
+   local os = g_app.getOs()
+   local opened = false
+   if os == 'linux' then
+      opened = g_platform.spawnProcess('/usr/bin/xdg-open', { path })
+   elseif os == 'mac' then
+      opened = g_platform.spawnProcess('/usr/bin/open', { path })
+   elseif os == 'windows' then
+      opened = g_platform.spawnProcess('explorer.exe', { path })
+   end
+
+   if opened then
+      self.callbacks.on_status(tr('Opening folder in the system file manager.'))
+   else
+      self.callbacks.on_status(tr('Could not open this folder in the system file manager.'))
    end
 end
 
@@ -381,8 +405,12 @@ function PngFilePicker:use_selected()
    if not is_directory_target(target) then
       self.directory = get_parent_directory(path) or self.directory
    end
-   self.callbacks.on_selected(target, path)
    self:destroy()
+   if (target == 'replace' or target == 'create') and self.callbacks.on_action then
+      self.callbacks.on_action(target, path)
+      return
+   end
+   self.callbacks.on_selected(target, path)
 end
 
 function PngFilePicker:open(target, initial_path)
@@ -411,11 +439,11 @@ function PngFilePicker:open(target, initial_path)
    self.window = window
 
    local initialized, err = pcall(function()
-      self:get_widget('filePickerGoButton').onClick = function()
+      self:get_widget('filePickerLoadFolderButton').onClick = function()
          self:navigate()
       end
-      self:get_widget('filePickerParentButton').onClick = function()
-         self:go_to_parent()
+      self:get_widget('filePickerOpenFolderButton').onClick = function()
+         self:open_folder_in_system()
       end
       self:get_widget('filePickerUseButton').onClick = function()
          self:use_selected()
@@ -444,7 +472,7 @@ function PngFilePicker:open(target, initial_path)
       if self.selection then
          self:get_widget('filePickerSelectedLabel'):setText(get_path_name(self.selection))
          self:get_widget('filePickerSelectedLabel'):setTooltip(self.selection)
-         self:get_widget('filePickerUseButton'):setEnabled(is_directory_target(self.target))
+         self:get_widget('filePickerUseButton'):setEnabled(true)
       end
       self.window:raise()
       self.window:focus()

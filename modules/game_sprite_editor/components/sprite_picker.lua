@@ -85,6 +85,9 @@ function SpritePicker:apply_filter()
    list:setVirtualOffset({ x = 0, y = 0 })
    self:render_rows(0)
    list:updateScrollBars()
+   if self.callbacks.on_filter_change then
+      self.callbacks.on_filter_change()
+   end
 end
 
 function SpritePicker:refresh()
@@ -282,6 +285,9 @@ function SpritePicker:attach_window()
       local widget = self.callbacks.get_widget(name)
       widget.onScrollChange = function(_, offset)
          self:render_rows(offset.y)
+         if self.callbacks.on_scroll_change then
+            self.callbacks.on_scroll_change(offset)
+         end
       end
    end
 end

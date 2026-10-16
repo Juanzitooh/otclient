@@ -242,6 +242,9 @@ function AppearanceCatalog:attach_window()
    end
    self:get_widget('appearanceList').onScrollChange = function(_, offset)
       self:render_rows(offset.y)
+      if self.callbacks.on_scroll_change then
+         self.callbacks.on_scroll_change(offset)
+      end
    end
 end
 

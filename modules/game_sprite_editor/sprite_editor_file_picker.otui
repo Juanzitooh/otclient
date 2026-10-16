@@ -3,6 +3,8 @@ SpriteEditorFileEntry < Button
   text: ''
   checkable: true
   draggable: false
+  anchors.left: parent.left
+  anchors.top: parent.top
 
   Panel
     id: filePickerPreviewBackground
@@ -65,26 +67,26 @@ MainWindow
     anchors.right: parent.right
     anchors.top: filePickerHintLabel.bottom
     margin-top: 4
-    margin-right: 112
+    margin-right: 190
     height: 22
 
   Button
-    id: filePickerGoButton
-    !text: tr('Go')
-    anchors.right: parent.right
+    id: filePickerLoadFolderButton
+    !text: tr('Load folder')
+    anchors.right: filePickerOpenFolderButton.left
     anchors.top: filePickerPathEdit.top
-    margin-right: 56
-    width: 52
+    margin-right: 4
+    width: 90
     height: 22
 
   Button
-    id: filePickerParentButton
-    !text: tr('Up')
+    id: filePickerOpenFolderButton
+    !text: tr('Open folder')
     anchors.right: parent.right
     anchors.top: filePickerPathEdit.top
-    width: 52
+    width: 92
     height: 22
-    !tooltip: tr('Open the parent folder')
+    !tooltip: tr('Open this path in your system file manager')
 
   TextEdit
     id: filePickerFilterEdit
@@ -149,7 +151,7 @@ MainWindow
     anchors.right: filePickerCancelButton.left
     anchors.bottom: parent.bottom
     margin-right: 5
-    width: 94
+    width: 154
     height: 24
     enabled: false
     visible: false

@@ -30,7 +30,7 @@ local previewMovingGroupIndex
 local previewHasMovementToggle = false
 local previewAnimationPlayer
 local timelineScrubbing = false
-local selectedSpriteContext
+local previewZoomChangingFromSlider = false
 local gameStartCallback
 local gameEndCallback
 local pendingSpriteEdit
@@ -40,18 +40,24 @@ local spritePickerSourceId
 local selectedReplacementSpriteId
 local selectedCreateSpriteId
 local spritePicker
+local persistEditorUiState
+local capturePreviewSelection
 local currentImportSection = 'replace'
 local currentReplaceMode = 'sprite'
 local currentNewAppearanceSourceMode = 'sprite'
 local currentExportSubpage = 'assets'
 local currentExportMode = 'replace'
 local pngFilePicker
+local savedEditorUiState = {}
+local editorUiStateSaveEvent
+local restoringEditorUiState = false
 local installedAssetBackups = {}
 local selectedInstalledBackupName
 local installedAssetBackupChanges = {}
 local selectedInstalledBackupChange
 local assetEditHistoryEntries = {}
 local selectedAssetEditHistoryEntry
+local canaryAppearanceWarningShown = false
 local getUserFacingError
 
 local SPRITE_PICKER_WIDGET_IDS = {
@@ -72,11 +78,16 @@ local SPRITE_PICKER_WIDGET_IDS = {
 }
 
 local EXTERNAL_EDITOR_SETTING = 'offline-assets-editor-external-editor'
+local EDITOR_UI_STATE_SETTING = 'offline-assets-editor-ui-state'
+local EDITOR_UI_STATE_SAVE_DELAY = 400
 
+local STATUS_COLOR_DEFAULT = '#c6c6c6'
+local STATUS_COLOR_SUCCESS = '#8fda9b'
 local MAX_SPRITE_ID = 2147483647
+local MAX_PREVIEW_ZOOM = 64
 local PREVIEW_CONTROLS_BOTTOM_MARGIN = 14
+local PREVIEW_ZOOM_CONTROL_GAP = 8
 local PREVIEW_CANVAS_BOTTOM_MARGIN = 4
-local PREVIEW_HINT_BOTTOM_MARGIN = 8
 local MAX_PREVIEW_TIMELINE_FRAMES = 20
 local PREVIEW_TIMELINE_HEIGHT = 100
 local PREVIEW_TIMELINE_ONLY_HEIGHT = 56
@@ -119,6 +130,7 @@ local updatePreviewPatternControls
 local refreshAppearancePreview
 local collectAnimationWidgetChanges
 local updateDirectionPadLayout
+local updatePreviewZoomControl
 local refreshSpritePicker
 local renderSpritePickerRows
 local applySpritePickerFilter
@@ -165,12 +177,26 @@ local function setSelectedSpritePickerId(spriteId)
    else
       selectedReplacementSpriteId = spriteId
    end
+   if persistEditorUiState then
+      persistEditorUiState()
+   end
 end
 
-local function setStatus(message)
+local function setStatus(message, success)
    if window then
-      window:recursiveGetChildById('statusLabel'):setText(tr('Status: %s', message))
+      local label = window:recursiveGetChildById('statusLabel')
+      label:setText(tr('Status: %s', message))
+      label:setColor(success and STATUS_COLOR_SUCCESS or STATUS_COLOR_DEFAULT)
    end
+end
+
+local function setExportStatus(message, success)
+   if not window then
+      return
+   end
+   local label = window:recursiveGetChildById('exportStatus')
+   label:setText(message)
+   label:setColor(success and STATUS_COLOR_SUCCESS or STATUS_COLOR_DEFAULT)
 end
 
 local function getWorkCopyService()
@@ -239,6 +265,27 @@ local function getAppearanceHistoryChanges(beforeData, afterData)
    return changed
 end
 
+local function showCanaryAppearanceWarning()
+   if canaryAppearanceWarningShown then
+      return
+   end
+   canaryAppearanceWarningShown = true
+
+   local messageBox
+   local function acknowledge()
+      messageBox:ok()
+   end
+   local message = tr('An appearance definition changed in this work copy. ' ..
+      'Canary loads server appearance definitions from its configured core directory at ' ..
+      'items/appearances.dat (data/items/appearances.dat by default). Update that file with the ' ..
+      'matching appearance data and restart Canary before testing. ' ..
+      'Changes to sprite pixels alone do not require changing that server file.')
+   messageBox = displayGeneralBox(tr('Canary appearance data changed'),
+      message, {
+         { text = tr('OK'), callback = acknowledge },
+      }, acknowledge, acknowledge)
+end
+
 local function runWorkCopyEdit(label, operation, historyContext)
    historyContext = historyContext or {}
    local category = historyContext.category
@@ -253,6 +300,7 @@ local function runWorkCopyEdit(label, operation, historyContext)
    local beforeAppearance
    local beforeAppearanceData
    local beforeSprite
+   local appearanceDataChanged = false
    local appearanceName = historyContext.appearanceName or (appearanceOriginal and appearanceOriginal.name) or ''
    if category ~= nil and beforeId then
       local ok, snapshot = pcall(g_things.getAppearanceEditorSnapshot, activeVersion, category, beforeId)
@@ -310,6 +358,9 @@ local function runWorkCopyEdit(label, operation, historyContext)
          if ok then afterSprite = snapshot end
       end
       local categoryInfo = categories[(category or -1) + 1]
+      local changedFields = getAppearanceHistoryChanges(beforeAppearanceData, afterAppearanceData)
+      appearanceDataChanged = #changedFields > 0 or
+         (beforeAppearanceData == nil) ~= (afterAppearanceData == nil)
       local entry = {
          action = historyContext.action or 'edit',
          label = label,
@@ -322,7 +373,7 @@ local function runWorkCopyEdit(label, operation, historyContext)
          beforeAppearanceSnapshot = beforeAppearance or '',
          afterAppearancePresent = afterPresent,
          afterAppearanceSnapshot = afterAppearance or '',
-         changedFields = getAppearanceHistoryChanges(beforeAppearanceData, afterAppearanceData),
+         changedFields = changedFields,
          spriteId = spriteId or 0,
          beforeSpritePng = beforeSprite or '',
          afterSpritePng = afterSprite or '',
@@ -342,6 +393,9 @@ local function runWorkCopyEdit(label, operation, historyContext)
    end
    if historyError then
       refreshAssetEditHistory()
+      if changedOrError == true and appearanceDataChanged then
+         showCanaryAppearanceWarning()
+      end
       setStatus(tr('Edit saved, but its portable history entry could not be written: %s', historyError))
       return true, result, changedOrError
    end
@@ -349,7 +403,69 @@ local function runWorkCopyEdit(label, operation, historyContext)
       return false, getUserFacingError(result)
    end
    refreshAssetEditHistory()
+   if changedOrError == true and appearanceDataChanged then
+      showCanaryAppearanceWarning()
+   end
    return true, result, changedOrError
+end
+
+local function setHistoryEntryPreview(row, entry)
+   local thumbnail = row:recursiveGetChildById('historyThumbnail')
+   local loaded = false
+   local appearanceId = tonumber(entry.appearanceId)
+   local category = tonumber(entry.category)
+   local thing
+   if appearanceId and category then
+      local ok, result = pcall(g_things.getThingType, appearanceId, category)
+      if ok then
+         thing = result
+      end
+   end
+
+   if thing then
+      local ok, animationSprites = pcall(thing.getThumbnailAnimationSprites, thing)
+      if ok and type(animationSprites) == 'table' and #animationSprites > 1 then
+         loaded = thumbnail:setSpriteAnimationIds(animationSprites)
+      end
+      if not loaded then
+         local ok, sprites = pcall(thing.getSprites, thing)
+         if ok and type(sprites) == 'table' then
+            for _, spriteId in ipairs(sprites) do
+               if spriteId > 0 then
+                  loaded = thumbnail:setThumbnailSpriteId(spriteId)
+                  if loaded then
+                     break
+                  end
+               end
+            end
+         end
+      end
+   end
+
+   local spriteId = tonumber(entry.spriteId)
+   if not loaded and spriteId and spriteId > 0 then
+      loaded = thumbnail:setThumbnailSpriteId(spriteId)
+   end
+   thumbnail:setVisible(loaded)
+   return loaded
+end
+
+local function formatHistoryEntryTimestamp(entry)
+   local date, time = tostring(entry.createdAt or ''):match(
+      '^(%d%d%d%d%-%d%d%-%d%d)T(%d%d:%d%d):%d%dZ$')
+   return date and string.format('%s %sZ', date, time) or tostring(entry.createdAt or '')
+end
+
+local function formatHistoryEntryRow(entry)
+   local category = entry.categoryName and entry.categoryName ~= '' and tr(entry.categoryName) or tr('Assets')
+   local appearanceId = tonumber(entry.appearanceId)
+   local subject = appearanceId and tr('%s %d', category, appearanceId) or category
+   local spriteId = tonumber(entry.spriteId)
+   if spriteId and spriteId > 0 then
+      subject = tr('%s | Sprite %d', subject, spriteId)
+   end
+   return string.format('%s\n%s\n%s', subject, tostring(entry.label or tr('Edit')),
+      formatHistoryEntryTimestamp(entry))
 end
 
 local function updateAssetEditHistoryDetails()
@@ -431,13 +547,13 @@ refreshAssetEditHistory = function()
    selectedAssetEditHistoryEntry = assetEditHistoryEntries[#assetEditHistoryEntries]
    for index = #assetEditHistoryEntries, 1, -1 do
       local entry = assetEditHistoryEntries[index]
-      local category = entry.categoryName and entry.categoryName ~= '' and tr(entry.categoryName) or tr('Assets')
-      local id = tonumber(entry.appearanceId)
-      local objectLabel = id and tr('%s %d', category, id) or category
       local row = g_ui.createWidget('AssetEditHistoryEntry', list)
       row.historyEntryId = entry.id
-      row:setText(string.format('%s | %s\n%s', objectLabel, tostring(entry.label or tr('Edit')),
-         tostring(entry.createdAt or '')))
+      row:recursiveGetChildById('historyText'):setText(formatHistoryEntryRow(entry))
+      row:setTooltip(entry.appearanceName and entry.appearanceName ~= '' and
+         tr('%s\nName: %s', formatHistoryEntryRow(entry), entry.appearanceName) or
+         formatHistoryEntryRow(entry))
+      setHistoryEntryPreview(row, entry)
       local rowEntry = entry
       row.onClick = function()
          selectedAssetEditHistoryEntry = rowEntry
@@ -447,6 +563,9 @@ refreshAssetEditHistory = function()
          updateAssetEditHistoryDetails()
       end
       row:setOn(selectedAssetEditHistoryEntry and selectedAssetEditHistoryEntry.id == entry.id)
+   end
+   if g_spriteAppearances.releaseDecodedSpriteSheets then
+      g_spriteAppearances.releaseDecodedSpriteSheets()
    end
    window:recursiveGetChildById('historySourceLabel'):setText(
       tr('Working copy %s | %d saved edits', formatClientVersion(activeVersion), #assetEditHistoryEntries))
@@ -537,6 +656,14 @@ local function getAppearanceCatalogComponent()
          if updateExportControls then
             updateExportControls()
          end
+         if persistEditorUiState then
+            persistEditorUiState()
+         end
+      end,
+      on_scroll_change = function()
+         if persistEditorUiState then
+            persistEditorUiState()
+         end
       end,
    })
    return appearanceCatalog
@@ -585,6 +712,16 @@ local function getSpritePickerComponent()
          updateSpriteReplacementTarget()
       end,
       set_status = function(message) setStatus(message) end,
+      on_filter_change = function()
+         if persistEditorUiState then
+            persistEditorUiState()
+         end
+      end,
+      on_scroll_change = function()
+         if persistEditorUiState then
+            persistEditorUiState()
+         end
+      end,
    })
    return spritePicker
 end
@@ -605,9 +742,11 @@ selectSpritePickerSprite = function(spriteId)
    getSpritePickerComponent():select(spriteId)
 end
 
-local function setAppearanceStatus(message)
+local function setAppearanceStatus(message, success)
    if window then
-      window:recursiveGetChildById('appearanceStatus'):setText(message)
+      local label = window:recursiveGetChildById('appearanceStatus')
+      label:setText(message)
+      label:setColor(success and STATUS_COLOR_SUCCESS or STATUS_COLOR_DEFAULT)
    end
 end
 
@@ -659,6 +798,90 @@ local function getSelectableAssetVersions()
    local versions = getSupportedAssetVersions()
    table.sort(versions, function(a, b) return a > b end)
    return versions
+end
+
+local function getSavedPreviewSelection(selection)
+   if type(selection) ~= 'table' then
+      return nil
+   end
+   local groupIndex = tonumber(selection.groupIndex)
+   if not groupIndex or groupIndex < 1 then
+      return nil
+   end
+   return {
+      groupType = tonumber(selection.groupType) or 0,
+      groupId = tonumber(selection.groupId),
+      groupIndex = math.floor(groupIndex),
+      patternX = math.max(0, math.floor(tonumber(selection.patternX) or 0)),
+      patternY = math.max(0, math.floor(tonumber(selection.patternY) or 0)),
+      patternZ = math.max(0, math.floor(tonumber(selection.patternZ) or 0)),
+      layer = math.max(0, math.floor(tonumber(selection.layer) or 0)),
+      phase = math.max(0, math.floor(tonumber(selection.phase) or 0)),
+      mounted = selection.mounted == true,
+   }
+end
+
+local function restoreEditorUiStateFromSettings()
+   local state = g_settings.getNode(EDITOR_UI_STATE_SETTING)
+   if type(state) ~= 'table' then
+      return
+   end
+
+   local page = state.page
+   if page ~= 'editor' and page ~= 'import' and page ~= 'export' and page ~= 'history' then
+      page = 'editor'
+   end
+   local propertiesTab = state.propertiesTab == 'values' and 'values' or 'flags'
+   local importSection = state.importSection
+   if importSection ~= 'replace' and importSection ~= 'create' and importSection ~= 'batch' and
+         importSection ~= 'sheet' and importSection ~= 'bundle' then
+      importSection = 'replace'
+   end
+   local replaceMode = state.replaceMode == 'png' and 'png' or 'sprite'
+   local newAppearanceSourceMode = state.newAppearanceSourceMode == 'png' and 'png' or 'sprite'
+   local exportSubpage = state.exportSubpage == 'backups' and 'backups' or 'assets'
+   local exportMode = state.exportMode
+   if exportMode ~= 'new' and exportMode ~= 'folder' and exportMode ~= 'appearance' then
+      exportMode = 'replace'
+   end
+   local category = math.floor(tonumber(state.category) or 0)
+   if category < 0 or category >= #categories then
+      category = 0
+   end
+
+   savedEditorUiState = {
+      version = isSupportedAssetVersion(tonumber(state.version)) and tonumber(state.version) or nil,
+      page = page,
+      propertiesTab = propertiesTab,
+      importSection = importSection,
+      replaceMode = replaceMode,
+      newAppearanceSourceMode = newAppearanceSourceMode,
+      exportSubpage = exportSubpage,
+      exportMode = exportMode,
+      category = category,
+      appearanceId = math.max(0, math.floor(tonumber(state.appearanceId) or 0)),
+      appearanceSearch = type(state.appearanceSearch) == 'string' and state.appearanceSearch or '',
+      appearanceListOffset = math.max(0, math.floor(tonumber(state.appearanceListOffset) or 0)),
+      replaceSpriteSearch = type(state.replaceSpriteSearch) == 'string' and state.replaceSpriteSearch or '',
+      createSpriteSearch = type(state.createSpriteSearch) == 'string' and state.createSpriteSearch or '',
+      replaceSpriteListOffset = math.max(0, math.floor(tonumber(state.replaceSpriteListOffset) or 0)),
+      createSpriteListOffset = math.max(0, math.floor(tonumber(state.createSpriteListOffset) or 0)),
+      replacementSpriteId = math.max(0, math.floor(tonumber(state.replacementSpriteId) or 0)),
+      createSpriteId = math.max(0, math.floor(tonumber(state.createSpriteId) or 0)),
+      previewSelection = getSavedPreviewSelection(state.previewSelection),
+   }
+
+   currentPage = savedEditorUiState.page
+   currentPropertiesTab = savedEditorUiState.propertiesTab
+   currentImportSection = savedEditorUiState.importSection
+   currentReplaceMode = savedEditorUiState.replaceMode
+   currentNewAppearanceSourceMode = savedEditorUiState.newAppearanceSourceMode
+   currentExportSubpage = savedEditorUiState.exportSubpage
+   currentExportMode = savedEditorUiState.exportMode
+   selectedAppearanceCategory = savedEditorUiState.category
+   selectedReplacementSpriteId = savedEditorUiState.replacementSpriteId > 0 and
+      savedEditorUiState.replacementSpriteId or nil
+   selectedCreateSpriteId = savedEditorUiState.createSpriteId > 0 and savedEditorUiState.createSpriteId or nil
 end
 
 local function requestClientAssets(version, callback)
@@ -885,6 +1108,19 @@ local function createPngFilePicker()
          updateSpriteReplacementTarget()
          setStatus(tr('PNG selected: %s', path:match('([^/]+)$') or path))
       end,
+      on_action = function(target, path)
+         if target == 'replace' then
+            preparedSpritePath = path
+            setSpritePath(path)
+            updateSpriteReplacementTarget()
+            importPngAndReplace()
+            return
+         end
+         if target == 'create' then
+            window:recursiveGetChildById('newAppearancePngPathEdit'):setText(path)
+            createAppearance()
+         end
+      end,
    })
 end
 
@@ -933,11 +1169,26 @@ local function updatePreviewTitle()
       return
    end
 
-   window:recursiveGetChildById('spriteInfoLabel'):setText(tr('Sprite ID %d | %d x %d | Zoom %dx',
-      selectedSpriteId, canvas:getSpriteWidth(), canvas:getSpriteHeight(), canvas:getZoom()))
-   local contextLabel = window:recursiveGetChildById('spriteContextLabel')
-   contextLabel:setText(selectedSpriteContext or '')
-   contextLabel:setVisible(selectedSpriteContext ~= nil and selectedSpriteContext ~= '')
+   window:recursiveGetChildById('spriteInfoLabel'):setText(tr('Sprite ID %d | %d x %d',
+      selectedSpriteId, canvas:getSpriteWidth(), canvas:getSpriteHeight()))
+   updatePreviewZoomControl()
+end
+
+local function setPreviewZoom(zoom)
+   if not canvas or not selectedSpriteId then
+      return
+   end
+
+   local targetZoom = math.max(1, math.min(MAX_PREVIEW_ZOOM, math.floor(zoom + 0.5)))
+   previewZoomChangingFromSlider = true
+   while canvas:getZoom() < targetZoom do
+      canvas:zoomIn()
+   end
+   while canvas:getZoom() > targetZoom do
+      canvas:zoomOut()
+   end
+   previewZoomChangingFromSlider = false
+   updatePreviewZoomControl()
 end
 
 local function setPreviewMessage(message)
@@ -945,9 +1196,7 @@ local function setPreviewMessage(message)
       return
    end
    window:recursiveGetChildById('spriteInfoLabel'):setText(message)
-   local contextLabel = window:recursiveGetChildById('spriteContextLabel')
-   contextLabel:setText('')
-   contextLabel:setVisible(false)
+   updatePreviewZoomControl()
 end
 
 updateSpriteReplacementTarget = function()
@@ -1041,10 +1290,6 @@ updateSpriteReplacementTarget = function()
       selectedAppearanceId ~= nil and activeVersion ~= nil and not g_game.isOnline() and pendingSpriteEdit == nil)
    window:recursiveGetChildById('createAppearanceShortcutButton'):setEnabled(
       activeVersion ~= nil and not g_game.isOnline())
-   window:recursiveGetChildById('previewHintLabel'):setText(
-      showReplace and currentReplaceMode == 'sprite' and
-         tr('Drop a sprite here to replace this frame | Wheel over preview: zoom | Middle-drag: pan') or
-         tr('Wheel over preview: zoom | Middle-drag: pan | Checkerboard: transparency'))
    if hasTarget then updatePreviewTitle() end
    if renderSpritePickerRows and currentImportSection ~= 'batch' then
       local pickerList = getSpritePickerWidget('list')
@@ -1057,8 +1302,7 @@ local function setPreviewControlsVisible(visible, panelHeight)
    controls:setVisible(visible)
    controls:setHeight(visible and panelHeight or 0)
    canvas:setMarginBottom(visible and panelHeight + PREVIEW_CONTROLS_BOTTOM_MARGIN or PREVIEW_CANVAS_BOTTOM_MARGIN)
-   window:recursiveGetChildById('previewHintLabel'):setMarginBottom(
-      visible and panelHeight + PREVIEW_CONTROLS_BOTTOM_MARGIN or PREVIEW_HINT_BOTTOM_MARGIN)
+   updatePreviewZoomControl()
 end
 
 local function updatePreviewTimelineLayout(phaseCount, hasFrameControls, hasAnimation)
@@ -1131,6 +1375,9 @@ local function setPropertiesTab(tab)
    window:recursiveGetChildById('appearanceValuesScroll'):setVisible(valuesVisible and valuesAvailable)
    window:recursiveGetChildById('flagsTabButton'):setOn(flagsVisible)
    window:recursiveGetChildById('valuesTabButton'):setOn(valuesVisible)
+   if persistEditorUiState then
+      persistEditorUiState()
+   end
 end
 
 local function buildAppearanceProperties(data)
@@ -1155,12 +1402,11 @@ local function clearAppearanceProperties()
    setAppearanceStatus(tr('Open a work copy and select an appearance to edit.'))
    selectedAppearanceId = nil
    appearanceOriginal = nil
+   selectedSpriteId = nil
    getAppearancePropertiesEditor():clear_fields()
    getAppearancePropertiesEditor():set_enabled(false)
    window:recursiveGetChildById('previewTimelineFrames'):destroyChildren()
    setPreviewMessage(tr('Select an appearance to see its sprite.'))
-   selectedSpriteId = nil
-   selectedSpriteContext = nil
    canvas:setVisible(false)
    setSpritePath(preparedSpritePath)
    updateSpriteReplacementTarget()
@@ -1211,10 +1457,13 @@ selectSprite = function(id)
    if not canvas:setSpriteId(id) then
       canvas:setVisible(false)
       selectedSpriteId = nil
-      selectedSpriteContext = nil
       updateDirectionPadLayout()
+      updatePreviewZoomControl()
       updateSpriteReplacementTarget()
       setStatus(tr('Sprite %d is not available in this 15.x work copy.', id))
+      if persistEditorUiState then
+         persistEditorUiState()
+      end
       return false
    end
 
@@ -1223,6 +1472,9 @@ selectSprite = function(id)
    updatePreviewTitle()
    updateDirectionPadLayout()
    updateSpriteReplacementTarget()
+   if persistEditorUiState then
+      persistEditorUiState()
+   end
    return true
 end
 
@@ -1583,8 +1835,13 @@ local function formatBackupHistoryChange(entry)
       field = field:gsub('^strings%.name$', tr('Name')):gsub('^strings%.description$', tr('Description'))
       table.insert(fields, field)
    end
+   local spriteId = tonumber(entry.spriteId)
+   if spriteId and spriteId > 0 then
+      subject = tr('%s | Sprite %d', subject, spriteId)
+   end
    local summary = #fields > 0 and tr('Changed: %s', table.concat(fields, ', ')) or label
-   return string.format('%s | %s\n%s | %s', subject, label, summary, tostring(entry.createdAt or ''))
+   return string.format('%s\n%s\n%s\n%s', subject, label, summary,
+      tostring(entry.createdAt or ''))
 end
 
 updateInstalledBackupDetails = function()
@@ -1661,7 +1918,9 @@ updateInstalledBackupDetails = function()
 
    for _, entry in ipairs(installedAssetBackupChanges) do
       local row = g_ui.createWidget('BackupChangeEntry', list)
-      row:setText(formatBackupHistoryChange(entry))
+      row:recursiveGetChildById('historyText'):setText(formatHistoryEntryRow(entry))
+      row:setTooltip(formatBackupHistoryChange(entry))
+      setHistoryEntryPreview(row, entry)
       local rowEntry = entry
       row.onClick = function()
          selectedInstalledBackupChange = rowEntry
@@ -1673,6 +1932,9 @@ updateInstalledBackupDetails = function()
                (tonumber(rowEntry.spriteId) and tonumber(rowEntry.spriteId) > 0 and
                   rowEntry.beforeSpritePng and rowEntry.beforeSpritePng ~= '')))
       end
+   end
+   if g_spriteAppearances.releaseDecodedSpriteSheets then
+      g_spriteAppearances.releaseDecodedSpriteSheets()
    end
 
    if #installedAssetBackupChanges == 0 and (baselineHistoryAvailable or backupUtcTimestamp) then
@@ -1746,11 +2008,34 @@ local function setCheckBoxState(checkBox, checked)
    checkBox.onCheckChange = onCheckChange
 end
 
-local function directionName(index, width)
-   if (width == 4 or width == 8) and PREVIEW_DIRECTIONS[index + 1] then
-      return tr(PREVIEW_DIRECTIONS[index + 1].name)
+updatePreviewZoomControl = function()
+   if not window or not canvas then
+      return
    end
-   return tr('Pattern X %d', index + 1)
+
+   local zoomControl = window:recursiveGetChildById('previewZoomControl')
+   local zoomLabel = window:recursiveGetChildById('previewZoomLabel')
+   local zoomScroll = window:recursiveGetChildById('previewZoomScroll')
+   local previewControls = window:recursiveGetChildById('previewControls')
+   zoomControl:setMarginBottom(previewControls:getHeight() + previewControls:getMarginBottom() +
+      PREVIEW_ZOOM_CONTROL_GAP)
+   local spriteWidth = canvas:getSpriteWidth()
+   local spriteHeight = canvas:getSpriteHeight()
+   local visible = selectedSpriteId ~= nil and spriteWidth > 0 and spriteHeight > 0
+   zoomControl:setVisible(visible)
+   if not visible then
+      return
+   end
+
+   local zoom = canvas:getZoom()
+   zoomLabel:setText(tr('%dx', zoom))
+   if not previewZoomChangingFromSlider then
+      local onValueChange = zoomScroll.onValueChange
+      zoomScroll.onValueChange = nil
+      zoomScroll:setValue(MAX_PREVIEW_ZOOM + 1 - zoom)
+      zoomScroll.onValueChange = onValueChange
+   end
+
 end
 
 updateDirectionPadLayout = function()
@@ -1929,33 +2214,12 @@ refreshAppearancePreview = function()
    if spriteId and spriteId > 0 then
       local selected = selectSprite(spriteId)
       if selected then
-         local details = { frameGroupName(group, previewFrameGroupIndex) }
-         if selectedAppearanceCategory == 1 and group.patternDepth > 1 then
-            table.insert(details, previewMounted and tr('Mounted') or tr('Unmounted'))
-         end
-         if selectedAppearanceCategory == 1 then
-            if useDirectionPad or group.patternWidth > 1 then
-               table.insert(details, directionName(previewPatternX, group.patternWidth))
-            end
-         elseif group.patternWidth > 1 then
-            table.insert(details, tr('Pattern X %d', previewPatternX + 1))
-         end
-         if group.patternHeight > 1 then
-            table.insert(details, selectedAppearanceCategory == 1 and outfitAddonOptionLabel(previewPatternY) or
-               tr('Pattern Y %d', previewPatternY + 1))
-         end
-         if group.layers > 1 then
-            table.insert(details, tr('Layer %d', previewLayer + 1))
-         end
-         table.insert(details, tr('Frame %d/%d', previewPhase + 1, math.max(1, group.phaseCount or 1)))
-         selectedSpriteContext = table.concat(details, ' | ')
          updateSpriteReplacementTarget()
       end
       return selected
    end
 
    selectedSpriteId = nil
-   selectedSpriteContext = nil
    canvas:setVisible(false)
    updateDirectionPadLayout()
    setPreviewMessage(tr('No sprite is linked to this frame selection.'))
@@ -1964,7 +2228,7 @@ refreshAppearancePreview = function()
    return false
 end
 
-local function capturePreviewSelection()
+capturePreviewSelection = function()
    local group = currentPreviewGroup()
    if not group then
       return nil
@@ -2011,6 +2275,83 @@ local function restorePreviewSelection(selection)
    updatePreviewPatternControls()
    updateAnimationEditor()
    refreshAppearancePreview()
+end
+
+persistEditorUiState = function(saveImmediately)
+   if restoringEditorUiState then
+      return
+   end
+
+   local version = activeVersion
+   if not version and window then
+      version = selectedOption(window:recursiveGetChildById('versionComboBox'))
+   end
+   version = tonumber(version) or savedEditorUiState.version
+
+   local appearanceSearch = savedEditorUiState.appearanceSearch or ''
+   local appearanceListOffset = savedEditorUiState.appearanceListOffset or 0
+   local replaceSpriteSearch = savedEditorUiState.replaceSpriteSearch or ''
+   local createSpriteSearch = savedEditorUiState.createSpriteSearch or ''
+   local replaceSpriteListOffset = savedEditorUiState.replaceSpriteListOffset or 0
+   local createSpriteListOffset = savedEditorUiState.createSpriteListOffset or 0
+   if window then
+      local search = window:recursiveGetChildById('appearanceSearch')
+      local list = window:recursiveGetChildById('appearanceList')
+      local replaceSearch = window:recursiveGetChildById('spriteSearchEdit')
+      local createSearch = window:recursiveGetChildById('newAppearanceSpriteSearchEdit')
+      local replaceList = window:recursiveGetChildById('spritePickerList')
+      local createList = window:recursiveGetChildById('newAppearanceSpritePickerList')
+      appearanceSearch = search and search:getText() or appearanceSearch
+      appearanceListOffset = activeVersion and list and list:getVirtualOffset().y or appearanceListOffset
+      replaceSpriteSearch = replaceSearch and replaceSearch:getText() or replaceSpriteSearch
+      createSpriteSearch = createSearch and createSearch:getText() or createSpriteSearch
+      replaceSpriteListOffset = activeVersion and replaceList and
+         replaceList:getVirtualOffset().y or replaceSpriteListOffset
+      createSpriteListOffset = activeVersion and createList and
+         createList:getVirtualOffset().y or createSpriteListOffset
+   end
+
+   savedEditorUiState = {
+      version = version,
+      page = currentPage,
+      propertiesTab = currentPropertiesTab,
+      importSection = currentImportSection,
+      replaceMode = currentReplaceMode,
+      newAppearanceSourceMode = currentNewAppearanceSourceMode,
+      exportSubpage = currentExportSubpage,
+      exportMode = currentExportMode,
+      category = selectedAppearanceCategory,
+      appearanceId = selectedAppearanceId or (not activeVersion and savedEditorUiState.appearanceId) or 0,
+      appearanceSearch = appearanceSearch,
+      appearanceListOffset = math.max(0, math.floor(appearanceListOffset or 0)),
+      replaceSpriteSearch = replaceSpriteSearch,
+      createSpriteSearch = createSpriteSearch,
+      replaceSpriteListOffset = math.max(0, math.floor(replaceSpriteListOffset or 0)),
+      createSpriteListOffset = math.max(0, math.floor(createSpriteListOffset or 0)),
+      replacementSpriteId = selectedReplacementSpriteId or 0,
+      createSpriteId = selectedCreateSpriteId or 0,
+      previewSelection = (capturePreviewSelection and capturePreviewSelection()) or
+         (not activeVersion and savedEditorUiState.previewSelection) or nil,
+   }
+   g_settings.setNode(EDITOR_UI_STATE_SETTING, savedEditorUiState)
+
+   if editorUiStateSaveEvent then
+      removeEvent(editorUiStateSaveEvent)
+      editorUiStateSaveEvent = nil
+   end
+   if saveImmediately then
+      if not g_settings.save() then
+         g_logger.warning('[game_sprite_editor] Unable to save editor UI state.')
+      end
+      return
+   end
+
+   editorUiStateSaveEvent = scheduleEvent(function()
+      editorUiStateSaveEvent = nil
+      if not g_settings.save() then
+         g_logger.warning('[game_sprite_editor] Unable to save editor UI state.')
+      end
+   end, EDITOR_UI_STATE_SAVE_DELAY)
 end
 
 local function refreshAfterHistoryChange(label, action)
@@ -2488,7 +2829,6 @@ local function refreshSelectedAppearance()
          selectSprite(sprites[1])
       else
          selectedSpriteId = nil
-         selectedSpriteContext = nil
          canvas:setVisible(false)
          setPreviewMessage(tr('This appearance has no linked sprites.'))
          updateSpriteReplacementTarget()
@@ -2531,7 +2871,6 @@ loadAppearanceRecord = function(category, id, forceDiscard, forceReload)
    selectedAppearanceCategory = category
    selectedAppearanceId = id
    selectedSpriteId = nil
-   selectedSpriteContext = nil
    updateSpriteReplacementTarget()
    window:recursiveGetChildById('appearanceCategory'):setCurrentOptionByData(category, true)
    buildAppearanceProperties(data)
@@ -2540,6 +2879,9 @@ loadAppearanceRecord = function(category, id, forceDiscard, forceReload)
    setStatus(tr('%s %d loaded.', categoryInfo and tr(categoryInfo.singular) or tr('Appearance'), id))
    renderAppearanceRows(window:recursiveGetChildById('appearanceList'):getVirtualOffset().y)
    updateExportControls()
+   if persistEditorUiState then
+      persistEditorUiState()
+   end
    return true
 end
 
@@ -2685,9 +3027,9 @@ updateExportControls = function()
             tr('Replace %s', activeVersion and formatClientVersion(activeVersion) or ''))))
    window:recursiveGetChildById('exportHint'):setText(isFolderExport and
       tr('Creates a data/things/%d package. Existing packages are never overwritten.', activeVersion or 0) or
-      (isAppearanceExport and tr('Includes appearance metadata and referenced sprites. Batch export follows the left list filter and handles up to 8 appearances.') or
+         (isAppearanceExport and tr('Includes appearance metadata and referenced sprites. Batch export follows the left list filter and handles up to 8 appearances.') or
          (isNewVersion and tr('The source stays unchanged. Choose an unused version to add it to the client.') or
-            tr('The current package is backed up before replacement.'))))
+            tr('Existing assets are backed up first. If none exist, the working copy is installed.'))))
    local exportTargetValid = isAppearanceExport and folderDestinationValid or isFolderExport and folderDestinationValid or
       (isNewVersion and newVersionValid) or (not isNewVersion and not isFolderExport)
    if isAppearanceExport then
@@ -2727,6 +3069,9 @@ function setExportSubpage(subpage)
    end
    currentExportSubpage = subpage
    updateExportControls()
+   if persistEditorUiState then
+      persistEditorUiState()
+   end
 end
 
 function setExportMode(mode)
@@ -2735,8 +3080,11 @@ function setExportMode(mode)
    end
    currentExportMode = mode
    if window then
-      window:recursiveGetChildById('exportStatus'):setText('')
+      setExportStatus('')
       updateExportControls()
+   end
+   if persistEditorUiState then
+      persistEditorUiState()
    end
 end
 
@@ -2823,9 +3171,14 @@ setActivePage = function(page)
    window:recursiveGetChildById('historyPageButton'):setOn(page == 'history')
    updateSpriteReplacementTarget()
    updateExportControls()
+   if persistEditorUiState then
+      persistEditorUiState()
+   end
 end
 
-local function createWindow()
+local getSelectedSpriteReference
+
+local function createWindow(restoreEditorState)
    if window then
       window:destroy()
    end
@@ -2865,12 +3218,21 @@ local function createWindow()
       if canvas and window then
          updatePreviewTitle()
          updateDirectionPadLayout()
+         updatePreviewZoomControl()
       end
    end
    canvas.onPositionChange = function()
       if canvas and window then
          updateDirectionPadLayout()
+         updatePreviewZoomControl()
       end
+   end
+   local zoomScroll = window:recursiveGetChildById('previewZoomScroll')
+   zoomScroll:setMinimum(1)
+   zoomScroll:setMaximum(MAX_PREVIEW_ZOOM)
+   zoomScroll:setStep(1)
+   zoomScroll.onValueChange = function(_, value)
+      setPreviewZoom(MAX_PREVIEW_ZOOM + 1 - math.floor(value + 0.5))
    end
    canvas.onDrop = function(_, draggedWidget)
       if not draggedWidget or currentPage ~= 'import' or currentImportSection ~= 'replace' then
@@ -2928,6 +3290,11 @@ local function createWindow()
       newAppearanceCategoryBox:addOption(tr(category.name), category.data)
    end
    newAppearanceCategoryBox:setCurrentOptionByData(selectedAppearanceCategory, true)
+   if restoreEditorState then
+      window:recursiveGetChildById('appearanceSearch'):setText(savedEditorUiState.appearanceSearch or '')
+      window:recursiveGetChildById('spriteSearchEdit'):setText(savedEditorUiState.replaceSpriteSearch or '')
+      window:recursiveGetChildById('newAppearanceSpriteSearchEdit'):setText(savedEditorUiState.createSpriteSearch or '')
+   end
    getAppearanceCatalogComponent():attach_window()
    getSpritePickerComponent():attach_window()
    window:recursiveGetChildById('newAppearancePngPathEdit').onTextChange = function(widget)
@@ -2957,12 +3324,15 @@ local function createWindow()
    for _, version in ipairs(versions) do
       versionBox:addOption(formatClientVersion(version), version)
    end
-   local selectedVersion = activeVersion or versions[1]
+   local selectedVersion = activeVersion or savedEditorUiState.version or versions[1]
    if selectedVersion then
       versionBox:setCurrentOptionByData(selectedVersion, true)
    end
    versionBox.onOptionChange = function()
       updateExportControls()
+      if persistEditorUiState then
+         persistEditorUiState()
+      end
    end
    refreshInstalledAssetBackups()
    updateInstalledAssetBackupOptions()
@@ -2990,9 +3360,42 @@ local function createWindow()
       refreshAppearanceCatalog(selectedAppearanceCategory)
       refreshSpritePicker()
       refreshAssetEditHistory()
-      local firstEntry = getFilteredAppearanceEntry(1)
-      if firstEntry then
-         loadAppearanceRecord(selectedAppearanceCategory, firstEntry.id, true)
+      if restoreEditorState then
+         selectedReplacementSpriteId = savedEditorUiState.replacementSpriteId > 0 and
+            savedEditorUiState.replacementSpriteId or nil
+         selectedCreateSpriteId = savedEditorUiState.createSpriteId > 0 and
+            savedEditorUiState.createSpriteId or nil
+         local spriteList = getSpritePickerWidget('list')
+         if spriteList then
+            local savedOffset = currentImportSection == 'create' and
+               savedEditorUiState.createSpriteListOffset or savedEditorUiState.replaceSpriteListOffset
+            spriteList:setVirtualOffset({ x = 0, y = savedOffset or 0 })
+            spriteList:updateScrollBars()
+            renderSpritePickerRows(spriteList:getVirtualOffset().y)
+         end
+      end
+      local restoredAppearanceId = restoreEditorState and tonumber(savedEditorUiState.appearanceId) or nil
+      if restoredAppearanceId and restoredAppearanceId < 1 then
+         restoredAppearanceId = nil
+      end
+      local restoredThing = restoredAppearanceId and
+         g_things.getThingType(restoredAppearanceId, selectedAppearanceCategory)
+      if restoredThing and restoredThing:getId() == restoredAppearanceId then
+         loadAppearanceRecord(selectedAppearanceCategory, restoredAppearanceId, true)
+      else
+         local firstEntry = getFilteredAppearanceEntry(1)
+         if firstEntry then
+            loadAppearanceRecord(selectedAppearanceCategory, firstEntry.id, true)
+         end
+      end
+      if restoreEditorState then
+         local appearanceList = window:recursiveGetChildById('appearanceList')
+         appearanceList:setVirtualOffset({ x = 0, y = savedEditorUiState.appearanceListOffset or 0 })
+         appearanceList:updateScrollBars()
+         renderAppearanceRows(appearanceList:getVirtualOffset().y)
+         if restoredThing and restoredThing:getId() == restoredAppearanceId then
+            restorePreviewSelection(savedEditorUiState.previewSelection)
+         end
       end
    else
       clearAppearanceProperties()
@@ -3043,6 +3446,7 @@ local function loadAssets(version)
    end
 
    activeVersion = version
+   canaryAppearanceWarningShown = false
    activeAssetPath = assetPath
    activeWorkRoot = workRoot
    refreshInstalledAssetBackups()
@@ -3057,8 +3461,12 @@ function init()
    if not g_spriteAppearances.createWorkCopy then
       return
    end
+   restoreEditorUiStateFromSettings()
    g_ui.importStyle('sprite_editor_widgets')
    gameStartCallback = function()
+      if persistEditorUiState then
+         persistEditorUiState(true)
+      end
       if topMenuButton then
          topMenuButton:setOn(false)
          topMenuButton:setVisible(false)
@@ -3083,6 +3491,9 @@ end
 
 function terminate()
    disconnect(g_game, { onGameStart = gameStartCallback, onGameEnd = gameEndCallback })
+   if persistEditorUiState then
+      persistEditorUiState(true)
+   end
    if activeVersion then
       local released, err = releaseActiveWorkCopy()
       if not released then
@@ -3095,8 +3506,14 @@ function terminate()
       topMenuButton = nil
    end
    activeVersion = nil
+   canaryAppearanceWarningShown = false
    activeAssetPath = nil
    activeWorkRoot = nil
+   if editorUiStateSaveEvent then
+      removeEvent(editorUiStateSaveEvent)
+      editorUiStateSaveEvent = nil
+   end
+   restoringEditorUiState = false
    gameStartCallback = nil
    gameEndCallback = nil
 end
@@ -3119,11 +3536,19 @@ function toggle()
    elseif activeVersion then
       createWindow()
    else
-      local version = getVersions()[1]
+      local versions = getVersions()
+      local version
+      for _, installedVersion in ipairs(versions) do
+         if installedVersion == savedEditorUiState.version then
+            version = installedVersion
+            break
+         end
+      end
+      version = version or versions[1]
       if version then
-         openWorkCopyVersion(version)
+         openWorkCopyVersion(version, true)
       else
-         if not createWindow() then
+         if not createWindow(true) then
             return
          end
          local versionBox = window:recursiveGetChildById('versionComboBox')
@@ -3143,7 +3568,7 @@ function toggle()
                return
             end
             if window and window:isVisible() and not g_game.isOnline() then
-               openWorkCopyVersion(selectedVersion)
+               openWorkCopyVersion(selectedVersion, true)
             end
          end)
       end
@@ -3241,7 +3666,7 @@ function restoreInstalledBackup(forceDiscard, confirmed)
          restoreInstalledBackup(true, true)
       end
       messageBox = displayGeneralBox(tr('Restore installed backup?'),
-         tr('Restore %s to data/things/%d? The current installed package will be saved as a backup. The working copy will reset to the restored version and discard its saved edits.',
+         tr('Restore %s to data/things/%d? This replaces the current installed package without creating another backup. The working copy will reset to the restored version and discard its saved edits.',
             getInstalledAssetBackup(backupName) and getInstalledAssetBackup(backupName).label or backupName,
             activeVersion), {
             { text = tr('Restore backup'), callback = confirmRestore },
@@ -3257,10 +3682,10 @@ function restoreInstalledBackup(forceDiscard, confirmed)
       return
    end
 
-   local restored, safetyBackup = pcall(g_spriteAppearances.restoreInstalledAssetBackup, version, backupName)
+   local restored, restoreError = pcall(g_spriteAppearances.restoreInstalledAssetBackup, version, backupName)
    if not restored then
       openWorkCopyVersion(version)
-      setStatus(getUserFacingError(safetyBackup))
+      setStatus(getUserFacingError(restoreError))
       return
    end
 
@@ -3273,11 +3698,11 @@ function restoreInstalledBackup(forceDiscard, confirmed)
    end
 
    if openWorkCopyVersion(version) then
-      setStatus(tr('Restored the installed assets. The previous package is backed up at %s.', safetyBackup))
+      setStatus(tr('Installed assets restored from the selected backup. No new backup was created.'), true)
    end
 end
 
-function openWorkCopyVersion(version)
+function openWorkCopyVersion(version, restoreEditorState)
    if not isSupportedAssetVersion(version) then
       displayErrorBox(tr('Assets Editor'), tr('This OTClient build does not support client version %s.',
          formatClientVersion(version or 0)))
@@ -3292,13 +3717,36 @@ function openWorkCopyVersion(version)
    end
    destroyWindow()
    if not loadAssets(version) then
+      restoringEditorUiState = false
       createWindow()
       return false
    end
-   currentPage = 'editor'
-   createWindow()
+   if restoreEditorState then
+      currentPage = savedEditorUiState.page or 'editor'
+      currentPropertiesTab = savedEditorUiState.propertiesTab or 'flags'
+      currentImportSection = savedEditorUiState.importSection or 'replace'
+      currentReplaceMode = savedEditorUiState.replaceMode or 'sprite'
+      currentNewAppearanceSourceMode = savedEditorUiState.newAppearanceSourceMode or 'sprite'
+      currentExportSubpage = savedEditorUiState.exportSubpage or 'assets'
+      currentExportMode = savedEditorUiState.exportMode or 'replace'
+      selectedAppearanceCategory = savedEditorUiState.category or 0
+      selectedReplacementSpriteId = savedEditorUiState.replacementSpriteId > 0 and
+         savedEditorUiState.replacementSpriteId or nil
+      selectedCreateSpriteId = savedEditorUiState.createSpriteId > 0 and savedEditorUiState.createSpriteId or nil
+   else
+      currentPage = 'editor'
+   end
+   restoringEditorUiState = restoreEditorState == true
+   local created = createWindow(restoreEditorState == true)
+   restoringEditorUiState = false
+   if not created then
+      return false
+   end
    window:recursiveGetChildById('versionComboBox'):setCurrentOptionByData(version, true)
    setStatus(tr('Working copy ready for client %s.', formatClientVersion(version)))
+   if persistEditorUiState then
+      persistEditorUiState(true)
+   end
    return true
 end
 
@@ -3342,6 +3790,9 @@ function setImportSection(section)
       end
    end
    updateSpriteReplacementTarget()
+   if persistEditorUiState then
+      persistEditorUiState()
+   end
 end
 
 function importAppearanceBundle(forceDiscard)
@@ -3415,6 +3866,9 @@ function setReplaceMode(mode)
    end
    currentReplaceMode = mode
    updateSpriteReplacementTarget()
+   if persistEditorUiState then
+      persistEditorUiState()
+   end
 end
 
 function setNewAppearanceSourceMode(mode)
@@ -3423,6 +3877,9 @@ function setNewAppearanceSourceMode(mode)
    end
    currentNewAppearanceSourceMode = mode
    updateSpriteReplacementTarget()
+   if persistEditorUiState then
+      persistEditorUiState()
+   end
 end
 
 function duplicateSelectedAppearance(forceDiscard)
@@ -3704,7 +4161,7 @@ function zoomOut()
    if canvas then canvas:zoomOut() end
 end
 
-local function getSelectedSpriteReference()
+getSelectedSpriteReference = function()
    local group = currentPreviewGroup()
    if not group or not selectedAppearanceId or not selectedSpriteId then
       setStatus(tr('Select a linked sprite frame before replacing it.'))
@@ -3831,7 +4288,7 @@ importPngAsNewSprite = function()
    if not refreshAfterSpriteReferenceChange(category, appearanceId, previewSelection) then
       return
    end
-   setStatus(tr('PNG imported as sprite %d and linked to this frame.', spriteId))
+   setStatus(tr('PNG imported as sprite %d and linked to this frame.', spriteId), true)
 end
 
 function replaceSprite(forceDiscard)
@@ -4109,7 +4566,7 @@ function createAppearance(forceDiscard)
    loadAppearanceRecord(category, appearanceId, true)
    selectSprite(spriteId)
    showEditorPage()
-   setStatus(tr('Created appearance %d with sprite %d.', appearanceId, spriteId))
+   setStatus(tr('Created appearance %d with sprite %d.', appearanceId, spriteId), true)
 end
 
 function importPngFolder(forceDiscard)
@@ -4175,10 +4632,10 @@ function importPngFolder(forceDiscard)
       end
    end
    if firstId == math.huge then
-      setStatus(tr('%d sprites imported. They are ready in the Sprite ID picker.', importedCount))
+      setStatus(tr('%d sprites imported. They are ready in the Sprite ID picker.', importedCount), true)
    else
       setStatus(tr('%d sprites imported (IDs %d-%d). They are ready in the Sprite ID picker.',
-         importedCount, firstId, lastId))
+         importedCount, firstId, lastId), true)
    end
 end
 
@@ -4254,7 +4711,7 @@ function importSpriteSheet(forceDiscard)
       setStatus(tr('Imported %d sprites as IDs %d-%d; skipped %d fully transparent cells.',
          importedCount, firstId, lastId, skippedCount))
    else
-      setStatus(tr('Imported %d sprites as IDs %d-%d, in row-major order.', importedCount, firstId, lastId))
+      setStatus(tr('Imported %d sprites as IDs %d-%d, in row-major order.', importedCount, firstId, lastId), true)
    end
 end
 
@@ -4343,7 +4800,7 @@ function saveAppearanceProperties()
       return
    end
    restorePreviewSelection(previewSelection)
-   setAppearanceStatus(tr('Appearance %d saved to the work copy.', selectedAppearanceId))
+   setAppearanceStatus(tr('Appearance %d saved to the work copy.', selectedAppearanceId), true)
 end
 
 function exportWorkCopy(forceContinue, confirmed)
@@ -4374,7 +4831,7 @@ function exportWorkCopy(forceContinue, confirmed)
       return
    end
    if not activeVersion or g_game.isOnline() then
-      window:recursiveGetChildById('exportStatus'):setText(tr('Load an offline 15.x work copy before exporting.'))
+      setExportStatus(tr('Load an offline 15.x work copy before exporting.'))
       return
    end
    local isNewVersion = currentExportMode == 'new'
@@ -4389,18 +4846,17 @@ function exportWorkCopy(forceContinue, confirmed)
       local isAbsoluteDestination = destinationRoot:sub(1, 1) == '/' or destinationRoot:match('^%a:[/\\]') ~= nil or
          destinationRoot:match('^[/\\][/\\]') ~= nil
       if not isAbsoluteDestination then
-         window:recursiveGetChildById('exportStatus'):setText(tr('Choose an absolute destination folder.'))
+         setExportStatus(tr('Choose an absolute destination folder.'))
          return
       end
    end
    if isAppearanceExport and not selectedAppearanceId then
-      window:recursiveGetChildById('exportStatus'):setText(tr('Select an appearance in the list before exporting its bundle.'))
+      setExportStatus(tr('Select an appearance in the list before exporting its bundle.'))
       return
    end
    if isNewVersion and (not isSupportedAssetVersion(targetVersion) or targetVersion == activeVersion or
          getVersionDirectories()[targetVersion]) then
-      window:recursiveGetChildById('exportStatus'):setText(
-         tr('Choose an unused 15.x version supported by this client.'))
+      setExportStatus(tr('Choose an unused 15.x version supported by this client.'))
       return
    end
    if not confirmed then
@@ -4424,7 +4880,7 @@ function exportWorkCopy(forceContinue, confirmed)
          (isNewVersion and
             tr('Creates data/things/%d. Existing versions are never overwritten; source %s stays unchanged.',
                targetVersion, formatClientVersion(activeVersion)) or
-            tr('Replaces data/things/%d. The current package is backed up first.', activeVersion)))
+            tr('Replaces data/things/%d. Existing assets are backed up first; if none exist, the working copy is installed there.', activeVersion)))
       messageBox = displayGeneralBox(title, message, {
             { text = isAppearanceExport and tr('Export bundle') or
                (isFolderExport and tr('Copy assets') or
@@ -4438,13 +4894,13 @@ function exportWorkCopy(forceContinue, confirmed)
       local copied, result = pcall(g_spriteAppearances.exportWorkCopy, activeVersion, destinationRoot)
       if not copied then
          local errorMessage = getUserFacingError(result)
-         window:recursiveGetChildById('exportStatus'):setText(errorMessage)
+         setExportStatus(errorMessage)
          setStatus(errorMessage)
          return
       end
       local status = tr('Assets copied to %s. The installed version was not changed.', result)
-      window:recursiveGetChildById('exportStatus'):setText(status)
-      setStatus(tr('Work copy exported to %s.', result))
+      setExportStatus(status, true)
+      setStatus(tr('Work copy exported to %s.', result), true)
       return
    end
 
@@ -4453,13 +4909,13 @@ function exportWorkCopy(forceContinue, confirmed)
          selectedAppearanceCategory, selectedAppearanceId, destinationRoot)
       if not ok then
          local errorMessage = getUserFacingError(result)
-         window:recursiveGetChildById('exportStatus'):setText(errorMessage)
+         setExportStatus(errorMessage)
          setStatus(errorMessage)
          return
       end
       local status = tr('Appearance bundle exported to %s.', result)
-      window:recursiveGetChildById('exportStatus'):setText(status)
-      setStatus(status)
+      setExportStatus(status, true)
+      setStatus(status, true)
       return
    end
 
@@ -4479,25 +4935,27 @@ function exportWorkCopy(forceContinue, confirmed)
       local message = result.installed and
          tr('Assets were installed, but the working copy could not be remounted. Location: %s', details) or
          tr('%s The working copy could not be remounted.', getUserFacingError(result.error))
-      window:recursiveGetChildById('exportStatus'):setText(message)
+      setExportStatus(message)
       displayErrorBox(tr('Assets Editor'), message)
       return
    end
    if not result.installed then
-      window:recursiveGetChildById('exportStatus'):setText(getUserFacingError(result.error))
+      setExportStatus(getUserFacingError(result.error))
       return
    end
    if isNewVersion then
       local status = tr('Version %s installed. Select it in Assets version to load it.', formatClientVersion(targetVersion))
-      window:recursiveGetChildById('exportStatus'):setText(status)
-      setStatus(tr('Client version %s is available in data/things/%d.', formatClientVersion(targetVersion), targetVersion))
+      setExportStatus(status, true)
+      setStatus(tr('Client version %s is available in data/things/%d.', formatClientVersion(targetVersion), targetVersion), true)
       return
    end
 
    local backupPath = result.backup_path
    if not reloadAssets() then
-      local message = tr('Assets were installed, but the editor could not reload them. Backup: %s', backupPath)
-      window:recursiveGetChildById('exportStatus'):setText(message)
+      local message = backupPath and backupPath ~= '' and
+         tr('Assets were installed, but the editor could not reload them. Backup: %s', backupPath) or
+         tr('Assets were installed, but the editor could not reload them. No previous package existed to back up.')
+      setExportStatus(message)
       displayErrorBox(tr('Assets Editor'), message)
       return
    end
@@ -4506,9 +4964,11 @@ function exportWorkCopy(forceContinue, confirmed)
    if selectedAppearanceId then
       loadAppearanceRecord(selectedAppearanceCategory, selectedAppearanceId, true, true)
    end
-   local status = tr('Assets installed and reloaded. Backup: %s', backupPath)
-   window:recursiveGetChildById('exportStatus'):setText(status)
-   setStatus(tr('Client %s is installed and reloaded.', formatClientVersion(activeVersion)))
+   local status = backupPath and backupPath ~= '' and
+      tr('Assets installed and reloaded. Backup: %s', backupPath) or
+      tr('Assets installed and reloaded. No previous package existed to back up.')
+   setExportStatus(status, true)
+   setStatus(tr('Client %s is installed and reloaded.', formatClientVersion(activeVersion)), true)
 end
 
 function reloadPackage()
@@ -4573,6 +5033,9 @@ function requestClose(forceDiscard, pendingEditConfirmed)
             { text = tr('Keep editing'), callback = keepEditing },
          }, keepEditing, keepEditing)
       return
+   end
+   if persistEditorUiState then
+      persistEditorUiState(true)
    end
    if activeVersion then
       local released, err = releaseActiveWorkCopy()
