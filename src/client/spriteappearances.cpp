@@ -48,6 +48,7 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
@@ -198,7 +199,8 @@ std::string readSmallFile(const std::filesystem::path& path, const size_t maximu
     return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
 }
 
-std::filesystem::path findInstalledAssetPackage(const int version, const std::filesystem::path& workPackage)
+std::optional<std::filesystem::path> findInstalledAssetPackageIfPresent(
+    const int version, const std::filesystem::path& workPackage)
 {
     namespace fs = std::filesystem;
     std::error_code error;
@@ -206,36 +208,85 @@ std::filesystem::path findInstalledAssetPackage(const int version, const std::fi
     if (error)
         throw stdext::exception("unable to resolve the sprite editor work copy: {}", error.message());
 
-    for (const auto& searchRoot : g_resources.getSearchPaths()) {
-        const auto assetRoot = fs::path(searchRoot);
-        const auto package = assetRoot / "data" / "things" / std::to_string(version);
+    const auto inspectPackage = [&](const fs::path& assetRoot, const fs::path& package)
+        -> std::optional<fs::path> {
         const auto catalog = package / "catalog-content.json";
-        const auto status = fs::symlink_status(catalog, error);
+        const auto packageStatus = fs::symlink_status(package, error);
         if (error == std::errc::no_such_file_or_directory) {
             error.clear();
-            continue;
+            return std::nullopt;
         }
         if (error)
             throw stdext::exception("unable to inspect installed assets for client version {}: {}", version, error.message());
-        if (fs::is_symlink(status))
+        if (fs::is_symlink(packageStatus))
             throw stdext::exception("installed asset catalogs cannot be symbolic links");
-        if (!fs::is_regular_file(status))
-            continue;
+        if (!fs::is_directory(packageStatus))
+            return std::nullopt;
 
-        const auto packageStatus = fs::symlink_status(package, error);
-        if (error || fs::is_symlink(packageStatus) || !fs::is_directory(packageStatus))
-            throw stdext::exception("installed assets for client version {} were not found", version);
         ensureNoSymlinkPath(assetRoot, package);
         const auto installedPackage = fs::weakly_canonical(package, error);
         if (error)
             throw stdext::exception("unable to resolve installed assets: {}", error.message());
         if (installedPackage == normalizedWorkPackage)
-            continue;
+            return std::nullopt;
+
+        const auto catalogStatus = fs::symlink_status(catalog, error);
+        if (error == std::errc::no_such_file_or_directory)
+            throw stdext::exception("installed assets for client version {} are incomplete: catalog-content.json is missing", version);
+        if (error)
+            throw stdext::exception("unable to inspect installed assets for client version {}: {}", version, error.message());
+        if (fs::is_symlink(catalogStatus))
+            throw stdext::exception("installed asset catalogs cannot be symbolic links");
+        if (!fs::is_regular_file(catalogStatus))
+            throw stdext::exception("installed assets for client version {} are incomplete: catalog-content.json is missing", version);
 
         validateAssetDirectory(installedPackage);
         return installedPackage;
+    };
+
+    const auto resolvedCatalog = fs::path(g_resources.getRealPath(
+        fmt::format("/data/things/{}/catalog-content.json", version)));
+    if (fs::is_regular_file(resolvedCatalog)) {
+        const auto resolvedPackage = resolvedCatalog.parent_path();
+        const auto resolvedRoot = resolvedPackage.parent_path().parent_path().parent_path();
+        if (const auto installedPackage = inspectPackage(resolvedRoot, resolvedPackage))
+            return installedPackage;
     }
-    throw stdext::exception("installed assets for client version {} were not found", version);
+
+    const fs::path workDirectory(g_resources.getWorkDir());
+    const fs::path writeDirectory(g_resources.getWriteDir());
+    std::vector<fs::path> searchRoots;
+    bool workDirectoryAdded = false;
+    bool writeDirectoryAdded = false;
+    for (const auto& searchRoot : g_resources.getSearchPaths()) {
+        const fs::path root(searchRoot);
+        if (!workDirectoryAdded && !writeDirectory.empty() && root.lexically_normal() == writeDirectory.lexically_normal()) {
+            searchRoots.push_back(workDirectory);
+            workDirectoryAdded = true;
+        }
+        searchRoots.push_back(root);
+        if (!writeDirectory.empty() && root.lexically_normal() == writeDirectory.lexically_normal())
+            writeDirectoryAdded = true;
+    }
+    if (!workDirectoryAdded && !workDirectory.empty())
+        searchRoots.push_back(workDirectory);
+    if (!writeDirectoryAdded && !writeDirectory.empty())
+        searchRoots.push_back(writeDirectory);
+
+    for (const auto& assetRoot : searchRoots) {
+        const auto package = assetRoot / "data" / "things" / std::to_string(version);
+        if (const auto installedPackage = inspectPackage(assetRoot, package))
+            return installedPackage;
+    }
+    return std::nullopt;
+}
+
+std::filesystem::path findInstalledAssetPackage(const int version, const std::filesystem::path& workPackage)
+{
+    const auto installedPackage = findInstalledAssetPackageIfPresent(version, workPackage);
+    if (!installedPackage)
+        throw stdext::exception("installed assets for client version {} were not found", version);
+    return *installedPackage;
 }
 
 void verifyAssetCopy(const std::filesystem::path& source, const std::filesystem::path& copy)
@@ -497,37 +548,6 @@ void clearHistoryWorkCopy(const int version)
         throw stdext::exception("unable to inspect work copy history: {}", error.message());
     }
     workCopyHistory.erase(version);
-}
-
-std::filesystem::path createInstalledBackupPath(const std::filesystem::path& thingsDirectory, const int version)
-{
-    namespace fs = std::filesystem;
-    const auto backupDirectory = thingsDirectory / "backup";
-    std::error_code error;
-    fs::create_directories(backupDirectory, error);
-    if (error)
-        throw stdext::exception("unable to create the Things backup folder: {}", error.message());
-    ensureNoSymlinkPath(thingsDirectory, backupDirectory);
-
-    const auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
-    for (int suffix = 0; ; ++suffix) {
-        const auto name = suffix == 0 ? fmt::format("{}-{}", version, timestamp) :
-            fmt::format("{}-{}-{}", version, timestamp, suffix);
-        const auto backup = backupDirectory / name;
-        const auto status = fs::symlink_status(backup, error);
-        if (error == std::errc::no_such_file_or_directory) {
-            error.clear();
-            ensureNoSymlinkPath(thingsDirectory, backup);
-            return backup;
-        }
-        if (error)
-            throw stdext::exception("unable to validate the Things backup path: {}", error.message());
-        if (!fs::exists(status)) {
-            ensureNoSymlinkPath(thingsDirectory, backup);
-            return backup;
-        }
-    }
 }
 
 ImagePtr loadPreparedSprite(const std::string& fileName, const Size& expectedSize = Size(32, 32))
@@ -1510,8 +1530,10 @@ std::string SpriteAppearances::getInstalledAssetBackups(const int version)
 {
     namespace fs = std::filesystem;
     const auto workPackage = getEditorWorkPackagePath(version);
-    const auto installedPackage = findInstalledAssetPackage(version, workPackage);
-    const auto thingsDirectory = installedPackage.parent_path();
+    const auto installedPackage = findInstalledAssetPackageIfPresent(version, workPackage);
+    if (!installedPackage)
+        return "[]";
+    const auto thingsDirectory = installedPackage->parent_path();
     const auto backupDirectory = thingsDirectory / "backup";
     ensureNoSymlinkPath(thingsDirectory, backupDirectory);
     std::error_code error;
@@ -1700,11 +1722,16 @@ std::string SpriteAppearances::restoreInstalledAssetBackup(const int version, co
     validateAssetDirectory(installedPackage);
 
     const auto temporaryPackage = fs::path(installedPackage.generic_string() + ".sprite-editor.restore.tmp");
+    const auto rollbackPackage = fs::path(installedPackage.generic_string() + ".sprite-editor.restore-rollback.tmp");
     ensureNoSymlinkPath(thingsDirectory.parent_path(), temporaryPackage);
+    ensureNoSymlinkPath(thingsDirectory.parent_path(), rollbackPackage);
     std::error_code error;
     if (fs::exists(temporaryPackage, error) || error)
         throw stdext::exception("a previous asset restore left a temporary folder; inspect '{}' before retrying",
                                 temporaryPackage.generic_string());
+    if (fs::exists(rollbackPackage, error) || error)
+        throw stdext::exception("a previous asset restore left a rollback folder; inspect '{}' before retrying",
+                                rollbackPackage.generic_string());
     try {
         copyAssetDirectory(selectedBackup, temporaryPackage);
         verifyAssetCopy(selectedBackup, temporaryPackage);
@@ -1713,26 +1740,29 @@ std::string SpriteAppearances::restoreInstalledAssetBackup(const int version, co
         throw;
     }
 
-    const auto safetyBackup = createInstalledBackupPath(thingsDirectory, version);
     try {
-        fs::rename(installedPackage, safetyBackup);
+        fs::rename(installedPackage, rollbackPackage);
     } catch (const std::exception& exception) {
         fs::remove_all(temporaryPackage, error);
-        throw stdext::exception("unable to preserve the current installed assets: {}", exception.what());
+        throw stdext::exception("unable to prepare the installed assets for restore: {}", exception.what());
     }
     try {
         fs::rename(temporaryPackage, installedPackage);
     } catch (const std::exception& exception) {
         try {
-            fs::rename(safetyBackup, installedPackage);
+            fs::rename(rollbackPackage, installedPackage);
         } catch (const std::exception& rollbackError) {
-            throw stdext::exception("asset restore failed and rollback could not recover the current package; backup remains at '{}': {}",
-                                    safetyBackup.generic_string(), rollbackError.what());
+            throw stdext::exception("asset restore failed and rollback could not recover the current package; it remains at '{}': {}",
+                                    rollbackPackage.generic_string(), rollbackError.what());
         }
         fs::remove_all(temporaryPackage, error);
         throw stdext::exception("asset restore failed; the current package was restored: {}", exception.what());
     }
-    return safetyBackup.generic_string();
+    fs::remove_all(rollbackPackage, error);
+    if (error)
+        g_logger.warning("Unable to remove temporary asset restore rollback folder '{}': {}",
+                         rollbackPackage.generic_string(), error.message());
+    return {};
 }
 
 std::string SpriteAppearances::exportWorkCopy(const int version, const std::string& destination)
@@ -1823,9 +1853,32 @@ std::string SpriteAppearances::installWorkCopy(const int version)
         throw stdext::exception("the selected sprite editor work copy is incomplete");
     validateAssetDirectory(workPackage);
 
-    const auto installedPackage = findInstalledAssetPackage(version, workPackage);
-    validateAssetDirectory(installedPackage);
-    const auto thingsDirectory = installedPackage.parent_path();
+    const auto existingInstalledPackage = findInstalledAssetPackageIfPresent(version, workPackage);
+    const bool hasInstalledPackage = existingInstalledPackage.has_value();
+    fs::path installedPackage;
+    fs::path thingsDirectory;
+    fs::path writableRoot;
+    if (existingInstalledPackage) {
+        installedPackage = *existingInstalledPackage;
+        validateAssetDirectory(installedPackage);
+        thingsDirectory = installedPackage.parent_path();
+    } else {
+        const fs::path writeDirectory(g_resources.getWriteDir());
+        if (writeDirectory.empty())
+            throw stdext::exception("the client has no writable user directory");
+        writableRoot = fs::weakly_canonical(writeDirectory);
+        thingsDirectory = writableRoot / "data" / "things";
+        installedPackage = thingsDirectory / std::to_string(version);
+        ensureNoSymlinkPath(writableRoot, installedPackage);
+
+        std::error_code destinationError;
+        const auto destinationStatus = fs::symlink_status(installedPackage, destinationError);
+        if (!destinationError && fs::exists(destinationStatus))
+            throw stdext::exception("the data/things/{} folder exists but its installed assets could not be verified; refusing to overwrite it", version);
+        if (destinationError != std::errc::no_such_file_or_directory && destinationError)
+            throw stdext::exception("unable to inspect the asset install destination: {}", destinationError.message());
+    }
+
     const auto backupDirectory = thingsDirectory / "backup";
     ensureNoSymlinkPath(thingsDirectory, backupDirectory);
 
@@ -1848,51 +1901,70 @@ std::string SpriteAppearances::installWorkCopy(const int version)
 
     fs::path backupPath;
     try {
-        fs::create_directories(backupDirectory, error);
-        if (error)
-            throw stdext::exception("unable to create the Things backup folder: {}", error.message());
-        ensureNoSymlinkPath(thingsDirectory, backupDirectory);
-
-        const auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        for (int suffix = 0; ; ++suffix) {
-            backupPath = backupDirectory / (suffix == 0 ?
-                fmt::format("{}-{}", version, timestamp) : fmt::format("{}-{}-{}", version, timestamp, suffix));
-            const auto backupStatus = fs::symlink_status(backupPath, error);
-            if (error == std::errc::no_such_file_or_directory) {
-                error.clear();
-                break;
-            }
+        if (hasInstalledPackage) {
+            fs::create_directories(backupDirectory, error);
             if (error)
-                throw stdext::exception("unable to validate the Things backup path: {}", error.message());
-            if (!fs::exists(backupStatus))
-                break;
+                throw stdext::exception("unable to create the Things backup folder: {}", error.message());
+            ensureNoSymlinkPath(thingsDirectory, backupDirectory);
+
+            const auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            for (int suffix = 0; ; ++suffix) {
+                backupPath = backupDirectory / (suffix == 0 ?
+                    fmt::format("{}-{}", version, timestamp) : fmt::format("{}-{}-{}", version, timestamp, suffix));
+                const auto backupStatus = fs::symlink_status(backupPath, error);
+                if (error == std::errc::no_such_file_or_directory) {
+                    error.clear();
+                    break;
+                }
+                if (error)
+                    throw stdext::exception("unable to validate the Things backup path: {}", error.message());
+                if (!fs::exists(backupStatus))
+                    break;
+            }
+            ensureNoSymlinkPath(thingsDirectory, backupPath);
+        } else {
+            fs::create_directories(thingsDirectory, error);
+            if (error)
+                throw stdext::exception("unable to create the Things folder: {}", error.message());
+            ensureNoSymlinkPath(writableRoot, installedPackage);
+
+            const auto destinationStatus = fs::symlink_status(installedPackage, error);
+            if (!error && fs::exists(destinationStatus))
+                throw stdext::exception("the asset install destination appeared while exporting; no existing files were replaced");
+            if (error != std::errc::no_such_file_or_directory && error)
+                throw stdext::exception("unable to revalidate the asset install destination: {}", error.message());
         }
-        ensureNoSymlinkPath(thingsDirectory, backupPath);
     } catch (...) {
         std::error_code cleanupError;
         fs::remove_all(temporaryPackage, cleanupError);
         throw;
     }
 
-    try {
-        fs::rename(installedPackage, backupPath);
-    } catch (const std::exception& exception) {
-        fs::remove_all(temporaryPackage, error);
-        throw stdext::exception("unable to move the current asset package to backup: {}", exception.what());
+    if (hasInstalledPackage) {
+        try {
+            fs::rename(installedPackage, backupPath);
+        } catch (const std::exception& exception) {
+            fs::remove_all(temporaryPackage, error);
+            throw stdext::exception("unable to move the current asset package to backup: {}", exception.what());
+        }
     }
 
     try {
         fs::rename(temporaryPackage, installedPackage);
     } catch (const std::exception& exception) {
-        try {
-            fs::rename(backupPath, installedPackage);
-        } catch (const std::exception& rollbackError) {
-            throw stdext::exception("asset export failed and rollback could not restore the original package; backup remains at '{}': {}",
-                backupPath.generic_string(), rollbackError.what());
+        if (hasInstalledPackage) {
+            try {
+                fs::rename(backupPath, installedPackage);
+            } catch (const std::exception& rollbackError) {
+                throw stdext::exception("asset export failed and rollback could not restore the original package; backup remains at '{}': {}",
+                    backupPath.generic_string(), rollbackError.what());
+            }
         }
         fs::remove_all(temporaryPackage, error);
-        throw stdext::exception("asset export failed; the original package was restored: {}", exception.what());
+        if (hasInstalledPackage)
+            throw stdext::exception("asset export failed; the original package was restored: {}", exception.what());
+        throw stdext::exception("asset export failed; no previous package was changed: {}", exception.what());
     }
 
     return backupPath.generic_string();
