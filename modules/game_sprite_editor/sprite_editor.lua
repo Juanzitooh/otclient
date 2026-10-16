@@ -156,7 +156,10 @@ local function getSpritePickerWidget(name)
       return nil
    end
    local section = currentImportSection
-   if name:sub(1, 7) == 'create_' then
+   if name:sub(1, 8) == 'replace_' then
+      section = 'replace'
+      name = name:sub(9)
+   elseif name:sub(1, 7) == 'create_' then
       section = 'create'
       name = name:sub(8)
    end

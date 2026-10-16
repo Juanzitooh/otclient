@@ -277,16 +277,20 @@ function SpritePicker:attach_window()
       end, 120)
    end
 
-   for _, name in ipairs({ 'search', 'create_search' }) do
+   for _, name in ipairs({ 'replace_search', 'create_search' }) do
       local widget = self.callbacks.get_widget(name)
-      widget.onTextChange = schedule_filter
+      if widget then
+         widget.onTextChange = schedule_filter
+      end
    end
-   for _, name in ipairs({ 'list', 'create_list' }) do
+   for _, name in ipairs({ 'replace_list', 'create_list' }) do
       local widget = self.callbacks.get_widget(name)
-      widget.onScrollChange = function(_, offset)
-         self:render_rows(offset.y)
-         if self.callbacks.on_scroll_change then
-            self.callbacks.on_scroll_change(offset)
+      if widget then
+         widget.onScrollChange = function(_, offset)
+            self:render_rows(offset.y)
+            if self.callbacks.on_scroll_change then
+               self.callbacks.on_scroll_change(offset)
+            end
          end
       end
    end
