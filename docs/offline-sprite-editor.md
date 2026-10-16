@@ -16,7 +16,7 @@ Choose a category and appearance from the left panel. The center preview shows t
 
 For item appearances, **Values** exposes typed scalar values, enum selections, optional values, and repeated enum choices used by fields such as Market profession restrictions. Clearing an optional value removes it from the working copy. Market and Cyclopedia metadata stay in the appearance flags data; they are not written to legacy `.dat`/`.spr` files.
 
-Use **Duplicate** to create a new ID from the selected appearance, or **Create** to make one in the chosen category from a sprite ID or PNG. **Delete** removes only the selected appearance record from the working copy and keeps all sprite data. Reloading the installed assets discards these edits.
+Use **Copy** to create a new ID from the selected appearance, or **New** (Import > **Create**) to make one in the chosen category from a sprite ID or PNG. **Delete** removes only the selected appearance record from the working copy and keeps all sprite data. Reloading the installed assets discards these edits.
 
 On the Import page, replace the selected frame with another sprite ID by selecting or dragging a sprite from the right panel onto the preview. To import artwork, choose a PNG file and import it; the editor creates a sprite ID and links it to the selected frame. The file browser opens in `data/things/pngs/` by default, and also supports navigating to another folder. PNGs placed in `data/things/pngs/` are ignored by Git.
 
@@ -34,7 +34,7 @@ When the editor closes, it unmounts the working copy and restores the installed 
 
 ## Edit history and recovery
 
-Undo and Redo revert edits in the active working copy. The editor also records portable edit metadata and before/after sprite images in `asset-editor-history.json` inside that package. The History page lists installed backups newest first and shows the recorded changes when available. Restoring a selected backup first preserves the currently installed package as a new safety backup.
+Undo and Redo revert edits in the active working copy. The editor also records portable edit metadata and before/after sprite images in `asset-editor-history.json` inside that package. The History page lists recorded edits. The **Backups** tab on the Export page lists installed backups newest first and shows their recorded changes when available. Restoring a selected backup does not create another backup.
 
 ## Manual validation for contributors
 
