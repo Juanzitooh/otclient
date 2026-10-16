@@ -360,7 +360,7 @@ Panel
 
     Label
       id: spriteSheetHelpLabel
-      !text: tr('Split a regular PNG grid into individual sprite IDs. Cells are read left to right, then top to bottom; every cell is imported, including transparent ones.')
+      !text: tr('Cells are imported left to right, then top to bottom. Transparent cells are kept unless Skip empty is checked.')
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: prev.bottom
@@ -463,7 +463,7 @@ Panel
 
     Label
       id: spriteSheetHintLabel
-      !text: tr('Cells are numbered left to right, then top to bottom. Last cell 0 means the rest of the sheet; at most 64 cells per import.')
+      !text: tr('Cells are numbered left to right, top to bottom. Last cell 0 imports the rest (max 64).')
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: spriteSheetFirstCell.bottom
