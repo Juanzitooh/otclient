@@ -360,7 +360,7 @@ Panel
 
     Label
       id: spriteSheetHelpLabel
-      !text: tr('Cells are imported left to right, then top to bottom. Transparent cells are kept unless Skip empty is checked.')
+      !text: tr('Import a PNG grid as sprite IDs, left to right and top to bottom. Transparent cells are kept unless Skip empty is checked.')
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: prev.bottom
