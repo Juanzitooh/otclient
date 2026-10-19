@@ -17,19 +17,42 @@ três variantes vão para `windows-variants/` para teste manual. O manifesto do
 launcher ainda publica um único alvo Windows x64; as variantes x86 não são
 selecionadas pelo launcher.
 
+## Preparar uma VM nova
+
+Instale o Windows na VM uma vez e clone o checkout `otclient-next` dentro do
+disco virtual. Abra um Prompt de Comando nessa cópia e execute:
+
+```bat
+scripts\setup-windows-build.bat
+```
+
+Na primeira execução, o script baixa o instalador oficial do Visual Studio
+Build Tools 2026 e instala MSVC x86/x64, MSBuild e Windows SDK pela configuração
+versionada em `scripts/windows-build.vsconfig`. O instalador pode solicitar
+permissão de administrador e reinicialização. Depois, o script chama
+`build-windows.bat`, que baixa e inicializa o vcpkg se necessário e compila as
+quatro variantes. Em execuções seguintes, ele detecta as ferramentas instaladas
+e segue direto ao build. Git for Windows é requisito porque o checkout e o
+bootstrap do vcpkg usam Git.
+
+Esse fluxo prepara as ferramentas dentro de uma VM Windows existente; não
+cria a VM, instala o Windows nem configura o hipervisor. A instalação do Windows
+e o primeiro acesso à VM continuam sendo uma etapa única manual.
+
 ## Requisitos
 
-Instale uma vez o Visual Studio 2026 com o workload **Desktop development with
-C++**, ferramentas MSVC x86/x64 e Windows SDK. O script localiza a instalação
-por `vswhere`, prepara o ambiente de compilação, baixa e inicializa o vcpkg se
-necessário e deixa o MSBuild instalar as dependências declaradas pelo projeto.
-Ele não instala o Visual Studio nem altera variáveis globais do Windows.
+Use Windows 11 64-bit com virtualização habilitada e espaço livre para Windows,
+Build Tools, dependências do vcpkg, checkout e saídas dos quatro pacotes. Um
+disco virtual de 100 GB pode ficar apertado; não mantenha cópias extras de
+builds e caches no SSD da VM. A solução compila em sequência com no máximo dois
+jobs do MSBuild para limitar o uso de memória.
 
 Use uma cópia do checkout dentro do disco virtual dedicado à compilação. A
 solução guarda objetos e dependências compiladas junto ao checkout em
 `vc18/` e `vcpkg_installed/`; o vcpkg também mantém seus pacotes no diretório
-apontado por `VCPKG_ROOT`. Uma pasta compartilhada do host pode funcionar, mas
-fica sujeita à velocidade do hipervisor e do compartilhamento.
+apontado por `VCPKG_ROOT`. Uma pasta compartilhada do host pode funcionar para
+artefatos finais, mas fica sujeita à velocidade do hipervisor e do
+compartilhamento. Prefira compilar dentro da VM e transferir apenas o resultado.
 
 ## Execução
 
