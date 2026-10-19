@@ -133,6 +133,15 @@ The standalone config asset is refreshed on each APK start, including upgrades
 that already have `game_data/init.lua` extracted. Leave both URLs empty until a
 controlled feed is available; the corresponding updater stays disabled.
 
+When either distribution package is configured with its incremental client
+assets feed, modern versioned content (1281+) is omitted from that package.
+The desktop feed generator and Android `data.zip` keep shared runtime files,
+while sprites and audio are fetched before login into the standard paths above.
+Android packages built without feed URLs retain those files as an offline
+fallback. `game_things` defers its missing-assets dialog and version reset only
+when the modern asset updater is enabled; the login flow then downloads,
+verifies, and reloads the assets before connecting.
+
 ## Maintenance Checklist
 
 When changing this system, validate:
