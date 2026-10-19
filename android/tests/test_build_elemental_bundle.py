@@ -23,6 +23,7 @@ class ConfigureServerInitTests(unittest.TestCase):
         self.assertIn("port = 18443,", result)
         self.assertIn("httpLogin = false,", result)
         self.assertNotIn(build_elemental_bundle.DEFAULT_LOCAL_LOGIN_URL, result)
+        self.assertNotIn("ELEMENTAL_LOCAL_TEST", result)
 
     def test_https_url_without_explicit_port_uses_443(self):
         endpoint, port = build_elemental_bundle.parse_beta_login_url(
@@ -41,7 +42,9 @@ class ConfigureServerInitTests(unittest.TestCase):
                 without_default, "https://localhost/beta/v1/login", 443
             )
 
-        duplicated = self.init_lua + self.init_lua[self.init_lua.index("[\"http://127.0.0.1:8080/elemental/login\"]"):]
+        local_entry_match = build_elemental_bundle.SERVER_INIT_ENTRY.search(self.init_lua)
+        self.assertIsNotNone(local_entry_match)
+        duplicated = self.init_lua + local_entry_match.group()
         with self.assertRaises(ValueError):
             build_elemental_bundle.configure_server_init(
                 duplicated, "https://localhost/beta/v1/login", 443

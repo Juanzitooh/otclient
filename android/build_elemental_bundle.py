@@ -13,11 +13,14 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "android/app/src/main/assets/data.zip"
 FORBIDDEN_SUFFIXES = {".env", ".jks", ".key", ".keystore", ".p12", ".pem"}
-DEFAULT_LOCAL_LOGIN_URL = "http://127.0.0.1:8080/elemental/login"
+DEFAULT_LOCAL_LOGIN_URL = "http://127.0.0.1:8088/login"
 SERVER_INIT_ENTRY = re.compile(
-    r'(?P<indent>^[ \t]*)\["http://127\.0\.0\.1:8080/elemental/login"\][ \t]*=[ \t]*\{\n'
+    r'(?P<indent>^[ \t]*)\["http://127\.0\.0\.1:8088/login"\][ \t]*=[ \t]*\{\n'
     r'(?P<fields>.*?)^[ \t]*\},',
     re.MULTILINE | re.DOTALL,
+)
+LOCAL_TEST_OVERRIDE = re.compile(
+    r'(?ms)^if os\.getenv\("ELEMENTAL_LOCAL_TEST"\) == "1" then\n.*?^end[ \t]*\n'
 )
 
 
@@ -36,6 +39,11 @@ def parse_beta_login_url(login_url):
 
 
 def configure_server_init(init_lua, login_url, port):
+    local_test_overrides = list(LOCAL_TEST_OVERRIDE.finditer(init_lua))
+    if len(local_test_overrides) != 1:
+        raise ValueError("init.lua must contain exactly one local HTTP test override")
+    init_lua = LOCAL_TEST_OVERRIDE.sub("", init_lua, count=1)
+
     entries = list(SERVER_INIT_ENTRY.finditer(init_lua))
     if len(entries) != 1:
         raise ValueError("init.lua must contain exactly one default local beta login entry")
