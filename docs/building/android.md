@@ -45,7 +45,9 @@ With both channel manifest URLs configured, modern sprites and sounds are
 omitted from the archive and downloaded incrementally before login. Without
 URLs, the archive keeps those files for offline use. The release runbook
 documents how to pass the HTTPS URLs for a distributed test, beta, or release
-APK.
+APK. A remote test build also needs `ELEMENTAL_TEST_AUTH_URL`; the Android
+setup scripts pass it through to the packager and the shared password is never
+embedded in the APK.
 
 ## 6. Create Environment Variables:
 - `ANDROID_NDK_HOME` pointing to the Android NDK root folder (Ex.: `C:\Users\Administrator\AppData\Local\Android\Sdk\ndk\29.0.13599879`).

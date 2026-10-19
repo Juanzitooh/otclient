@@ -129,6 +129,8 @@ Desktop builds receive `ELEMENTAL_CHANNEL` and
 `ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL` from the launcher. Android builds use
 `scripts/package_android_data.py` to embed a channel-specific
 `elemental-distribution.lua` with both APK and client-assets manifest URLs.
+The internal remote `test` channel also embeds the HTTPS enrollment endpoint
+through `ELEMENTAL_TEST_AUTH_URL`; it never embeds the shared password.
 The standalone config asset is refreshed on each APK start, including upgrades
 that already have `game_data/init.lua` extracted. Leave both URLs empty until a
 controlled feed is available; the corresponding updater stays disabled.

@@ -19,10 +19,13 @@ export JAVA_HOME=/usr  # or path to JDK 17
 
 ## Quick build (automated)
 
-For a channel-specific APK, set both manifest URLs before packaging. If they
-are empty, the Android APK updater and client-assets updater stay disabled.
-Android builds are tied to one channel; create separate test, beta, and release
-APKs when those feeds are enabled.
+For a channel-specific APK, set `ELEMENTAL_ANDROID_CHANNEL` and both manifest
+URLs before packaging. If the URLs are empty, the Android APK updater and
+client-assets updater stay disabled. `test` uses
+`br.com.elementalmmo.client.test`; `beta` and `release` use
+`br.com.elementalmmo.client`, so beta can update in place to release. Keep one
+increasing `versionCode` sequence across beta and release. Test has a separate
+sequence and installs alongside them.
 
 ```bash
 export ELEMENTAL_ANDROID_CHANNEL=test
@@ -79,16 +82,34 @@ LuaJIT's build is a two-stage process: host tools (`minilua`, `buildvm`) run on 
 python3 scripts/package_android_data.py \
   --channel "$ELEMENTAL_ANDROID_CHANNEL" \
   --android-manifest-url "$ELEMENTAL_ANDROID_MANIFEST_URL" \
-  --client-assets-manifest-url "$ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL"
+  --client-assets-manifest-url "$ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL" \
+  --test-auth-url "${ELEMENTAL_TEST_AUTH_URL:-}"
 ```
 
 The bundle embeds those values in `elemental-distribution.lua`. Keep URLs on
 the same channel as the APK and use HTTPS for collaborator devices. HTTP is
 accepted only for loopback development fixtures. The output contains the
 complete `data`, `mods`, and `modules` trees; do not reuse a stale `data.zip`
-when changing channels.
+when changing channels. A remote `test` feed must also provide the shared-
+password enrollment endpoint with `--test-auth-url`; it must have the same
+HTTPS origin as the Android and assets manifests. The shared password is never
+embedded in the APK. The first feed access enrolls this installation and stores
+only its individual revocable token in the client settings.
 
 ### Step 3: Build with Gradle
+
+Every `assembleRelease` requires all four signing variables below and fails
+without them; release builds never fall back to Android's debug key. Use the
+same protected keystore, alias and passwords for test, beta and release. Keep
+the keystore outside Git and use a protected backup. Beta/release must preserve
+their shared `applicationId` and use increasing `versionCode` values.
+
+```bash
+export RELEASE_KEYSTORE=/private/path/elemental-signing.jks
+export RELEASE_KEYSTORE_PASSWORD=...
+export RELEASE_KEY_ALIAS=elemental
+export RELEASE_KEY_PASSWORD=...
+```
 
 ```bash
 cd android
@@ -101,6 +122,12 @@ chmod +x gradlew
 ```bash
 adb install android/app/build/outputs/apk/release/app-release.apk
 ```
+
+When a newer APK is installed, the client detects the new `versionCode` and
+refreshes the APK's Lua/OTUI bootstrap from `data.zip`. Sprite and sound files
+can still update incrementally from their separate feed; those assets do not
+require rebuilding the APK. Android always downloads a new APK in full and
+requires the user to confirm installation.
 
 ## Docker build
 
