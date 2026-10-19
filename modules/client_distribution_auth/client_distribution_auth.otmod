@@ -5,5 +5,5 @@ Module
   dependencies: [ corelib ]
   autoload: true
   scripts: [ client_distribution_auth ]
-  @onLoad: init()
-  @onUnload: terminate()
+  @onLoad: ClientDistributionAuth.init()
+  @onUnload: ClientDistributionAuth.terminate()

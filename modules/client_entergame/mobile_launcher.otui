@@ -22,11 +22,11 @@ ElementalMobileLauncher < UIWidget
 
   UIWidget
     id: mobileLauncherLogoMask
-    anchors.left: parent.horizontalCenter
+    anchors.left: parent.left
     anchors.top: parent.top
-    margin-left: -170
-    margin-top: 18
-    size: 0 86
+    margin-left: 36
+    margin-top: 8
+    size: 0 206
     clipping: true
     phantom: true
     focusable: false
@@ -35,36 +35,27 @@ ElementalMobileLauncher < UIWidget
       id: mobileLauncherLogo
       anchors.left: parent.left
       anchors.verticalCenter: parent.verticalCenter
-      size: 340 84
-      image-source: /images/brand/elemental-signature-tagline-dark.png
-      image-size: 340 84
+      size: 680 206
+      image-source: /images/brand/elemental-signature-dark.png
+      image-size: 680 206
       image-smooth: true
       phantom: true
       focusable: false
 
-  Label
-    id: mobileLauncherEyebrow
-    anchors.top: mobileLauncherLogoMask.bottom
-    anchors.horizontalCenter: parent.horizontalCenter
-    margin-top: 4
-    text: ELEMENTAL • SUA PRÓXIMA JORNADA
-    text-align: center
-    color: $elementalAmber
-    font: Verdana Bold-10px
-    text-auto-resize: true
-    phantom: true
-
-  Label
-    id: mobileLauncherTitle
-    anchors.top: mobileLauncherEyebrow.bottom
-    anchors.horizontalCenter: parent.horizontalCenter
-    margin-top: 4
-    text: Um mundo de possibilidades.
-    text-align: center
-    color: $elementalText
-    font: Verdana Bold-16px
-    text-auto-resize: true
-    phantom: true
+    Label
+      id: mobileLauncherSlogan
+      anchors.left: parent.left
+      anchors.top: parent.top
+      margin-left: 250
+      margin-top: 167
+      width: 430
+      height: 20
+      text: COLETE, CONSTRUA, LUTE E VIVA ESSA AVENTURA
+      text-align: left
+      color: $elementalText
+      font: Verdana Bold-13px
+      phantom: true
+      focusable: false
 
   Label
     id: mobileLauncherChannel
@@ -125,7 +116,7 @@ ElementalMobileLauncher < UIWidget
       anchors.right: mobileLauncherStatus.right
       anchors.top: mobileLauncherStatus.bottom
       margin-top: 4
-      text: Verificando sprites e áudio para esta versão.
+      text: Verificando sprites e audio para esta versao.
       text-align: left
       color: $elementalMuted
       font: verdana-10px-antialised

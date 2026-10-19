@@ -55,6 +55,7 @@ void AndroidManager::setAndroidManager(JNIEnv* env, jobject androidManager) {
     m_androidManagerJObject = jniEnv->NewGlobalRef(androidManager);
     m_midShowSoftKeyboard = jniEnv->GetMethodID(androidManagerJClass, "showSoftKeyboard", "()V");
     m_midHideSoftKeyboard = jniEnv->GetMethodID(androidManagerJClass, "hideSoftKeyboard", "()V");
+    m_midHideStartupSplash = jniEnv->GetMethodID(androidManagerJClass, "hideStartupSplash", "()V");
     m_midGetDisplayDensity = jniEnv->GetMethodID(androidManagerJClass, "getDisplayDensity", "()F");
     m_midShowInputPreview = jniEnv->GetMethodID(androidManagerJClass, "showInputPreview", "(Ljava/lang/String;IIII)V");
     m_midUpdateInputPreview = jniEnv->GetMethodID(androidManagerJClass, "updateInputPreview", "(Ljava/lang/String;)V");
@@ -77,6 +78,11 @@ void AndroidManager::showKeyboardSoft() {
 void AndroidManager::hideKeyboard() {
     JNIEnv* env = getJNIEnv();
     env->CallVoidMethod(m_androidManagerJObject, m_midHideSoftKeyboard);
+}
+
+void AndroidManager::hideStartupSplash() {
+    JNIEnv* env = getJNIEnv();
+    env->CallVoidMethod(m_androidManagerJObject, m_midHideStartupSplash);
 }
 
 namespace {

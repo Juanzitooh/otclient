@@ -1,33 +1,19 @@
 MobileLauncher = {}
 
 local SLIDES = {
-    {
-        image = '/images/brand/elemental-world.png',
-        eyebrow = 'ELEMENTAL • SUA PRÓXIMA JORNADA',
-        title = 'Um mundo de possibilidades.'
-    },
-    {
-        image = '/images/brand/elemental-client-login.png',
-        eyebrow = 'ENTRE NO MUNDO ELEMENTAL',
-        title = 'Sua jornada começa aqui.'
-    },
-    {
-        image = '/images/brand/elemental-world.png',
-        eyebrow = 'VIVA ESSA AVENTURA',
-        title = 'Descubra seu elemento.'
-    }
+    { image = '/images/brand/elemental-world.png' },
+    { image = '/images/brand/elemental-carousel-exploration.png' },
+    { image = '/images/brand/elemental-carousel-forge.png' }
 }
 
 local ASSET_CLIENT_VERSION = 1281
-local LOGO_REVEAL_WIDTH = 340
-local LOGO_REVEAL_STEP = 5
+local LOGO_REVEAL_WIDTH = 680
+local LOGO_REVEAL_STEP = 10
 local LOGO_REVEAL_INTERVAL = 25
 local CAROUSEL_INTERVAL = 8000
 
 local window
 local artwork
-local eyebrow
-local title
 local statusLabel
 local detailLabel
 local progressBar
@@ -120,7 +106,7 @@ local function setChannelAndVersion()
         channelWidget:setText(channelLabels[channel] or string.upper(channel))
     end
     if versionWidget and g_android then
-        versionWidget:setText('ANDROID • v' .. tostring(g_android.getVersionCode()))
+        versionWidget:setText('ANDROID | v' .. tostring(g_android.getVersionCode()))
     end
 end
 
@@ -157,8 +143,6 @@ function MobileLauncher.setSlide(index)
             return
         end
         artwork:setImageSource(SLIDES[slideIndex].image)
-        eyebrow:setText(SLIDES[slideIndex].eyebrow)
-        title:setText(SLIDES[slideIndex].title)
         g_effects.fadeIn(artwork, 420)
     end, 230)
 end
@@ -224,31 +208,31 @@ local function checkAndroidApk()
     local updater = modules.client_launcher_android_update
     if not updater or not updater.checkForUpdate or not updater.setStatusListener then
         apkCheckComplete = true
-        setStatus('Conteúdo pronto para jogar', 'Não foi possível consultar atualizações do APK.', 100)
+        setStatus('Conteudo pronto para jogar', 'Nao foi possivel consultar atualizacoes do APK.', 100)
         updateAction()
         return
     end
 
-    setStatus('Conteúdo pronto para jogar', 'Verificando se o aplicativo também precisa atualizar.', 100)
+    setStatus('Conteudo pronto para jogar', 'Verificando se o aplicativo tambem precisa atualizar.', 100)
     updater.setStatusListener(function(message, percent, state)
         if not isActive() then
             return
         end
         if state == 'downloading' then
-            setStatus('Baixando atualização do aplicativo',
+            setStatus('Baixando atualizacao do aplicativo',
                 tostring(percent or 0) .. '% baixado', percent)
             setAction('BAIXANDO ' .. tostring(percent or 0) .. '%', false)
         elseif state == 'install_permission' then
-            setStatus('Permissão necessária para instalar', message)
-            setAction('PERMITIR INSTALAÇÃO', true)
+            setStatus('Permissao necessaria para instalar', message)
+            setAction('PERMITIR INSTALACAO', true)
         elseif state == 'installer_opened' then
-            setStatus('Confirme a atualização no Android', message)
-            setAction('CONTINUAR INSTALAÇÃO', true)
+            setStatus('Confirme a atualizacao no Android', message)
+            setAction('CONTINUAR INSTALACAO', true)
         elseif state == 'error' then
-            setStatus('Não foi possível concluir a atualização', message)
+            setStatus('Nao foi possivel concluir a atualizacao', message)
             updateAction()
         elseif state == 'notice' then
-            setStatus(message, 'Siga as instruções exibidas pelo Android.')
+            setStatus(message, 'Siga as instrucoes exibidas pelo Android.')
             if apkUpdateAvailable then
                 setAction('TENTAR APK NOVAMENTE', true)
             end
@@ -261,12 +245,12 @@ local function checkAndroidApk()
         apkCheckComplete = true
         apkUpdateAvailable = success and type(manifest) == 'table'
         if apkUpdateAvailable then
-            setStatus('Nova versão do aplicativo disponível',
-                string.format('A versão %s pode ser instalada agora.', tostring(manifest.versionCode)), 100)
+            setStatus('Nova versao do aplicativo disponivel',
+                string.format('A versao %s pode ser instalada agora.', tostring(manifest.versionCode)), 100)
         elseif success then
-            setStatus('Tudo pronto para jogar', 'Sprites, áudio e aplicativo estão atualizados.', 100)
+            setStatus('Tudo pronto para jogar', 'Sprites, audio e aplicativo estao atualizados.', 100)
         else
-            setStatus('Conteúdo pronto para jogar', message or 'Não foi possível verificar o APK; você pode iniciar a versão instalada.', 100)
+            setStatus('Conteudo pronto para jogar', message or 'Nao foi possivel verificar o APK; voce pode iniciar a versao instalada.', 100)
         end
         updateAction()
     end)
@@ -279,13 +263,13 @@ local function onAssetsReady(success, message, assetsChanged)
 
     if not success then
         assetCheckFailed = true
-        setStatus('Não foi possível preparar os assets', message or 'Verifique a conexão e tente novamente.')
+        setStatus('Nao foi possivel preparar os assets', message or 'Verifique a conexao e tente novamente.')
         updateAction()
         return
     end
     if not reloadClientAssets(clientVersion, assetsChanged) then
         assetCheckFailed = true
-        setStatus('Os assets foram baixados, mas não puderam ser carregados',
+        setStatus('Os assets foram baixados, mas nao puderam ser carregados',
             'Feche e abra o aplicativo novamente antes de jogar.')
         updateAction()
         return
@@ -293,7 +277,7 @@ local function onAssetsReady(success, message, assetsChanged)
 
     assetsReady = true
     assetCheckFailed = false
-    setStatus('Conteúdo do jogo pronto', 'Verificando a versão do aplicativo Android.', 100)
+    setStatus('Conteudo do jogo pronto', 'Verificando a versao do aplicativo Android.', 100)
     checkAndroidApk()
 end
 
@@ -316,7 +300,7 @@ local function beginAssetCheck()
        (modules.client_assets.isEnabled and not modules.client_assets.isEnabled()) then
         assetsReady = true
         EnterGame.markClientAssetsReady(clientVersion)
-        setStatus('Conteúdo do jogo pronto', 'Verificando a versão do aplicativo Android.', 100)
+        setStatus('Conteudo do jogo pronto', 'Verificando a versao do aplicativo Android.', 100)
         checkAndroidApk()
         return
     end
@@ -327,12 +311,12 @@ local function beginAssetCheck()
     if not shouldSync then
         assetsReady = true
         EnterGame.markClientAssetsReady(clientVersion)
-        setStatus('Conteúdo do jogo pronto', 'Verificando a versão do aplicativo Android.', 100)
+        setStatus('Conteudo do jogo pronto', 'Verificando a versao do aplicativo Android.', 100)
         checkAndroidApk()
         return
     end
 
-    setStatus('Atualizando sprites e áudio', 'Aguarde enquanto o conteúdo é preparado para jogar.')
+    setStatus('Atualizando sprites e audio', 'Aguarde enquanto o conteudo e preparado para jogar.')
     modules.client_assets.ensureClientVersion(clientVersion, onAssetsReady,
         function(status, percent)
             if not isActive() then
@@ -341,15 +325,15 @@ local function beginAssetCheck()
             local progressDetail = 'Conferindo e organizando os arquivos do jogo.'
             local statusText = string.lower(tostring(status or ''))
             if statusText:find('download', 1, true) then
-                progressDetail = 'Baixando sprites e áudio.'
+                progressDetail = 'Baixando sprites e audio.'
             elseif statusText:find('install', 1, true) or statusText:find('finish', 1, true) then
-                progressDetail = 'Instalando sprites e áudio.'
+                progressDetail = 'Instalando sprites e audio.'
             end
             if percent ~= nil then
-                progressDetail = string.format('%s • %d%%', progressDetail,
+                progressDetail = string.format('%s | %d%%', progressDetail,
                     math.floor(tonumber(percent) or 0))
             end
-            setStatus('Atualizando sprites e áudio', progressDetail, percent)
+            setStatus('Atualizando sprites e audio', progressDetail, percent)
         end)
 end
 
@@ -371,7 +355,7 @@ function MobileLauncher.onAction()
         if updater and updater.downloadAndInstall then
             updater.downloadAndInstall()
         else
-            setStatus('Atualização indisponível', 'Reabra o aplicativo e tente novamente.')
+            setStatus('Atualizacao indisponivel', 'Reabra o aplicativo e tente novamente.')
             setAction('INICIAR', true)
         end
         return
@@ -403,8 +387,6 @@ function MobileLauncher.show(continueCallback)
     EnterGame.hide()
 
     artwork = window:recursiveGetChildById('mobileLauncherArtwork')
-    eyebrow = window:recursiveGetChildById('mobileLauncherEyebrow')
-    title = window:recursiveGetChildById('mobileLauncherTitle')
     statusLabel = window:recursiveGetChildById('mobileLauncherStatus')
     detailLabel = window:recursiveGetChildById('mobileLauncherDetail')
     progressBar = window:recursiveGetChildById('mobileLauncherProgress')
@@ -422,6 +404,9 @@ function MobileLauncher.show(continueCallback)
     revealLogo()
     scheduleCarousel()
     beginAssetCheck()
+    if g_android and g_android.hideStartupSplash then
+        g_android.hideStartupSplash()
+    end
     return true
 end
 
@@ -453,8 +438,6 @@ function MobileLauncher.hide()
     end
     window = nil
     artwork = nil
-    eyebrow = nil
-    title = nil
     statusLabel = nil
     detailLabel = nil
     progressBar = nil

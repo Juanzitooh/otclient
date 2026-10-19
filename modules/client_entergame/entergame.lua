@@ -542,6 +542,9 @@ function EnterGame.firstShow()
     if MobileLauncher and MobileLauncher.show and MobileLauncher.show(continueFirstShow) then
         return
     end
+    if g_android and g_android.hideStartupSplash then
+        g_android.hideStartupSplash()
+    end
     continueFirstShow()
 end
 

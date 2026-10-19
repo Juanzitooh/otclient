@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
@@ -34,6 +35,7 @@ class AndroidManager(
     private var shouldShowPreview = false
     private var pendingPreviewText: String = ""
     private var imeHeight: Int = 0
+    private var startupSplash: ElementalStartupSplash? = null
 
     // Widget position from C++ (in game pixels, maps 1:1 to screen pixels)
     private var widgetX: Int = -1
@@ -66,6 +68,36 @@ class AndroidManager(
     /*
      * Methods called from JNI
      */
+
+    fun showStartupSplash(container: ViewGroup) {
+        if (startupSplash != null) return
+
+        val splash = ElementalStartupSplash(context)
+        startupSplash = splash
+        container.addView(
+            splash,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        splash.bringToFront()
+    }
+
+    fun hideStartupSplash() {
+        handler.postDelayed({
+            val splash = startupSplash ?: return@postDelayed
+            splash.animate()
+                .alpha(0f)
+                .setDuration(220)
+                .withEndAction {
+                    splash.release()
+                    (splash.parent as? ViewGroup)?.removeView(splash)
+                    if (startupSplash === splash) startupSplash = null
+                }
+                .start()
+        }, 160)
+    }
 
     fun showSoftKeyboard() {
         handler.post {

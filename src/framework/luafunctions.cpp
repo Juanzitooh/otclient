@@ -143,6 +143,7 @@ void Application::registerLuaFunctions()
 
 #ifdef ANDROID
     g_lua.registerSingletonClass("g_android");
+    g_lua.bindSingletonFunction("g_android", "hideStartupSplash", &AndroidManager::hideStartupSplash, &g_androidManager);
     g_lua.bindSingletonFunction("g_android", "getPackageName", &AndroidManager::getPackageName, &g_androidManager);
     g_lua.bindSingletonFunction("g_android", "getVersionCode", &AndroidManager::getVersionCode, &g_androidManager);
     g_lua.bindSingletonFunction("g_android", "getFileSize", &AndroidManager::getFileSize, &g_androidManager);
