@@ -160,3 +160,28 @@ docker rm otc-build
 
 ### 32-bit build fails with `gcc -m32`
 - Install `gcc-multilib`: `sudo apt install gcc-multilib g++-multilib`
+
+## Elemental closed beta
+
+The beta build defaults to channel `beta`, package ID
+`br.com.elementalmmo.client`, version `0.5.0-beta.1`, version code `1`, and
+ABI `arm64-v8a`. The beta-specific bundle builder keeps the server login on an
+HTTPS `/beta/v1/login` endpoint and removes the optional HTTP test override
+from the packaged `init.lua`.
+
+For a local phone test through USB, configure the isolated endpoint and use
+`adb reverse` for its ports; `localhost` on Android otherwise means the phone
+itself. Install only on a secondary device or isolated emulator where the main
+Elemental app is not installed. Do not replace the project owner's app/profile.
+
+The community 15.25 pack is included only when
+`ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS=1` is explicitly set. D047
+allows that pack only for invited collaborators during closed development; it
+does not approve a public beta. D033/T5.7 remains a separate no-go gate for
+external release, deployment, access, account creation, or invitations.
+
+Keep the signing keystore outside Git, load its passwords from protected local
+storage, and use alias `elemental-beta`. Do not add APKs to Git. Prepare and
+verify the local source-bound manifest through T5.14 before treating an APK as
+a candidate. A successful local build does not pass the device or gameplay
+checks in T5.7.4/T5.18.
