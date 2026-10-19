@@ -19,7 +19,18 @@ export JAVA_HOME=/usr  # or path to JDK 17
 
 ## Quick build (automated)
 
+For a channel-specific APK, set both manifest URLs before packaging. If they
+are empty, the Android APK updater and client-assets updater stay disabled.
+Android builds are tied to one channel; create separate test, beta, and release
+APKs when those feeds are enabled.
+
 ```bash
+export ELEMENTAL_ANDROID_CHANNEL=test
+export ELEMENTAL_ANDROID_MANIFEST_URL="https://feed.example/test/android-manifest.json"
+export ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL="https://feed.example/test/client-assets-manifest.json"
+export ELEMENTAL_ANDROID_VERSION_CODE=42
+export ELEMENTAL_ANDROID_VERSION_NAME=2026.10.19-test.1
+
 # 1. Run the setup script (builds LuaJIT, installs vcpkg deps, generates data.zip)
 ./setup_android_deps.sh
 
@@ -64,21 +75,18 @@ LuaJIT's build is a two-stage process: host tools (`minilua`, `buildvm`) run on 
 ### Step 2: Generate data.zip
 
 ```bash
-# Bundle game assets into data.zip for the APK
-mkdir -p android/app/src/main/assets
-cd /path/to/otclient
-python3 -c "
-import zipfile, os
-with zipfile.ZipFile('android/app/src/main/assets/data.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
-    for item in ['data', 'mods', 'modules']:
-        for root, dirs, files in os.walk(item):
-            for f in files:
-                zf.write(os.path.join(root, f))
-    for f in ['init.lua', 'otclientrc.lua']:
-        if os.path.exists(f):
-            zf.write(f)
-"
+# Rebuild data.zip when a channel or endpoint changes.
+python3 scripts/package_android_data.py \
+  --channel "$ELEMENTAL_ANDROID_CHANNEL" \
+  --android-manifest-url "$ELEMENTAL_ANDROID_MANIFEST_URL" \
+  --client-assets-manifest-url "$ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL"
 ```
+
+The bundle embeds those values in `elemental-distribution.lua`. Keep URLs on
+the same channel as the APK and use HTTPS for collaborator devices. HTTP is
+accepted only for loopback development fixtures. The output contains the
+complete `data`, `mods`, and `modules` trees; do not reuse a stale `data.zip`
+when changing channels.
 
 ### Step 3: Build with Gradle
 
