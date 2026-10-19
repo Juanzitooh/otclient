@@ -27,9 +27,10 @@ scripts\setup-windows-build.bat
 ```
 
 Na primeira execução, o script baixa o instalador oficial do Visual Studio
-Build Tools 2026 e instala MSVC x86/x64, MSBuild e Windows SDK pela configuração
-versionada em `scripts/windows-build.vsconfig`. O instalador pode solicitar
-permissão de administrador e reinicialização. Depois, o script chama
+Build Tools 2026, confere a assinatura Authenticode da Microsoft e instala
+MSVC x86/x64, MSBuild e Windows SDK pela configuração versionada em
+`scripts/windows-build.vsconfig`. O instalador pode solicitar permissão de
+administrador e reinicialização. Depois, o script chama
 `build-windows.bat`, que baixa e inicializa o vcpkg se necessário e compila as
 quatro variantes. Em execuções seguintes, ele detecta as ferramentas instaladas
 e segue direto ao build. Git for Windows é requisito porque o checkout e o
@@ -42,10 +43,20 @@ e o primeiro acesso à VM continuam sendo uma etapa única manual.
 ## Requisitos
 
 Use Windows 11 64-bit com virtualização habilitada e espaço livre para Windows,
-Build Tools, dependências do vcpkg, checkout e saídas dos quatro pacotes. Um
-disco virtual de 100 GB pode ficar apertado; não mantenha cópias extras de
-builds e caches no SSD da VM. A solução compila em sequência com no máximo dois
-jobs do MSBuild para limitar o uso de memória.
+Build Tools, dependências do vcpkg, checkout e saídas dos quatro pacotes. A
+Microsoft lista 64 GB como requisito mínimo de armazenamento para uma VM
+Windows 11 e 20–50 GB livres como típico para Visual Studio 2026; isso não é uma
+soma fixa de espaço usado, mas mostra que 100 GB pode ficar apertado depois de
+adicionar checkout, cache e pacotes. Para uma VM de build que mantenha esses
+arquivos, reserve aproximadamente 150–200 GB. Se só houver um SSD de 100 GB,
+use uma instalação mínima do Build Tools e transfira a saída para uma pasta
+compartilhada do host, sem guardar builds antigos na VM. Consulte os
+[requisitos do Windows 11](https://learn.microsoft.com/en-us/windows/whats-new/windows-11-requirements)
+e os [requisitos do Visual Studio 2026](https://learn.microsoft.com/en-US/VisualStudio/releases/2026/VS-system-requirements)
+antes de provisionar o disco.
+
+A solução compila em sequência com no máximo dois jobs do MSBuild para limitar
+o uso de memória.
 
 Use uma cópia do checkout dentro do disco virtual dedicado à compilação. A
 solução guarda objetos e dependências compiladas junto ao checkout em
