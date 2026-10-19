@@ -31,9 +31,122 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <set>
 #include <vector>
 
 AndroidManager g_androidManager;
+
+namespace {
+    bool isSafeBootstrapRelativePath(const std::filesystem::path& path) {
+        if (path.empty() || path.is_absolute() || path.has_root_path())
+            return false;
+
+        for (const auto& part : path) {
+            if (part == "." || part == "..")
+                return false;
+        }
+        return true;
+    }
+
+    bool isRuntimeManagedAssetPath(const std::filesystem::path& path) {
+        auto part = path.begin();
+        if (part == path.end() || *part != "data")
+            return false;
+
+        ++part;
+        return part != path.end() && (*part == "things" || *part == "sounds");
+    }
+
+    bool reconcileBootstrapFiles(
+            const std::filesystem::path& destinationPath,
+            const std::set<std::string>& previousFiles,
+            const std::set<std::string>& currentFiles,
+            const bool hasPreviousInventory,
+            std::string& errorMessage) {
+        const auto removeStaleFile = [&](const std::filesystem::path& relativePath) {
+            if (!isSafeBootstrapRelativePath(relativePath)) {
+                errorMessage = "Invalid path in Android bootstrap inventory: " + relativePath.string();
+                return false;
+            }
+            if (isRuntimeManagedAssetPath(relativePath))
+                return true;
+
+            std::error_code filesystemError;
+            if (!std::filesystem::remove(destinationPath / relativePath, filesystemError) && filesystemError) {
+                errorMessage = "Unable to remove stale Android bootstrap file " + relativePath.string() +
+                        ": " + filesystemError.message();
+                return false;
+            }
+            return true;
+        };
+
+        if (hasPreviousInventory) {
+            for (const auto& previousFile : previousFiles) {
+                if (currentFiles.find(previousFile) == currentFiles.end() &&
+                        !removeStaleFile(previousFile))
+                    return false;
+            }
+            return true;
+        }
+
+        for (const auto* directoryName : { "modules", "mods" }) {
+            const auto directory = destinationPath / directoryName;
+            std::error_code filesystemError;
+            if (!std::filesystem::exists(directory, filesystemError)) {
+                if (filesystemError) {
+                    errorMessage = std::string("Unable to inspect Android bootstrap directory ") + directoryName +
+                            ": " + filesystemError.message();
+                    return false;
+                }
+                continue;
+            }
+
+            std::filesystem::recursive_directory_iterator iterator(directory, filesystemError);
+            const std::filesystem::recursive_directory_iterator end;
+            while (!filesystemError && iterator != end) {
+                const auto entry = *iterator;
+                if (entry.is_regular_file(filesystemError) && entry.path().extension() == ".otmod") {
+                    const auto relativePath = entry.path().lexically_relative(destinationPath);
+                    const auto relativeName = relativePath.generic_string();
+                    if (currentFiles.find(relativeName) == currentFiles.end() &&
+                            !removeStaleFile(relativePath))
+                        return false;
+                }
+                iterator.increment(filesystemError);
+            }
+            if (filesystemError) {
+                errorMessage = std::string("Unable to inspect Android bootstrap directory ") + directoryName +
+                        ": " + filesystemError.message();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool writeBootstrapInventory(
+            const std::filesystem::path& inventoryPath,
+            const std::set<std::string>& files,
+            std::string& errorMessage) {
+        const auto temporaryPath = inventoryPath.string() + ".tmp";
+        {
+            std::ofstream inventoryFile(temporaryPath, std::ios::binary | std::ios::trunc);
+            for (const auto& file : files)
+                inventoryFile << file << '\n';
+            if (!inventoryFile) {
+                errorMessage = "Unable to write Android bootstrap inventory.";
+                return false;
+            }
+        }
+
+        std::error_code filesystemError;
+        std::filesystem::rename(temporaryPath, inventoryPath, filesystemError);
+        if (filesystemError) {
+            errorMessage = "Unable to activate Android bootstrap inventory: " + filesystemError.message();
+            return false;
+        }
+        return true;
+    }
+}
 
 AndroidManager::~AndroidManager() {
     if (m_app && m_app->activity && m_app->activity->vm && m_androidManagerJObject) {
@@ -179,6 +292,7 @@ void AndroidManager::unZipAssetData() {
     const std::filesystem::path destinationPath { destFolder };
     const std::filesystem::path initLua = destinationPath / "init.lua";
     const std::filesystem::path versionMarker = destinationPath / ".elemental-bootstrap-version";
+    const std::filesystem::path inventoryPath = destinationPath / ".elemental-bootstrap-files";
     const std::string version = std::to_string(getVersionCode());
     std::string extractedVersion;
     {
@@ -290,12 +404,51 @@ void AndroidManager::unZipAssetData() {
         std::filesystem::remove_all(stagingPath, filesystemError);
         return;
     }
+    const bool hasPreviousInventory = std::filesystem::exists(inventoryPath, filesystemError);
+    if (filesystemError) {
+        g_logger.fatal("Unable to inspect Android bootstrap inventory: {}", filesystemError.message());
+        std::filesystem::remove_all(stagingPath, filesystemError);
+        return;
+    }
+    std::set<std::string> previousFiles;
+    if (hasPreviousInventory) {
+        std::ifstream inventoryFile(inventoryPath, std::ios::binary);
+        if (!inventoryFile) {
+            g_logger.fatal("Unable to open Android bootstrap inventory.");
+            std::filesystem::remove_all(stagingPath, filesystemError);
+            return;
+        }
+        std::string relativeFile;
+        while (std::getline(inventoryFile, relativeFile)) {
+            if (relativeFile.empty())
+                continue;
+            if (!isSafeBootstrapRelativePath(relativeFile)) {
+                g_logger.fatal("Invalid path in Android bootstrap inventory: {}", relativeFile);
+                std::filesystem::remove_all(stagingPath, filesystemError);
+                return;
+            }
+            previousFiles.insert(relativeFile);
+        }
+        if (inventoryFile.bad()) {
+            g_logger.fatal("Unable to read Android bootstrap inventory.");
+            std::filesystem::remove_all(stagingPath, filesystemError);
+            return;
+        }
+    }
+
+    std::set<std::string> currentFiles;
     for (const auto& entry : std::filesystem::recursive_directory_iterator(stagingPath)) {
         const auto relativePath = entry.path().lexically_relative(stagingPath);
         const auto destination = destinationPath / relativePath;
         if (entry.is_directory()) {
             std::filesystem::create_directories(destination, filesystemError);
         } else if (entry.is_regular_file()) {
+            if (!isSafeBootstrapRelativePath(relativePath)) {
+                g_logger.fatal("Invalid Android bootstrap path: {}", relativePath.string());
+                std::filesystem::remove_all(stagingPath, filesystemError);
+                return;
+            }
+            currentFiles.insert(relativePath.generic_string());
             std::filesystem::create_directories(destination.parent_path(), filesystemError);
             if (!filesystemError) {
                 std::filesystem::copy_file(
@@ -310,6 +463,23 @@ void AndroidManager::unZipAssetData() {
             std::filesystem::remove_all(stagingPath, filesystemError);
             return;
         }
+    }
+
+    std::string reconcileError;
+    if (!reconcileBootstrapFiles(
+                destinationPath,
+                previousFiles,
+                currentFiles,
+                hasPreviousInventory,
+                reconcileError)) {
+        g_logger.fatal("Unable to reconcile Android bootstrap files: {}", reconcileError);
+        std::filesystem::remove_all(stagingPath, filesystemError);
+        return;
+    }
+    if (!writeBootstrapInventory(inventoryPath, currentFiles, reconcileError)) {
+        g_logger.fatal("Unable to activate Android bootstrap inventory: {}", reconcileError);
+        std::filesystem::remove_all(stagingPath, filesystemError);
+        return;
     }
 
     const auto temporaryMarker = versionMarker.string() + ".tmp";

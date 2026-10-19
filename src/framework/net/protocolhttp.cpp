@@ -389,11 +389,7 @@ int Http::postWithBearer(const std::string& url, const std::string& data, const 
 {
     if (!isValidBearerRequest(url, token))
         return -1;
-#ifdef __EMSCRIPTEN__
-    return -1;
-#else
     return postInternal(url, data, timeout, true, token);
-#endif
 }
 
 int Http::postSecure(const std::string& url, const std::string& data, int timeout)
