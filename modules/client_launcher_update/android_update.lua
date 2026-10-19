@@ -49,7 +49,7 @@ local function notify_user(message, state)
    if g_game.isOnline() and modules.game_textmessage then
       modules.game_textmessage.displayStatusMessage(message)
    else
-      displayInfoBox("Atualização do Elemental", message)
+      displayInfoBox("Atualizacao do Elemental", message)
    end
 end
 
@@ -216,18 +216,18 @@ local function open_android_installer()
    if result == 0 then
       pending_apk_path = nil
       pending_version_code = nil
-      notify_user("Não foi possível abrir o instalador Android para este APK.")
+      notify_user("Nao foi possivel abrir o instalador Android para este APK.")
       return
    end
 
    if result == 1 then
-      set_button_status("Permita instalar apps para o Elemental e toque novamente", "Permitir instalação", nil, "install_permission")
-      notify_user("Ative a permissão de instalar apps para o Elemental. Depois volte ao jogo e toque em Permitir instalação.", "install_permission")
+      set_button_status("Permita instalar apps para o Elemental e toque novamente", "Permitir instalacao", nil, "install_permission")
+      notify_user("Ative a permissao de instalar apps para o Elemental. Depois volte ao jogo e toque em Permitir instalacao.", "install_permission")
       return
    end
 
-   set_button_status("Confirme a atualização no instalador Android", "Confirmar instalação", nil, "installer_opened")
-   notify_user("APK validado. Siga as confirmações do Android para instalar a atualização.", "installer_opened")
+   set_button_status("Confirme a atualizacao no instalador Android", "Confirmar instalacao", nil, "installer_opened")
+   notify_user("APK validado. Siga as confirmacoes do Android para instalar a atualizacao.", "installer_opened")
 end
 
 local function wait_for_safe_logout()
@@ -243,13 +243,13 @@ local function wait_for_safe_logout()
 
    local player = g_game.getLocalPlayer()
    if not player then
-      set_button_status("Atualização pronta; aguardando o personagem", "Aguardando")
+      set_button_status("Atualizacao pronta; aguardando o personagem", "Aguardando")
       status_event = scheduleEvent(wait_for_safe_logout, CHECK_INTERVAL)
       return
    end
 
    if is_logout_blocked(player) then
-      set_button_status("Atualização pronta; aguardando o fim do bloqueio de combate", "Aguardando")
+      set_button_status("Atualizacao pronta; aguardando o fim do bloqueio de combate", "Aguardando")
       status_event = scheduleEvent(wait_for_safe_logout, CHECK_INTERVAL)
       return
    end
@@ -258,7 +258,7 @@ local function wait_for_safe_logout()
       logout_requested = true
       set_button_status("Combate encerrado; solicitando logout seguro", "Saindo...")
       if modules.game_textmessage then
-         modules.game_textmessage.displayStatusMessage("Atualização pronta. Encerrando a sessão com segurança.")
+         modules.game_textmessage.displayStatusMessage("Atualizacao pronta. Encerrando a sessao com seguranca.")
       end
       g_game.safeLogout()
    end
@@ -270,8 +270,8 @@ local function handle_download(path, _, err, manifest)
    download_operation = nil
    if err then
       log_error("APK download failed: " .. tostring(err))
-      set_button_status("Falha ao baixar a atualização")
-      notify_user("Não foi possível baixar a atualização Android.")
+      set_button_status("Falha ao baixar a atualizacao")
+      notify_user("Nao foi possivel baixar a atualizacao Android.")
       return
    end
 
@@ -284,7 +284,7 @@ local function handle_download(path, _, err, manifest)
       false
    ) then
       set_button_status("Falha ao preparar o APK")
-      notify_user("O APK foi baixado, mas não pôde ser preparado para instalação.")
+      notify_user("O APK foi baixado, mas nao pode ser preparado para instalacao.")
       return
    end
 
@@ -294,16 +294,16 @@ local function handle_download(path, _, err, manifest)
    local actual_sha256 = g_android.sha256File(apk_path):lower()
    if actual_size ~= manifest.apk.size or actual_sha256 ~= manifest.apk.sha256:lower() then
       log_error("Downloaded APK failed size or SHA-256 verification")
-      set_button_status("APK inválido; atualização cancelada")
-      notify_user("A validação do APK falhou. Nenhuma atualização foi instalada.")
+      set_button_status("APK invalido; atualizacao cancelada")
+      notify_user("A validacao do APK falhou. Nenhuma atualizacao foi instalada.")
       return
    end
 
    pending_apk_path = apk_path
    pending_version_code = manifest.versionCode
-   set_button_status("Atualização validada; aguardando logout seguro")
+   set_button_status("Atualizacao validada; aguardando logout seguro")
    if g_game.isOnline() then
-      notify_user("Atualização baixada. O jogo aguardará o fim do bloqueio de combate para sair com segurança.")
+      notify_user("Atualizacao baixada. O jogo aguardara o fim do bloqueio de combate para sair com seguranca.")
    end
    wait_for_safe_logout()
 end
@@ -311,32 +311,32 @@ end
 local function start_download(manifest)
    local apk_url = resolve_asset_url(update_config.androidManifestUrl, manifest.apk.url)
    if not apk_url or not is_allowed_url(apk_url) then
-      notify_user("O endereço do APK não usa uma origem segura.")
+      notify_user("O endereco do APK nao usa uma origem segura.")
       return
    end
 
    local current_version = g_android.getVersionCode()
    if manifest.applicationId ~= g_android.getPackageName() then
-      notify_user("Este APK pertence a outro pacote e não pode atualizar esta instalação.")
+      notify_user("Este APK pertence a outro pacote e nao pode atualizar esta instalacao.")
       return
    end
    if manifest.versionCode <= current_version then
       if manifest.versionCode == current_version then
-         notify_user("O Elemental já está atualizado neste canal.")
+         notify_user("O Elemental ja esta atualizado neste canal.")
       else
-         notify_user("O canal oferece uma versão anterior. A instalação foi bloqueada para evitar downgrade.")
+         notify_user("O canal oferece uma versao anterior. A instalacao foi bloqueada para evitar downgrade.")
       end
       return
    end
 
    if type(manifest.apk.size) ~= "number" or manifest.apk.size < 1 or
       not is_sha256(manifest.apk.sha256) then
-      notify_user("O manifesto do APK está incompleto ou inválido.")
+      notify_user("O manifesto do APK esta incompleto ou invalido.")
       return
    end
 
    last_progress_percent = -1
-   set_button_status("Baixando atualização Android: 0%", "Baixando 0%", 0, "downloading")
+   set_button_status("Baixando atualizacao Android: 0%", "Baixando 0%", 0, "downloading")
    local ok, operation = pcall(function()
       return http_download(apk_url, APK_DOWNLOAD_NAME, function(path, checksum, err)
             handle_download(path, checksum, err, manifest)
@@ -344,14 +344,14 @@ local function start_download(manifest)
             local percent = math.max(0, math.min(100, math.floor(tonumber(progress) or 0)))
             if percent ~= last_progress_percent then
                last_progress_percent = percent
-               set_button_status("Baixando atualização Android: " .. percent .. "%", "Baixando " .. percent .. "%", percent, "downloading")
+               set_button_status("Baixando atualizacao Android: " .. percent .. "%", "Baixando " .. percent .. "%", percent, "downloading")
             end
          end)
    end)
    if not ok then
       download_operation = nil
       set_button_status("Falha ao iniciar o download")
-      notify_user("Não foi possível iniciar o download do APK Android.")
+      notify_user("Nao foi possivel iniciar o download do APK Android.")
       log_error(operation)
       return
    end
@@ -377,18 +377,18 @@ local function check_for_update()
 
    update_config = get_update_config()
    if not update_config then
-      notify_user("O feed Android deste canal ainda não está configurado.")
+      notify_user("O feed Android deste canal ainda nao esta configurado.")
       return
    end
 
-   set_button_status("Verificando atualização Android")
+   set_button_status("Verificando atualizacao Android")
    local ok, operation = pcall(function()
       return http_get_json(update_config.androidManifestUrl, function(manifest, err)
             check_operation = nil
             if err or type(manifest) ~= "table" then
                log_error("Android manifest check failed: " .. tostring(err))
-               set_button_status("Não foi possível verificar atualizações")
-               notify_user("Não foi possível verificar a atualização Android.")
+               set_button_status("Nao foi possivel verificar atualizacoes")
+               notify_user("Nao foi possivel verificar a atualizacao Android.")
                return
             end
 
@@ -396,7 +396,7 @@ local function check_for_update()
                type(manifest.versionCode) ~= "number" or manifest.versionCode % 1 ~= 0 or
                type(manifest.applicationId) ~= "string" or
                type(manifest.apk) ~= "table" then
-               notify_user("O manifesto Android não corresponde ao canal selecionado.")
+               notify_user("O manifesto Android nao corresponde ao canal selecionado.")
                return
             end
 
@@ -405,8 +405,8 @@ local function check_for_update()
    end)
    if not ok then
       check_operation = nil
-      set_button_status("Não foi possível verificar atualizações")
-      notify_user("Não foi possível verificar a atualização Android.")
+      set_button_status("Nao foi possivel verificar atualizacoes")
+      notify_user("Nao foi possivel verificar a atualizacao Android.")
       log_error(operation)
       return
    end
@@ -417,18 +417,18 @@ local function validate_manifest(manifest)
    if manifest.schemaVersion ~= 1 or manifest.channel ~= update_config.channel or
       type(manifest.versionCode) ~= "number" or manifest.versionCode % 1 ~= 0 or
       type(manifest.applicationId) ~= "string" or type(manifest.apk) ~= "table" then
-      return nil, "O manifesto Android não corresponde ao canal selecionado."
+      return nil, "O manifesto Android nao corresponde ao canal selecionado."
    end
 
    if manifest.applicationId ~= g_android.getPackageName() then
-      return nil, "Este APK pertence a outro pacote e não pode atualizar esta instalação."
+      return nil, "Este APK pertence a outro pacote e nao pode atualizar esta instalacao."
    end
    if type(manifest.apk.url) ~= "string" or type(manifest.apk.size) ~= "number" or
       manifest.apk.size < 1 or not is_sha256(manifest.apk.sha256) then
-      return nil, "O manifesto do APK está incompleto ou inválido."
+      return nil, "O manifesto do APK esta incompleto ou invalido."
    end
    if manifest.versionCode < g_android.getVersionCode() then
-      return nil, "O canal oferece uma versão anterior. A instalação foi bloqueada para evitar downgrade."
+      return nil, "O canal oferece uma versao anterior. A instalacao foi bloqueada para evitar downgrade."
    end
 
    return manifest.versionCode > g_android.getVersionCode()
@@ -443,18 +443,18 @@ function checkForUpdate(callback)
       return
    end
    if update_check_in_progress or check_operation or download_operation then
-      callback(false, nil, "Uma verificação ou atualização Android já está em andamento.")
+      callback(false, nil, "Uma verificacao ou atualizacao Android ja esta em andamento.")
       return
    end
 
    update_config = get_update_config()
    if not update_config then
-      callback(false, nil, "O feed Android deste canal ainda não está configurado.")
+      callback(false, nil, "O feed Android deste canal ainda nao esta configurado.")
       return
    end
 
    update_check_in_progress = true
-   set_button_status("Verificando atualização Android")
+   set_button_status("Verificando atualizacao Android")
    local request_completed = false
    local function finish(success, manifest, message)
       request_completed = true
@@ -470,8 +470,8 @@ function checkForUpdate(callback)
       return http_get_json(update_config.androidManifestUrl, function(manifest, err)
          if err or type(manifest) ~= "table" then
             log_error("Android manifest check failed: " .. tostring(err))
-            set_button_status("Não foi possível verificar atualizações")
-            finish(false, nil, "Não foi possível verificar a atualização Android.")
+            set_button_status("Nao foi possivel verificar atualizacoes")
+            finish(false, nil, "Nao foi possivel verificar a atualizacao Android.")
             return
          end
 
@@ -483,21 +483,21 @@ function checkForUpdate(callback)
          end
          if not is_available then
             available_manifest = nil
-            set_button_status("O Elemental já está atualizado neste canal", "Atualizado")
-            finish(true, nil, "O Elemental já está atualizado neste canal.")
+            set_button_status("O Elemental ja esta atualizado neste canal", "Atualizado")
+            finish(true, nil, "O Elemental ja esta atualizado neste canal.")
             return
          end
 
-         set_button_status("Atualização Android disponível", "Atualizar APK")
+         set_button_status("Atualizacao Android disponivel", "Atualizar APK")
          finish(true, manifest)
       end)
    end)
    if not ok then
       update_check_in_progress = false
       check_operation = nil
-      set_button_status("Não foi possível verificar atualizações")
+      set_button_status("Nao foi possivel verificar atualizacoes")
       log_error(operation)
-      callback(false, nil, "Não foi possível verificar a atualização Android.")
+      callback(false, nil, "Nao foi possivel verificar a atualizacao Android.")
       return
    end
    if not request_completed then
@@ -514,7 +514,7 @@ function downloadAndInstall()
       return
    end
    if not available_manifest then
-      notify_user("Verifique as atualizações antes de baixar o APK.")
+      notify_user("Verifique as atualizacoes antes de baixar o APK.")
       return
    end
 
@@ -545,7 +545,7 @@ function init()
       true
    )
    connect(g_game, { onGameEnd = on_game_end })
-   set_button_status("Baixar e instalar a atualização Android")
+   set_button_status("Baixar e instalar a atualizacao Android")
 end
 
 function terminate()
