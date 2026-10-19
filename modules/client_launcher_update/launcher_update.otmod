@@ -1,0 +1,8 @@
+Module
+  name: client_launcher_update
+  description: Coordinates safe desktop client updates with the Elemental launcher
+  author: Elemental
+  scripts: [ launcher_update ]
+  autoload: true
+  @onLoad: init()
+  @onUnload: terminate()
