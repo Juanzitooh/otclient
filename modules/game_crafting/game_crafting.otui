@@ -1,0 +1,321 @@
+CraftingRecipeRow < UIButton
+  height: 48
+  focusable: false
+  text-align: left
+  background-color: #292929
+
+  $hover:
+    background-color: #373737
+
+  $on:
+    background-color: #454545
+
+  Item
+    id: outputItem
+    size: 36 36
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 4
+    virtual: true
+    draggable: false
+    show-count: true
+
+  Label
+    id: recipeName
+    anchors.top: parent.top
+    anchors.left: outputItem.right
+    anchors.right: parent.right
+    margin-left: 8
+    margin-top: 5
+    height: 18
+    text-auto-resize: false
+
+  Label
+    id: recipeSummary
+    anchors.top: recipeName.bottom
+    anchors.left: recipeName.left
+    anchors.right: parent.right
+    height: 16
+    color: #b5b5b5
+    text-auto-resize: false
+
+CraftingMaterialRow < UIWidget
+  height: 38
+  background-color: #303030
+
+  Item
+    id: materialItem
+    size: 32 32
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 4
+    virtual: true
+    draggable: false
+    show-count: true
+
+  Label
+    id: materialName
+    anchors.left: materialItem.right
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 6
+    margin-right: 4
+    height: 24
+    text-auto-resize: false
+
+MainWindow
+  id: gameCraftingWindow
+  size: 600 470
+  !text: tr('Oficios')
+  visible: false
+  @onEscape: modules.game_crafting.GameCrafting:hide()
+  @onClose: modules.game_crafting.GameCrafting:hide()
+
+  Label
+    id: categoryCaption
+    anchors.top: parent.top
+    anchors.left: parent.left
+    width: 72
+    height: 20
+    !text: tr('Categoria')
+
+  ComboBox
+    id: categoryBox
+    anchors.top: parent.top
+    anchors.left: categoryCaption.right
+    width: 175
+    height: 20
+    @onOptionChange: modules.game_crafting.GameCrafting:onCategoryChange(self:getCurrentOption().data)
+
+  Label
+    id: totalLabel
+    anchors.top: parent.top
+    anchors.right: parent.right
+    width: 120
+    height: 20
+    text-align: right
+    !text: tr('0 receita(s)')
+
+  Label
+    id: searchCaption
+    anchors.top: categoryBox.bottom
+    anchors.left: parent.left
+    margin-top: 8
+    width: 72
+    height: 20
+    !text: tr('Procurar')
+
+  TextEdit
+    id: searchInput
+    anchors.top: searchCaption.top
+    anchors.left: searchCaption.right
+    anchors.right: parent.right
+    height: 20
+    @onTextChange: modules.game_crafting.GameCrafting:onSearchChange(self:getText())
+
+  Label
+    id: recipeHeading
+    anchors.top: searchInput.bottom
+    anchors.left: parent.left
+    margin-top: 10
+    width: 270
+    height: 18
+    text-align: center
+    font: verdana-11px-monochrome
+    !text: tr('Receitas')
+
+  Panel
+    id: pageControls
+    anchors.bottom: statusLabel.top
+    anchors.left: parent.left
+    margin-bottom: 8
+    width: 270
+    height: 26
+
+    Button
+      id: previousButton
+      anchors.top: parent.top
+      anchors.left: parent.left
+      width: 65
+      height: 24
+      !text: tr('Anterior')
+      enabled: false
+      @onClick: modules.game_crafting.GameCrafting:previousPage()
+
+    Label
+      id: pageLabel
+      anchors.top: parent.top
+      anchors.horizontalCenter: parent.horizontalCenter
+      width: 120
+      height: 24
+      text-align: center
+      !text: tr('Pagina 1 / 1')
+
+    Button
+      id: nextButton
+      anchors.top: parent.top
+      anchors.right: parent.right
+      width: 65
+      height: 24
+      !text: tr('Proxima')
+      enabled: false
+      @onClick: modules.game_crafting.GameCrafting:nextPage()
+
+  VerticalScrollBar
+    id: recipeScrollBar
+    anchors.top: recipeHeading.bottom
+    anchors.bottom: pageControls.top
+    anchors.right: pageControls.right
+    margin-top: 4
+    margin-bottom: 4
+    step: 48
+    pixels-scroll: true
+
+  ScrollablePanel
+    id: recipeList
+    anchors.top: recipeHeading.bottom
+    anchors.left: parent.left
+    anchors.right: recipeScrollBar.left
+    anchors.bottom: pageControls.top
+    margin-top: 4
+    margin-right: 4
+    margin-bottom: 4
+    background-color: #222222
+    border-width: 1
+    border-color: #606060
+    vertical-scrollbar: recipeScrollBar
+    layout:
+      type: verticalBox
+      spacing: 2
+
+  Panel
+    id: detailsPanel
+    anchors.top: recipeHeading.top
+    anchors.left: pageControls.right
+    anchors.right: parent.right
+    anchors.bottom: statusLabel.top
+    margin-left: 8
+    margin-bottom: 6
+    background-color: #222222
+    border-width: 1
+    border-color: #606060
+
+    Label
+      id: categoryLabel
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin: 7 8 0 8
+      height: 20
+      font: verdana-11px-monochrome
+      text-align: center
+
+    Item
+      id: resultItem
+      size: 36 36
+      anchors.top: categoryLabel.bottom
+      anchors.left: parent.left
+      margin: 8 0 0 10
+      virtual: true
+      draggable: false
+      show-count: true
+
+    Label
+      id: resultName
+      anchors.top: resultItem.top
+      anchors.left: resultItem.right
+      anchors.right: parent.right
+      margin: 0 8 0 8
+      height: 36
+      text-wrap: true
+      text-auto-resize: false
+
+    Label
+      id: skillLabel
+      anchors.top: resultItem.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin: 10 8 0 8
+      height: 32
+      text-wrap: true
+      color: #d4c98d
+
+    Label
+      id: costsLabel
+      anchors.top: skillLabel.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin: 5 8 0 8
+      height: 36
+      text-wrap: true
+      color: #c7c7c7
+
+    Label
+      id: materialsHeading
+      anchors.top: costsLabel.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin: 5 8 0 8
+      height: 18
+      font: verdana-11px-monochrome
+      !text: tr('Materiais necessarios')
+
+    VerticalScrollBar
+      id: materialsScrollBar
+      anchors.top: materialsHeading.bottom
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      margin: 4 5 7 0
+      step: 38
+      pixels-scroll: true
+
+    ScrollablePanel
+      id: materialsList
+      anchors.top: materialsHeading.bottom
+      anchors.left: parent.left
+      anchors.right: materialsScrollBar.left
+      anchors.bottom: parent.bottom
+      margin: 4 4 7 8
+      vertical-scrollbar: materialsScrollBar
+      layout:
+        type: verticalBox
+        spacing: 2
+
+  Label
+    id: statusLabel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: catalogButton.top
+    margin-bottom: 5
+    height: 18
+    text-auto-resize: false
+    !text: tr('Aguardando conexao com o servidor.')
+
+  Button
+    id: catalogButton
+    anchors.left: parent.left
+    anchors.bottom: parent.bottom
+    width: 120
+    height: 24
+    !text: tr('Atualizar')
+    @onClick: modules.game_crafting.GameCrafting:refreshCatalog()
+
+  Button
+    id: craftButton
+    anchors.right: closeButton.left
+    anchors.bottom: parent.bottom
+    margin-right: 8
+    width: 150
+    height: 24
+    !text: tr('Preparar receita')
+    enabled: false
+    @onClick: modules.game_crafting.GameCrafting:craft()
+
+  Button
+    id: closeButton
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    width: 90
+    height: 24
+    !text: tr('Fechar')
+    @onClick: modules.game_crafting.GameCrafting:hide()

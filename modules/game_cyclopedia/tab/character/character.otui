@@ -173,12 +173,12 @@ UIWidget
       &state: 1
       @onClick: modules.game_cyclopedia.Cyclopedia.characterButton(self)
     Button
-      id: WheelButton  
-      anchors.left: CharacterButton.right  
-      anchors.top: CharacterButton.top  
-      margin-left: 5  
-      size: 34 34  
-      icon-source: /game_cyclopedia/images/button_wheel  
+      id: WheelButton
+      anchors.left: CharacterButton.right
+      anchors.top: CharacterButton.top
+      margin-left: 5
+      size: 34 34
+      icon-source: /game_cyclopedia/images/button_wheel
       @onClick: modules.game_wheel.toggle()
     BorderBox
       id: DetailsBase
@@ -439,165 +439,292 @@ UIWidget
       anchors.top: level.top
       anchors.horizontalCenter: parent.horizontalCenter
       margin-left: 125
-    CharacterSkillBase
-      id: magiclevel
+    UIScrollArea
+      id: ListSkills
+      vertical-scrollbar: ListSkillsScrollbar
       anchors.top: skillsLabel.bottom
       anchors.left: separator.left
       anchors.right: parent.right
-      margin-top: 10
-      SkillNameLabel
-        !text: tr('Magic')
-        color: #C0C0C0
-      SkillValueLabel
-      SkillCharacterIcon
-        anchors.left: parent.left
-        image-clip: 27 0 9 9
-      SkillCharacterPercentPanel
-        anchors.left: icon.right
-        margin-top: 15
-        margin-left: 5
-        background-color: #00C000
-    CharacterSkillBase
-      id: skillId0
-      anchors.top: magiclevel.bottom
-      anchors.left: separator.left
-      anchors.right: parent.right
-      margin-top: 13
-      SkillNameLabel
-        !text: tr('Fist')
-        color: #C0C0C0
-      SkillValueLabel
-      SkillCharacterIcon
-        anchors.left: parent.left
-        image-clip: 0 0 9 9
-      SkillCharacterPercentPanel
-        anchors.left: icon.right
-        margin-top: 15
-        margin-left: 5
-        background-color: #00C000
-    CharacterSkillBase
-      id: skillId1
-      anchors.top: skillId0.bottom
-      anchors.left: separator.left
-      anchors.right: parent.right
-      margin-top: 13
-      SkillNameLabel
-        !text: tr('Club')
-        color: #C0C0C0
-      SkillValueLabel
-      SkillCharacterIcon
-        anchors.left: parent.left
-        image-clip: 45 0 9 9
-      SkillCharacterPercentPanel
-        anchors.left: icon.right
-        margin-top: 15
-        margin-left: 5
-        background-color: #00C000
-    CharacterSkillBase
-      id: skillId2
-      anchors.top: skillId1.bottom
-      anchors.left: separator.left
-      anchors.right: parent.right
-      margin-top: 13
-      SkillNameLabel
-        !text: tr('Sword')
-        color: #C0C0C0
-      SkillValueLabel
-      SkillCharacterIcon
-        anchors.left: parent.left
-        image-clip: 36 0 9 9
-      SkillCharacterPercentPanel
-        anchors.left: icon.right
-        margin-top: 15
-        margin-left: 5
-        background-color: #00C000
-    CharacterSkillBase
-      id: skillId3
-      anchors.top: skillId2.bottom
-      anchors.left: separator.left
-      anchors.right: parent.right
-      margin-top: 13
-      SkillNameLabel
-        !text: tr('Axe')
-        color: #C0C0C0
-      SkillValueLabel
-      SkillCharacterIcon
-        anchors.left: parent.left
-        image-clip: 54 0 9 9
-      SkillCharacterPercentPanel
-        anchors.left: icon.right
-        margin-top: 15
-        margin-left: 5
-        background-color: #00C000
-    CharacterSkillBase
-      id: skillId4
-      anchors.top: skillId3.bottom
-      anchors.left: separator.left
-      anchors.right: parent.right
-      margin-top: 13
-      SkillNameLabel
-        !text: tr('Distance')
-        color: #C0C0C0
-      SkillValueLabel
-      SkillCharacterIcon
-        anchors.left: parent.left
-        image-clip: 18 0 9 9
-      SkillCharacterPercentPanel
-        anchors.left: icon.right
-        margin-top: 15
-        margin-left: 5
-        background-color: #00C000
-    CharacterSkillBase
-      id: skillId5
-      anchors.top: skillId4.bottom
-      anchors.left: separator.left
-      anchors.right: parent.right
-      margin-top: 13
-      SkillNameLabel
-        !text: tr('Shielding')
-        color: #C0C0C0
-      SkillValueLabel
-      SkillCharacterIcon
-        anchors.left: parent.left
-        image-clip: 63 0 9 9
-      SkillCharacterPercentPanel
-        anchors.left: icon.right
-        margin-top: 15
-        margin-left: 5
-        background-color: #00C000
-    CharacterSkillBase
-      id: skillId6
-      anchors.top: skillId5.bottom
-      anchors.left: separator.left
-      anchors.right: parent.right
-      margin-top: 13
-      SkillNameLabel
-        !text: tr('Fishing')
-        color: #C0C0C0
-      SkillValueLabel
-      SkillCharacterIcon
-        anchors.left: parent.left
-        image-clip: 72 0 9 9
-      SkillCharacterPercentPanel
-        anchors.left: icon.right
-        margin-top: 15
-        margin-left: 5
-        background-color: #00C000
+      anchors.bottom: badgesLabel.top
+      margin-top: 5
+      margin-bottom: 5
+      border-width: 1
+      border-color: #00000077
+      background-color: #ffffff11
+      layout: verticalBox
+      padding-left: 2
+      padding-right: 12
+      padding-top: 2
+      padding-bottom: 2
+      CharacterSkillBase
+        id: magiclevel
+        SkillNameLabel
+          !text: tr('Magic')
+          color: #C0C0C0
+        SkillValueLabel
+        SkillCharacterIcon
+          anchors.left: parent.left
+          image-clip: 27 0 9 9
+        SkillCharacterPercentPanel
+          anchors.left: icon.right
+          margin-top: 15
+          margin-left: 5
+          background-color: #00C000
+      CharacterSkillBase
+        id: skillId0
+        SkillNameLabel
+          !text: tr('Fist')
+          color: #C0C0C0
+        SkillValueLabel
+        SkillCharacterIcon
+          anchors.left: parent.left
+          image-clip: 0 0 9 9
+        SkillCharacterPercentPanel
+          anchors.left: icon.right
+          margin-top: 15
+          margin-left: 5
+          background-color: #00C000
+      CharacterSkillBase
+        id: skillId1
+        SkillNameLabel
+          !text: tr('Club')
+          color: #C0C0C0
+        SkillValueLabel
+        SkillCharacterIcon
+          anchors.left: parent.left
+          image-clip: 45 0 9 9
+        SkillCharacterPercentPanel
+          anchors.left: icon.right
+          margin-top: 15
+          margin-left: 5
+          background-color: #00C000
+      CharacterSkillBase
+        id: skillId2
+        SkillNameLabel
+          !text: tr('Sword')
+          color: #C0C0C0
+        SkillValueLabel
+        SkillCharacterIcon
+          anchors.left: parent.left
+          image-clip: 36 0 9 9
+        SkillCharacterPercentPanel
+          anchors.left: icon.right
+          margin-top: 15
+          margin-left: 5
+          background-color: #00C000
+      CharacterSkillBase
+        id: skillId3
+        SkillNameLabel
+          !text: tr('Axe')
+          color: #C0C0C0
+        SkillValueLabel
+        SkillCharacterIcon
+          anchors.left: parent.left
+          image-clip: 54 0 9 9
+        SkillCharacterPercentPanel
+          anchors.left: icon.right
+          margin-top: 15
+          margin-left: 5
+          background-color: #00C000
+      CharacterSkillBase
+        id: skillId4
+        SkillNameLabel
+          !text: tr('Distance')
+          color: #C0C0C0
+        SkillValueLabel
+        SkillCharacterIcon
+          anchors.left: parent.left
+          image-clip: 18 0 9 9
+        SkillCharacterPercentPanel
+          anchors.left: icon.right
+          margin-top: 15
+          margin-left: 5
+          background-color: #00C000
+      CharacterSkillBase
+        id: skillId5
+        SkillNameLabel
+          !text: tr('Shielding')
+          color: #C0C0C0
+        SkillValueLabel
+        SkillCharacterIcon
+          anchors.left: parent.left
+          image-clip: 63 0 9 9
+        SkillCharacterPercentPanel
+          anchors.left: icon.right
+          margin-top: 15
+          margin-left: 5
+          background-color: #00C000
+      CharacterSkillBase
+        id: skillId6
+        SkillNameLabel
+          !text: tr('Fishing')
+          color: #C0C0C0
+        SkillValueLabel
+        SkillCharacterIcon
+          anchors.left: parent.left
+          image-clip: 72 0 9 9
+        SkillCharacterPercentPanel
+          anchors.left: icon.right
+          margin-top: 15
+          margin-left: 5
+          background-color: #00C000
+      CharacterSkillBase
+        id: economicSkill15
+        SkillNameLabel
+          !text: tr('Gathering')
+          margin-left: 25
+          color: #C0C0C0
+        SkillValueLabel
+          !text: '--'
+        SkillCharacterIcon
+          id: icon
+          image-source: /images/icons/elemental/gathering
+          size: 24 24
+          image-size: 24 24
+          anchors.left: parent.left
+          margin-top: -2
+        SkillCharacterPercentPanel
+          margin-top: 15
+          margin-left: 25
+          visible: false
+          background-color: #00C000
+      CharacterSkillBase
+        id: economicSkill16
+        SkillNameLabel
+          !text: tr('Mining')
+          margin-left: 25
+          color: #C0C0C0
+        SkillValueLabel
+          !text: '--'
+        SkillCharacterIcon
+          id: icon
+          image-source: /images/icons/elemental/mining
+          size: 24 24
+          image-size: 24 24
+          anchors.left: parent.left
+          margin-top: -2
+        SkillCharacterPercentPanel
+          margin-top: 15
+          margin-left: 25
+          visible: false
+          background-color: #00C000
+      CharacterSkillBase
+        id: economicSkill17
+        SkillNameLabel
+          !text: tr('Cooking')
+          margin-left: 25
+          color: #C0C0C0
+        SkillValueLabel
+          !text: '--'
+        SkillCharacterIcon
+          id: icon
+          image-source: /images/icons/elemental/cooking
+          size: 24 24
+          image-size: 24 24
+          anchors.left: parent.left
+          margin-top: -2
+        SkillCharacterPercentPanel
+          margin-top: 15
+          margin-left: 25
+          visible: false
+          background-color: #00C000
+      CharacterSkillBase
+        id: economicSkill18
+        SkillNameLabel
+          !text: tr('Forging')
+          margin-left: 25
+          color: #C0C0C0
+        SkillValueLabel
+          !text: '--'
+        SkillCharacterIcon
+          id: icon
+          image-source: /images/icons/elemental/forging
+          size: 24 24
+          image-size: 24 24
+          anchors.left: parent.left
+          margin-top: -2
+        SkillCharacterPercentPanel
+          margin-top: 15
+          margin-left: 25
+          visible: false
+          background-color: #00C000
+      CharacterSkillBase
+        id: economicSkill19
+        SkillNameLabel
+          !text: tr('Crafting')
+          margin-left: 25
+          color: #C0C0C0
+        SkillValueLabel
+          !text: '--'
+        SkillCharacterIcon
+          id: icon
+          image-source: /images/icons/elemental/crafting
+          size: 24 24
+          image-size: 24 24
+          anchors.left: parent.left
+          margin-top: -2
+        SkillCharacterPercentPanel
+          margin-top: 15
+          margin-left: 25
+          visible: false
+          background-color: #00C000
+      CharacterSkillBase
+        id: economicSkill20
+        SkillNameLabel
+          !text: tr('Alchemy')
+          margin-left: 25
+          color: #C0C0C0
+        SkillValueLabel
+          !text: '--'
+        SkillCharacterIcon
+          id: icon
+          image-source: /images/icons/elemental/alchemy
+          size: 24 24
+          image-size: 24 24
+          anchors.left: parent.left
+          margin-top: -2
+        SkillCharacterPercentPanel
+          margin-top: 15
+          margin-left: 25
+          visible: false
+          background-color: #00C000
+      CharacterSkillBase
+        id: economicSkill21
+        SkillNameLabel
+          !text: tr('Jewelry')
+          margin-left: 25
+          color: #C0C0C0
+        SkillValueLabel
+          !text: '--'
+        SkillCharacterIcon
+          id: icon
+          image-source: /images/icons/elemental/jewelry
+          size: 24 24
+          image-size: 24 24
+          anchors.left: parent.left
+          margin-top: -2
+        SkillCharacterPercentPanel
+          margin-top: 15
+          margin-left: 25
+          visible: false
+          background-color: #00C000
     Label
+      id: badgesLabel
       !text: tr('Account Badges')
-      margin-top: 12
-      anchors.top: skillId6.bottom
+      color: #C0C0C0
+      anchors.bottom: ListBadge.top
       anchors.left: separator.left
       anchors.right: parent.right
       margin-left: 75
-
+      margin-bottom: 5
     UIScrollArea
       id: ListBadge
       vertical-scrollbar: ListBadgeScrollbar
-      anchors.top: prev.bottom
       anchors.left: separator.left
       anchors.right: parent.right
-      height: 140
+      height: 100
+      anchors.bottom: parent.bottom
+      margin-bottom: 10
       border-width: 1
       border-color: #00000077
       background-color: #ffffff11
@@ -609,7 +736,15 @@ UIWidget
         fit-children: false
       padding-left: 20
 
-        
+
+    VerticalScrollBar
+      id: ListSkillsScrollbar
+      anchors.top: ListSkills.top
+      anchors.right: ListSkills.right
+      anchors.bottom: ListSkills.bottom
+      step: 24
+      pixel-scroll: true
+
     VerticalScrollBar
       id: ListBadgeScrollbar
       anchors.top: ListBadge.top
@@ -620,6 +755,130 @@ UIWidget
 
       step: 5
       pixel-scroll: true
+
+  BorderBox
+    id: EconomicSkills
+    anchors.top: CharacterBase.top
+    anchors.left: CharacterBase.right
+    anchors.bottom: OptionsBase.bottom
+    anchors.right: parent.right
+    margin-left: 10
+    visible: false
+    Label
+      id: economicSkillsTitle
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 10
+      text-align: center
+      !text: tr('Economic Skills')
+      color: #C0C0C0
+    HorizontalSeparator
+      id: economicSkillsSeparator
+      anchors.top: economicSkillsTitle.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 5
+      margin-left: 8
+      margin-right: 8
+    CharacterSkillBase
+      id: economicSkill15
+      anchors.top: economicSkillsSeparator.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 6
+      SkillNameLabel
+        !text: tr('Gathering')
+        color: #C0C0C0
+      SkillValueLabel
+        !text: '--'
+        color: #C0C0C0
+      SkillCharacterPercentPanel
+        visible: false
+    CharacterSkillBase
+      id: economicSkill16
+      anchors.top: economicSkill15.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 5
+      SkillNameLabel
+        !text: tr('Mining')
+        color: #C0C0C0
+      SkillValueLabel
+        !text: '--'
+        color: #C0C0C0
+      SkillCharacterPercentPanel
+        visible: false
+    CharacterSkillBase
+      id: economicSkill17
+      anchors.top: economicSkill16.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 5
+      SkillNameLabel
+        !text: tr('Cooking')
+        color: #C0C0C0
+      SkillValueLabel
+        !text: '--'
+        color: #C0C0C0
+      SkillCharacterPercentPanel
+        visible: false
+    CharacterSkillBase
+      id: economicSkill18
+      anchors.top: economicSkill17.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 5
+      SkillNameLabel
+        !text: tr('Forging')
+        color: #C0C0C0
+      SkillValueLabel
+        !text: '--'
+        color: #C0C0C0
+      SkillCharacterPercentPanel
+        visible: false
+    CharacterSkillBase
+      id: economicSkill19
+      anchors.top: economicSkill18.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 5
+      SkillNameLabel
+        !text: tr('Crafting')
+        color: #C0C0C0
+      SkillValueLabel
+        !text: '--'
+        color: #C0C0C0
+      SkillCharacterPercentPanel
+        visible: false
+    CharacterSkillBase
+      id: economicSkill20
+      anchors.top: economicSkill19.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 5
+      SkillNameLabel
+        !text: tr('Alchemy')
+        color: #C0C0C0
+      SkillValueLabel
+        !text: '--'
+        color: #C0C0C0
+      SkillCharacterPercentPanel
+        visible: false
+    CharacterSkillBase
+      id: economicSkill21
+      anchors.top: economicSkill20.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 5
+      SkillNameLabel
+        !text: tr('Jewelry')
+        color: #C0C0C0
+      SkillValueLabel
+        !text: '--'
+        color: #C0C0C0
+      SkillCharacterPercentPanel
+        visible: false
 
   BorderBox
     id: CombatStats
@@ -779,7 +1038,7 @@ UIWidget
       margin-top: 1
       SkillNameLabel
         !text: tr('Concoctions:')
-        color: #C0C0C0  
+        color: #C0C0C0
     CharacterSkillBase
       id: concoctionPanel
       anchors.top: prev.bottom
@@ -1511,7 +1770,7 @@ UIWidget
         size: 222 20
         anchors.verticalCenter: parent.verticalCenter
         anchors.left: familiars.right
-        
+
         @onSetup: |
           self:addOption("Show All")
           self:addOption("Show Standard Outfits")
@@ -1796,7 +2055,7 @@ UIWidget
             anchors.left: parent.right
             margin-left: -30
             text: 0x
-            
+
 
           Label
             id: hirelingjobs
@@ -1875,7 +2134,7 @@ UIWidget
     margin-left: 10
     visible: false
 
-    
+
     UIScrollArea
       id: content
       anchors.top: parent.top
@@ -1912,7 +2171,7 @@ UIWidget
           layout:
             type: verticalBox
             fit-children: true
-            
+
         Panel
           id: rightPanel
           anchors.top: leftPanel.top
@@ -1998,7 +2257,7 @@ UIWidget
         anchors.right: parent.right
         layout:
           type: anchor
-        
+
         VerticalSeparator
           id: miscStatsSeparator
           width: 2
@@ -2034,7 +2293,7 @@ UIWidget
             id: activeConcoctions
             !text: tr("Active Concoctions:")
             color: #C0C0C0
-            text-auto-resize: true 
+            text-auto-resize: true
           Panel
             id: concoctions
             margin-top: 3
@@ -2050,7 +2309,7 @@ UIWidget
             !text: tr("Active Foods:")
             margin-top: 10
             color: #C0C0C0
-            text-auto-resize: true 
+            text-auto-resize: true
           Panel
             id: cooldowns
             margin-top: 3

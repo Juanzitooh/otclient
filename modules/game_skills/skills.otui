@@ -64,6 +64,23 @@ SkillPercentPanel < ProgressBar
   anchors.top: parent.top
   phantom: false
 
+EconomicSkillPercentPanel < SkillPercentPanel
+  margin-left: 25
+  background-color: green
+
+EconomicSkillNameLabel < SkillNameLabel
+  margin-left: 25
+
+EconomicSkillIcon < UIWidget
+  id: icon
+  size: 24 24
+  image-size: 24 24
+  image-smooth: false
+  anchors.left: parent.left
+  anchors.top: parent.top
+  margin-top: -2
+  phantom: true
+
 XpBoostButton < UIWidget
   height: 30
   HorizontalSeparator
@@ -287,6 +304,82 @@ MiniWindow
         image-size: 9 9
       SkillPercentPanel
       margin-bottom: 5
+
+    HorizontalSeparator
+      id: economicSkillsSeparator
+      visible: false
+      margin-top: 5
+      margin-bottom: 5
+
+    SkillButton
+      id: economicSkill15
+      visible: false
+      EconomicSkillNameLabel
+        !text: tr('Gathering')
+      SkillValueLabel
+      EconomicSkillIcon
+        image-source: /images/icons/elemental/gathering
+      EconomicSkillPercentPanel
+
+    SkillButton
+      id: economicSkill16
+      visible: false
+      EconomicSkillNameLabel
+        !text: tr('Mining')
+      SkillValueLabel
+      EconomicSkillIcon
+        image-source: /images/icons/elemental/mining
+      EconomicSkillPercentPanel
+
+    SkillButton
+      id: economicSkill17
+      visible: false
+      EconomicSkillNameLabel
+        !text: tr('Cooking')
+      SkillValueLabel
+      EconomicSkillIcon
+        image-source: /images/icons/elemental/cooking
+      EconomicSkillPercentPanel
+
+    SkillButton
+      id: economicSkill18
+      visible: false
+      EconomicSkillNameLabel
+        !text: tr('Forging')
+      SkillValueLabel
+      EconomicSkillIcon
+        image-source: /images/icons/elemental/forging
+      EconomicSkillPercentPanel
+
+    SkillButton
+      id: economicSkill19
+      visible: false
+      EconomicSkillNameLabel
+        !text: tr('Crafting')
+      SkillValueLabel
+      EconomicSkillIcon
+        image-source: /images/icons/elemental/crafting
+      EconomicSkillPercentPanel
+
+    SkillButton
+      id: economicSkill20
+      visible: false
+      EconomicSkillNameLabel
+        !text: tr('Alchemy')
+      SkillValueLabel
+      EconomicSkillIcon
+        image-source: /images/icons/elemental/alchemy
+      EconomicSkillPercentPanel
+
+    SkillButton
+      id: economicSkill21
+      visible: false
+      EconomicSkillNameLabel
+        !text: tr('Jewelry')
+      SkillValueLabel
+      EconomicSkillIcon
+        image-source: /images/icons/elemental/jewelry
+      EconomicSkillPercentPanel
         
     HorizontalSeparator
       id: separadorOnOffenceInfoChange
