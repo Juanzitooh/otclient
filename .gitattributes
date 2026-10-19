@@ -6,3 +6,4 @@
 *.ot* eol=lf 
 *.cpp eol=lf 
 *.h   eol=lf 
+*.bat text eol=crlf
