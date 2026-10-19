@@ -38,6 +38,12 @@ if not exist "%BOOTSTRAPPER%" (
   echo ERRO: o instalador nao foi criado em "%BOOTSTRAPPER%".
   exit /b 1
 )
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$signature=Get-AuthenticodeSignature -LiteralPath '%BOOTSTRAPPER%'; if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft') { exit 1 }"
+if errorlevel 1 (
+  del /Q "%BOOTSTRAPPER%" 2>nul
+  echo ERRO: o instalador baixado nao tem uma assinatura Microsoft valida.
+  exit /b 1
+)
 
 echo Instalando MSVC x86/x64, MSBuild e Windows SDK. O instalador pode solicitar elevacao.
 start "" /wait "%BOOTSTRAPPER%" --passive --wait --norestart --installPath "%VS_INSTALL_PATH%" --config "%VS_CONFIG%"
