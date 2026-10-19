@@ -27,6 +27,7 @@
 #include <framework/core/resourcemanager.h>
 #include <framework/platform/platform.h>
 #include <framework/sound/soundmanager.h>
+#include <fstream>
 
 AndroidManager g_androidManager;
 
@@ -166,8 +167,47 @@ int AndroidManager::installApk(const std::string& path) {
 void AndroidManager::unZipAssetData() {
     std::string destFolder = getAppBaseDir() + "/game_data/";
 
+    const auto updateDistributionConfig = [&]() {
+        AAsset* configAsset = AAssetManager_open(
+                m_app->activity->assetManager,
+                "elemental-distribution.lua",
+                AASSET_MODE_BUFFER);
+        if (!configAsset)
+            return;
+
+        const auto configLength = AAsset_getLength(configAsset);
+        if (configLength <= 0 || configLength > 16 * 1024) {
+            g_logger.error("Invalid Android distribution config size: {}", configLength);
+            AAsset_close(configAsset);
+            return;
+        }
+
+        std::string configContent(static_cast<size_t>(configLength), '\0');
+        size_t bytesRead = 0;
+        while (bytesRead < configContent.size()) {
+            const auto count = AAsset_read(
+                    configAsset,
+                    configContent.data() + bytesRead,
+                    configContent.size() - bytesRead);
+            if (count <= 0) {
+                g_logger.error("Unable to read Android distribution config asset.");
+                AAsset_close(configAsset);
+                return;
+            }
+            bytesRead += static_cast<size_t>(count);
+        }
+        AAsset_close(configAsset);
+
+        std::ofstream configFile(destFolder + "elemental-distribution.lua", std::ios::binary | std::ios::trunc);
+        if (!configFile || !configFile.write(
+                    configContent.data(),
+                    static_cast<std::streamsize>(configContent.size())))
+            g_logger.error("Unable to write Android distribution config.");
+    };
+
     const std::filesystem::path initLua { destFolder + "init.lua" };
     if (std::filesystem::exists(initLua)) {
+        updateDistributionConfig();
         return;
     }
 
@@ -190,6 +230,7 @@ void AndroidManager::unZipAssetData() {
 
     AAsset_close(dataAsset);
     free(dataContent);
+    updateDistributionConfig();
 }
 
 std::string AndroidManager::getAppBaseDir() {

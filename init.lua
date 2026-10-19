@@ -2,6 +2,31 @@
 -- we have to load the first modules form here
 
 -- updater
+local embeddedDistribution = {}
+local embeddedOk, embeddedConfig = pcall(dofile, "elemental-distribution")
+if embeddedOk and type(embeddedConfig) == "table" then
+    embeddedDistribution = embeddedConfig
+end
+
+local function configuredDistributionValue(environmentName, configName)
+    local value = os.getenv(environmentName)
+    if value and value ~= "" then
+        return value
+    end
+    return embeddedDistribution[configName]
+end
+
+local elementalChannel = configuredDistributionValue("ELEMENTAL_CHANNEL", "channel") or "test"
+if elementalChannel ~= "test" and elementalChannel ~= "beta" and elementalChannel ~= "release" then
+    elementalChannel = "test"
+end
+
+local clientAssetsManifestUrl = configuredDistributionValue(
+    "ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL",
+    "clientAssetsManifestUrl"
+)
+local androidManifestUrl = embeddedDistribution.androidManifestUrl
+
 Services = {
     --updater = "http://localhost/api/updater.php", --./updater
     --status = "http://localhost/login.php", --./client_entergame | ./client_topmenu
@@ -12,6 +37,8 @@ Services = {
         enabled = true,
         repository = "dudantas/tibia-client",
         installSounds = true,
+        manifestUrl = clientAssetsManifestUrl,
+        updateCheckEnabled = type(clientAssetsManifestUrl) == "string" and clientAssetsManifestUrl ~= "",
         strictManifestSha256 = true,
         allowRawFallbackHashMismatch = false,
         allowMissingPackedRawFallback = true,
@@ -22,9 +49,9 @@ Services = {
         installPackagedFiles = true
     }, -- ./client_assets
     elementalUpdater = {
-        enabled = false,
-        channel = "test",
-        androidManifestUrl = ""
+        enabled = type(androidManifestUrl) == "string" and androidManifestUrl ~= "",
+        channel = elementalChannel,
+        androidManifestUrl = androidManifestUrl or ""
     }, -- ./client_launcher_update
 }
 

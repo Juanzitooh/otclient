@@ -133,25 +133,10 @@ echo "============================="
 echo "Step 3: Generating data.zip"
 echo "============================="
 mkdir -p "$SCRIPT_DIR/android/app/src/main/assets"
-cd "$SCRIPT_DIR"
-if command -v zip &>/dev/null; then
-    zip -r android/app/src/main/assets/data.zip data mods modules init.lua otclientrc.lua
-elif command -v python3 &>/dev/null; then
-    python3 -c "
-import zipfile, os
-with zipfile.ZipFile('android/app/src/main/assets/data.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
-    for item in ['data', 'mods', 'modules']:
-        for root, dirs, files in os.walk(item):
-            for f in files:
-                zf.write(os.path.join(root, f))
-    for f in ['init.lua', 'otclientrc.lua']:
-        if os.path.exists(f):
-            zf.write(f)
-"
-else
-    echo "ERROR: neither zip nor python3 available to create data.zip"
-    exit 1
-fi
+python3 "$SCRIPT_DIR/scripts/package_android_data.py" \
+    --channel "${ELEMENTAL_ANDROID_CHANNEL:-test}" \
+    --android-manifest-url "${ELEMENTAL_ANDROID_MANIFEST_URL:-}" \
+    --client-assets-manifest-url "${ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL:-}"
 echo "data.zip created: $(du -h android/app/src/main/assets/data.zip | cut -f1)"
 
 echo ""

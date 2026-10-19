@@ -42,6 +42,7 @@ local function tryLoadDatWithFallbacks(datPath)
 end
 
 local function load(version)
+    loaded = false
     local errorList = {}
 
     if version >= 1281 and not g_game.getFeature(GameLoadSprInsteadProtobuf) then
@@ -92,7 +93,7 @@ local function load(version)
         if g_sounds then
             g_sounds.loadClientFiles(resolvepath(string.format('/data/sounds/%d/', version)))
         end
-        return
+        return true
     end
 
     local messageBox = displayErrorBox(tr('Error'), table.concat(errorList, "\n"))
@@ -103,6 +104,21 @@ local function load(version)
 
     g_game.setClientVersion(0)
     g_game.setProtocolVersion(0)
+    return false
+end
+
+function reloadClientVersion(version)
+    version = tonumber(version)
+    if not version then
+        return false
+    end
+
+    if g_game.getClientVersion() ~= version then
+        g_game.setClientVersion(version)
+        return loaded
+    end
+
+    return load(version)
 end
 
 function ThingsLoaderController:onInit()
