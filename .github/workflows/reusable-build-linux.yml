@@ -117,6 +117,7 @@ jobs:
         run: ctest --test-dir build/${{ matrix.buildtype }} --output-on-failure --parallel 2
 
       - name: Upload artifacts
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.buildtype }}

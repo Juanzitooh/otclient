@@ -22,6 +22,8 @@
 
 #include "soundsource.h"
 
+#include <algorithm>
+
 #include "soundbuffer.h"
 #include "soundeffect.h"
 
@@ -115,6 +117,13 @@ void SoundSource::setPosition(const Point& pos)
 {
     alSource3f(m_sourceId, AL_POSITION, pos.x, pos.y, 0);
     m_position = pos;
+}
+
+void SoundSource::setPan(const float pan)
+{
+    const float clampedPan = std::clamp(pan, -1.f, 1.f);
+    alSource3f(m_sourceId, AL_POSITION, clampedPan, 0, 0);
+    m_position = Point(clampedPan, 0);
 }
 
 void SoundSource::setRolloff(const float rolloff)

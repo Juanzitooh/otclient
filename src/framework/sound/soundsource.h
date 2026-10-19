@@ -50,6 +50,7 @@ public:
     virtual void setGain(float gain);
     virtual void setPitch(float pitch);
     virtual void setPosition(const Point& pos);
+    virtual void setPan(float pan);
     virtual void setVelocity(const Point& velocity);
     virtual void setRolloff(float rolloff);
     virtual void setFading(FadeState state, float fadeTime);

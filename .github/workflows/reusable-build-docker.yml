@@ -100,6 +100,7 @@ jobs:
 
       - name: Upload docker artifact
         if: env.DOCKER_PUBLISH != 'true'
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         uses: actions/upload-artifact@v7
         with:
           name: docker-otclient

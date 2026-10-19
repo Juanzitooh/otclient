@@ -44,6 +44,7 @@ public:
     void setGain(float gain) override;
     void setPitch(float pitch) override;
     void setPosition(const Point& pos) override;
+    void setPan(float pan) override;
     void setVelocity(const Point& velocity) override;
     void setFading(FadeState state, float fadetime) override;
     void setEffect(SoundEffectPtr soundEffect) override;
@@ -53,5 +54,8 @@ protected:
     void update() override;
 
 private:
+    void updatePanGains();
+
     std::vector<SoundSourcePtr> m_sources;
+    float m_pan{ 0.f };
 };

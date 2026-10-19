@@ -371,14 +371,14 @@ void SoundManager::updateItemAmbienceSources()
             source->setLooping(true);
             source->setRelative(true);
             source->setChannel(static_cast<uint8_t>(ambientChannelId));
-            source->setPosition(Point(pan, 0));
+            source->setPan(pan);
 
             activeSource.audioFileId = audioFileId;
             activeSource.source = source;
         } else {
             activeSource.source->setChannel(static_cast<uint8_t>(ambientChannelId));
             activeSource.source->setGain(gain);
-            activeSource.source->setPosition(Point(pan, 0));
+            activeSource.source->setPan(pan);
         }
 
         state.keepActive = true;

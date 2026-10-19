@@ -22,6 +22,8 @@
 
 #include "combinedsoundsource.h"
 
+#include <algorithm>
+
 CombinedSoundSource::CombinedSoundSource() : SoundSource(0) { m_sourceKind = KindCombined; }
 
 void CombinedSoundSource::addSource(const SoundSourcePtr& source)
@@ -82,8 +84,7 @@ void CombinedSoundSource::setReferenceDistance(const float distance)
 void CombinedSoundSource::setGain(const float gain)
 {
     m_gain = gain;
-    for (const auto& source : m_sources)
-        source->setGain(gain);
+    updatePanGains();
 }
 
 void CombinedSoundSource::setPitch(const float pitch)
@@ -98,6 +99,35 @@ void CombinedSoundSource::setPosition(const Point& pos)
     m_position = pos;
     for (const auto& source : m_sources)
         source->setPosition(pos);
+}
+
+void CombinedSoundSource::setPan(const float pan)
+{
+    m_pan = std::clamp(pan, -1.f, 1.f);
+
+    if (m_sources.size() == 2) {
+        m_sources.front()->setPan(std::clamp(m_pan - 1.f, -1.f, 1.f));
+        m_sources.back()->setPan(std::clamp(m_pan + 1.f, -1.f, 1.f));
+    } else {
+        for (const auto& source : m_sources)
+            source->setPan(m_pan);
+    }
+
+    updatePanGains();
+}
+
+void CombinedSoundSource::updatePanGains()
+{
+    if (m_sources.size() != 2) {
+        for (const auto& source : m_sources)
+            source->setGain(m_gain);
+        return;
+    }
+
+    const float leftGain = m_gain * (m_pan > 0.f ? 1.f - m_pan : 1.f);
+    const float rightGain = m_gain * (m_pan < 0.f ? 1.f + m_pan : 1.f);
+    m_sources.front()->setGain(leftGain);
+    m_sources.back()->setGain(rightGain);
 }
 
 void CombinedSoundSource::setVelocity(const Point& velocity)

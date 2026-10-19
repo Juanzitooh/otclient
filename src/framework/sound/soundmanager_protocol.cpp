@@ -340,7 +340,7 @@ bool SoundManager::playProtocolAudioFileId(const uint16_t soundEffectId, const u
     if (!source)
         return false;
 
-    source->setPosition(Point(stereoBalance, 0));
+    source->setPan(stereoBalance);
     m_protocolLastPlayedAt[soundEffectId] = g_clock.millis();
     return true;
 }

@@ -21,6 +21,7 @@ jobs:
         run: bash Dockerfile.browser.sh
 
       - name: Upload browser artifact
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         uses: actions/upload-artifact@v7
         with:
           name: otclient-browser-${{ github.sha }}
