@@ -15,10 +15,10 @@ val elementalVersionCode = providers.environmentVariable("ELEMENTAL_ANDROID_VERS
     .get()
     .toInt()
 val elementalVersionName = providers.environmentVariable("ELEMENTAL_ANDROID_VERSION_NAME")
-    .orElse("1.0")
+    .orElse("0.5.0-beta.1")
     .get()
 val elementalChannel = providers.environmentVariable("ELEMENTAL_ANDROID_CHANNEL")
-    .orElse("test")
+    .orElse("beta")
     .get()
 val elementalApplicationId = when (elementalChannel) {
     "test" -> "br.com.elementalmmo.client.test"
