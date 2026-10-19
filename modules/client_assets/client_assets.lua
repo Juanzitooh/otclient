@@ -815,6 +815,12 @@ end
 
 local function setDownloadProgress(status, percent, detail)
   stopDownloadBusy()
+  if activeDownload and activeDownload.progressCallback then
+    local ok, err = pcall(activeDownload.progressCallback, status, percent, detail)
+    if not ok then
+      logWarning('Progress callback failed: ' .. tostring(err))
+    end
+  end
   renderDownloadStatus(status, percent, detail)
 end
 
@@ -852,6 +858,16 @@ local function setDownloadBusy(status, detail)
 
   activeDownload.busyStatus = status
   activeDownload.busyDetail = detail
+  if activeDownload.progressCallback then
+    local ok, err = pcall(activeDownload.progressCallback, status, nil, detail)
+    if not ok then
+      logWarning('Progress callback failed: ' .. tostring(err))
+    end
+  end
+  if not activeDownload.window then
+    return
+  end
+
   startBusyIndicatorSpin()
   if activeDownload.busyEvent then
     return
@@ -1786,10 +1802,13 @@ function getInstalledClientVersions()
   return installed
 end
 
-function ensureClientVersion(version, callback)
+function ensureClientVersion(version, callback, progressCallback)
   version = tonumber(version)
   if not version then
     return callback(false, 'Invalid client version.')
+  end
+  if type(progressCallback) ~= 'function' then
+    progressCallback = nil
   end
 
   local config = cloneConfig()
@@ -1819,14 +1838,17 @@ function ensureClientVersion(version, callback)
     activeDownload = {
       version = version,
       callback = callback,
+      progressCallback = progressCallback,
       canceled = false
     }
 
     logInfo(string.format('Starting asset download for client %s.', versionLabel(version)))
-    activeDownload.window = createDownloadWindow()
-    connect(activeDownload.window, {
-      onCancel = cancelDownload
-    })
+    if not progressCallback then
+      activeDownload.window = createDownloadWindow()
+      connect(activeDownload.window, {
+        onCancel = cancelDownload
+      })
+    end
 
     if updateCheckEnabled then
       setDownloadProgress(string.format('Checking assets for client %s', versionLabel(version)), 0)

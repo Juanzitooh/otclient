@@ -1,0 +1,188 @@
+ElementalMobileLauncher < UIWidget
+  anchors.fill: parent
+  focusable: true
+  background-color: $elementalNight
+  clipping: true
+
+  UIWidget
+    id: mobileLauncherArtwork
+    anchors.fill: parent
+    image-source: /images/brand/elemental-world.png
+    image-fixed-ratio: true
+    image-smooth: true
+    phantom: true
+    focusable: false
+
+  Panel
+    id: mobileLauncherDimmer
+    anchors.fill: parent
+    background-color: #080a1066
+    phantom: true
+    focusable: false
+
+  UIWidget
+    id: mobileLauncherLogoMask
+    anchors.left: parent.horizontalCenter
+    anchors.top: parent.top
+    margin-left: -170
+    margin-top: 18
+    size: 0 86
+    clipping: true
+    phantom: true
+    focusable: false
+
+    UIWidget
+      id: mobileLauncherLogo
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      size: 340 84
+      image-source: /images/brand/elemental-signature-tagline-dark.png
+      image-size: 340 84
+      image-smooth: true
+      phantom: true
+      focusable: false
+
+  Label
+    id: mobileLauncherEyebrow
+    anchors.top: mobileLauncherLogoMask.bottom
+    anchors.horizontalCenter: parent.horizontalCenter
+    margin-top: 4
+    text: ELEMENTAL • SUA PRÓXIMA JORNADA
+    text-align: center
+    color: $elementalAmber
+    font: Verdana Bold-10px
+    text-auto-resize: true
+    phantom: true
+
+  Label
+    id: mobileLauncherTitle
+    anchors.top: mobileLauncherEyebrow.bottom
+    anchors.horizontalCenter: parent.horizontalCenter
+    margin-top: 4
+    text: Um mundo de possibilidades.
+    text-align: center
+    color: $elementalText
+    font: Verdana Bold-16px
+    text-auto-resize: true
+    phantom: true
+
+  Label
+    id: mobileLauncherChannel
+    anchors.top: parent.top
+    anchors.right: parent.right
+    margin-top: 18
+    margin-right: 22
+    width: 105
+    height: 28
+    text: TESTE FECHADO
+    text-align: center
+    color: $elementalAmber
+    font: Verdana Bold-9px
+    background-color: #080a10cc
+    border-width: 1
+    border-color: $elementalAmber
+    phantom: true
+
+  Label
+    id: mobileLauncherVersion
+    anchors.top: mobileLauncherChannel.bottom
+    anchors.right: parent.right
+    margin-top: 7
+    margin-right: 22
+    width: 105
+    text-align: right
+    color: $elementalAir
+    font: verdana-10px-antialised
+    text-auto-resize: true
+    phantom: true
+
+  Panel
+    id: mobileLauncherFooter
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    height: 118
+    background-color: #080a10e8
+    border-width-top: 1
+    border-color: $elementalAmber
+    padding: 20
+
+    Label
+      id: mobileLauncherStatus
+      anchors.left: parent.left
+      anchors.top: parent.top
+      anchors.right: mobileLauncherAction.left
+      margin-right: 22
+      text: Preparando o Elemental
+      text-align: left
+      color: $elementalText
+      font: Verdana Bold-11px
+      text-auto-resize: true
+
+    Label
+      id: mobileLauncherDetail
+      anchors.left: mobileLauncherStatus.left
+      anchors.right: mobileLauncherStatus.right
+      anchors.top: mobileLauncherStatus.bottom
+      margin-top: 4
+      text: Verificando sprites e áudio para esta versão.
+      text-align: left
+      color: $elementalMuted
+      font: verdana-10px-antialised
+      text-wrap: true
+      height: 28
+
+    ProgressBar
+      id: mobileLauncherProgress
+      anchors.left: mobileLauncherStatus.left
+      anchors.right: mobileLauncherStatus.right
+      anchors.top: mobileLauncherDetail.bottom
+      margin-top: 7
+      height: 12
+      background-color: $elementalRaised
+
+    ElementalPrimaryButton
+      id: mobileLauncherAction
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      width: 205
+      height: 48
+      text: PREPARANDO
+      enabled: false
+      @onClick: MobileLauncher.onAction()
+
+  Panel
+    id: mobileLauncherCarouselDots
+    anchors.horizontalCenter: parent.horizontalCenter
+    anchors.bottom: mobileLauncherFooter.top
+    margin-bottom: 12
+    size: 56 10
+    background-color: #ffffff00
+    phantom: false
+
+    UIWidget
+      id: mobileLauncherDotOne
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      size: 10 10
+      background-color: $elementalAmber
+      @onClick: MobileLauncher.setSlide(1)
+
+    UIWidget
+      id: mobileLauncherDotTwo
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.verticalCenter: parent.verticalCenter
+      size: 10 10
+      background-color: #f7f1e466
+      @onClick: MobileLauncher.setSlide(2)
+
+    UIWidget
+      id: mobileLauncherDotThree
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      size: 10 10
+      background-color: #f7f1e466
+      @onClick: MobileLauncher.setSlide(3)
+
+ElementalMobileLauncher
+  id: mobileLauncher

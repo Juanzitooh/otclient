@@ -6,6 +6,7 @@ Module
 
   dependencies:
     - client_assets
+    - client_launcher_android_update
     - game_features
     - game_things
 
@@ -13,9 +14,11 @@ Module
     dofile 'entergame'
     dofile 'characterlist'
     dofile 'createAccount'
+    dofile 'mobile_launcher'
     EnterGame.init()
     CharacterList.init()
 
   @onUnload: |
+    MobileLauncher.terminate()
     EnterGame.terminate()
     CharacterList.terminate()

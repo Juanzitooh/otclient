@@ -499,7 +499,7 @@ function EnterGame.showServerList()
     end
 end
 
-function EnterGame.firstShow()
+local function continueFirstShow()
     EnterGame.show()
 
     local host = g_settings.get('host')
@@ -525,6 +525,24 @@ function EnterGame.firstShow()
             EnterGame.postShowCreatureBoost()
         end
     end
+end
+
+function EnterGame.getSelectedClientVersion()
+    if clientBox then
+        return tonumber(clientBox:getText())
+    end
+    return tonumber(g_settings.getInteger('client-version'))
+end
+
+function EnterGame.markClientAssetsReady(version)
+    clientAssetsCheckCompleteVersion = tonumber(version)
+end
+
+function EnterGame.firstShow()
+    if MobileLauncher and MobileLauncher.show and MobileLauncher.show(continueFirstShow) then
+        return
+    end
+    continueFirstShow()
 end
 
 function EnterGame.terminate()
