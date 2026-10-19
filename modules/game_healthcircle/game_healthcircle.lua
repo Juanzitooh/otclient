@@ -29,6 +29,13 @@ manaShieldCircleOffsetY = 7
 
 optionPanel = nil
 
+function setElementalStatusIconDock(parent)
+    if StatusIconBar and StatusIconBar.setElementalDock then
+        return StatusIconBar.setElementalDock(parent)
+    end
+    return nil
+end
+
 isHealthCircle = not g_settings.getBoolean('healthcircle_hpcircle')
 isManaCircle = not g_settings.getBoolean('healthcircle_mpcircle')
 isExpCircle = g_settings.getBoolean('healthcircle_expcircle')

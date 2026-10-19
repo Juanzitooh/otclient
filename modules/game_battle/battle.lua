@@ -1613,7 +1613,7 @@ function init()
         return false
     end
     
-    if g_game.isOnline() then
+    if g_game.isOnline() and not modules.game_interface.isElementalProfileInWorld() then
         battleWindow:setupOnStart()
     end
 end
@@ -1688,7 +1688,12 @@ function binaryInsert(tbl, value, comparator, ...)
 end
 
 function onGameStart()
-    battleWindow:setupOnStart() -- load character window configuration
+    local elementalProfile = modules.game_interface.isElementalProfileInWorld()
+    if elementalProfile then
+        battleWindow:close(true)
+    else
+        battleWindow:setupOnStart() -- load character window configuration
+    end
 
     -- Update battle list title in case it was customized
     updateBattleListTitle()
@@ -1701,14 +1706,16 @@ function onGameStart()
 
     -- Initialize all battle list instances
     for _, instance in pairs(BattleListManager.instances) do
-        if instance.window then
+        if instance.window and not elementalProfile then
             instance.window:setupOnStart()
         end
         instance:updateTitle()
     end
 
     -- Restore saved battle list instances
-    BattleListManager:restoreInstancesState()
+    if not elementalProfile then
+        BattleListManager:restoreInstancesState()
+    end
 
     -- Set up periodic auto-save to prevent data loss
     BattleListManager:startPeriodicSave()
@@ -2541,6 +2548,9 @@ end
 
 
 function toggle() -- Close/Open the battle window or Pressing Ctrl + B
+    if modules.game_interface.isElementalProfileInWorld() then
+        return false
+    end
     if battleButton:isOn() then
         battleWindow:close()
     else

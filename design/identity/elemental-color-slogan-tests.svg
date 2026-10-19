@@ -1,0 +1,165 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1500" viewBox="0 0 1800 1500" role="img" aria-labelledby="board-title board-desc">
+  <title id="board-title">Elemental — testes de slogan e paleta</title>
+  <desc id="board-desc">Comparação da paleta original com duas opções mais escuras para água e terra, todas com a frase Colete, construa, lute e viva essa aventura.</desc>
+  <rect width="1800" height="1500" fill="#080A10" />
+  <style>
+  text { font-family: 'DejaVu Serif', serif; }
+  .heading { fill:#F7F1E4; font-size:34px; letter-spacing:2px; }
+  .subheading { fill:#B8B5AC; font-size:18px; }
+  .row-bg { fill:#121820; stroke:#27323B; stroke-width:1; }
+  .variant { fill:#E7E1D5; font-size:19px; letter-spacing:2px; }
+  .values { fill:#A8B0B2; font-size:15px; }
+  .tagline { fill:#E1D8C7; font-size:24px; letter-spacing:1.5px; }
+</style>
+  <text x="82" y="82" class="heading">TESTE DE PALETA + SLOGAN</text>
+  <text x="84" y="122" class="subheading">O azul e o verde variam em intensidade; os outros tons e a forma aprovada permanecem iguais.</text>
+  <text x="84" y="153" class="subheading">A frase aparece como assinatura secundária, ainda em avaliação.</text>
+  <rect x="55" y="190" width="1690" height="395" rx="12" class="row-bg" />
+  <text x="82" y="238" class="variant">ATUAL</text>
+  <text x="1715" y="238" class="values" text-anchor="end">Água #74D7EE   •   Terra #B3C878</text>
+  <svg x="300" y="232" width="1100" height="333" viewBox="0 0 760 230" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <linearGradient id="current-fire" x1="0" y1="1" x2="1" y2="0">
+        <stop stop-color="#E56B3F" />
+        <stop offset="1" stop-color="#FF9E51" />
+      </linearGradient>
+      <linearGradient id="current-water" x1="0" y1="1" x2="1" y2="0">
+        <stop stop-color="#3DA6C2" />
+        <stop offset="1" stop-color="#74D7EE" />
+      </linearGradient>
+      <linearGradient id="current-earth" x1="0" y1="0" x2="1" y2="1">
+        <stop stop-color="#7D964A" />
+        <stop offset="1" stop-color="#B3C878" />
+      </linearGradient>
+      <linearGradient id="current-air" x1="0" y1="1" x2="1" y2="0">
+        <stop stop-color="#8DA9C5" />
+        <stop offset="1" stop-color="#D6E3EC" />
+      </linearGradient>
+      <linearGradient id="current-core" x1="0" y1="1" x2="1" y2="0">
+        <stop stop-color="#D9853E" />
+        <stop offset=".52" stop-color="#FFBD6B" />
+        <stop offset="1" stop-color="#FFE8B7" />
+      </linearGradient>
+    </defs>
+    <g transform="translate(18 19)" stroke-linejoin="round">
+      <path d="M31 75V51c0-13 8-21 21-21h26L64 49H50v26Z" fill="url(#current-fire)" />
+      <path d="M113 30h26c13 0 21 8 21 21v26l-18-14V49h-29Z" fill="url(#current-water)" />
+      <path d="M160 113v26c0 13-8 21-21 21h-26l14-18h15v-29Z" fill="url(#current-earth)" />
+      <path d="M79 160H53c-13 0-21-8-21-21v-26l18 14v15h29Z" fill="url(#current-air)" />
+      <path d="M96 0V121H287V1372H96V1493H1438V1141H1300V1356H672V877H1063V1067H1200V551H1063V741H672V137H1319V352H1456V0Z" transform="translate(68.56055 121) scale(0.03515625 -0.03515625)" fill="url(#current-core)" />
+    </g>
+    <g aria-hidden="true">
+      <path d="M113 0V106H303V1386H113V1493H1315V1161H1192V1370H506V870H995V1057H1118V561H995V748H506V123H1208V332H1331V0Z" transform="translate(225.00000 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H113V1493H696V1386H506V123H1188V373H1311V0Z" transform="translate(276.44873 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H113V1493H1315V1161H1192V1370H506V870H995V1057H1118V561H995V748H506V123H1208V332H1331V0Z" transform="translate(323.61279 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H102V1493H537L1061 430L1585 1493H1993V1386H1794V106H1985V0H1401V106H1591V1260L1079 219H938L426 1260V106H616V0Z" transform="translate(375.06152 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H113V1493H1315V1161H1192V1370H506V870H995V1057H1118V561H995V748H506V123H1208V332H1331V0Z" transform="translate(445.61670 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M100 0V106H301V1386H100V1493H483L1378 315V1386H1178V1493H1702V1386H1501V-29H1380L424 1229V106H625V0Z" transform="translate(497.06543 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M391 0V106H582V1374H143V1141H20V1493H1346V1141H1223V1374H784V106H975V0Z" transform="translate(557.94043 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M410 541H958L684 1251ZM-12 0V106H119L651 1493H819L1352 106H1499V0H956V106H1122L997 434H369L244 106H408V0Z" transform="translate(605.29492 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H113V1493H696V1386H506V123H1188V373H1311V0Z" transform="translate(656.23584 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+    </g>
+  </svg>
+  <path d="M558 343 H1367" stroke="#74D7EE" stroke-width="3" stroke-linecap="round" opacity="0.9" />
+  <path d="M558 450 H1367" stroke="#B3C878" stroke-width="3" stroke-linecap="round" opacity="0.9" />
+  <text x="850" y="554" class="tagline" text-anchor="middle">Colete, construa, lute e viva essa aventura</text>
+  <rect x="55" y="615" width="1690" height="395" rx="12" class="row-bg" />
+  <text x="82" y="663" class="variant">ESCURO MÉDIO</text>
+  <text x="1715" y="663" class="values" text-anchor="end">Água #559FB4   •   Terra #8C9F55</text>
+  <svg x="300" y="657" width="1100" height="333" viewBox="0 0 760 230" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <linearGradient id="medium-fire" x1="0" y1="1" x2="1" y2="0">
+        <stop stop-color="#E56B3F" />
+        <stop offset="1" stop-color="#FF9E51" />
+      </linearGradient>
+      <linearGradient id="medium-water" x1="0" y1="1" x2="1" y2="0">
+        <stop stop-color="#347D94" />
+        <stop offset="1" stop-color="#559FB4" />
+      </linearGradient>
+      <linearGradient id="medium-earth" x1="0" y1="0" x2="1" y2="1">
+        <stop stop-color="#60763A" />
+        <stop offset="1" stop-color="#8C9F55" />
+      </linearGradient>
+      <linearGradient id="medium-air" x1="0" y1="1" x2="1" y2="0">
+        <stop stop-color="#8DA9C5" />
+        <stop offset="1" stop-color="#D6E3EC" />
+      </linearGradient>
+      <linearGradient id="medium-core" x1="0" y1="1" x2="1" y2="0">
+        <stop stop-color="#D9853E" />
+        <stop offset=".52" stop-color="#FFBD6B" />
+        <stop offset="1" stop-color="#FFE8B7" />
+      </linearGradient>
+    </defs>
+    <g transform="translate(18 19)" stroke-linejoin="round">
+      <path d="M31 75V51c0-13 8-21 21-21h26L64 49H50v26Z" fill="url(#medium-fire)" />
+      <path d="M113 30h26c13 0 21 8 21 21v26l-18-14V49h-29Z" fill="url(#medium-water)" />
+      <path d="M160 113v26c0 13-8 21-21 21h-26l14-18h15v-29Z" fill="url(#medium-earth)" />
+      <path d="M79 160H53c-13 0-21-8-21-21v-26l18 14v15h29Z" fill="url(#medium-air)" />
+      <path d="M96 0V121H287V1372H96V1493H1438V1141H1300V1356H672V877H1063V1067H1200V551H1063V741H672V137H1319V352H1456V0Z" transform="translate(68.56055 121) scale(0.03515625 -0.03515625)" fill="url(#medium-core)" />
+    </g>
+    <g aria-hidden="true">
+      <path d="M113 0V106H303V1386H113V1493H1315V1161H1192V1370H506V870H995V1057H1118V561H995V748H506V123H1208V332H1331V0Z" transform="translate(225.00000 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H113V1493H696V1386H506V123H1188V373H1311V0Z" transform="translate(276.44873 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H113V1493H1315V1161H1192V1370H506V870H995V1057H1118V561H995V748H506V123H1208V332H1331V0Z" transform="translate(323.61279 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H102V1493H537L1061 430L1585 1493H1993V1386H1794V106H1985V0H1401V106H1591V1260L1079 219H938L426 1260V106H616V0Z" transform="translate(375.06152 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H113V1493H1315V1161H1192V1370H506V870H995V1057H1118V561H995V748H506V123H1208V332H1331V0Z" transform="translate(445.61670 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M100 0V106H301V1386H100V1493H483L1378 315V1386H1178V1493H1702V1386H1501V-29H1380L424 1229V106H625V0Z" transform="translate(497.06543 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M391 0V106H582V1374H143V1141H20V1493H1346V1141H1223V1374H784V106H975V0Z" transform="translate(557.94043 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M410 541H958L684 1251ZM-12 0V106H119L651 1493H819L1352 106H1499V0H956V106H1122L997 434H369L244 106H408V0Z" transform="translate(605.29492 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H113V1493H696V1386H506V123H1188V373H1311V0Z" transform="translate(656.23584 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+    </g>
+  </svg>
+  <path d="M558 768 H1367" stroke="#559FB4" stroke-width="3" stroke-linecap="round" opacity="0.9" />
+  <path d="M558 875 H1367" stroke="#8C9F55" stroke-width="3" stroke-linecap="round" opacity="0.9" />
+  <text x="850" y="979" class="tagline" text-anchor="middle">Colete, construa, lute e viva essa aventura</text>
+  <rect x="55" y="1040" width="1690" height="395" rx="12" class="row-bg" />
+  <text x="82" y="1088" class="variant">ESCURO PROFUNDO</text>
+  <text x="1715" y="1088" class="values" text-anchor="end">Água #407F95   •   Terra #748640</text>
+  <svg x="300" y="1082" width="1100" height="333" viewBox="0 0 760 230" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <linearGradient id="deep-fire" x1="0" y1="1" x2="1" y2="0">
+        <stop stop-color="#E56B3F" />
+        <stop offset="1" stop-color="#FF9E51" />
+      </linearGradient>
+      <linearGradient id="deep-water" x1="0" y1="1" x2="1" y2="0">
+        <stop stop-color="#275F75" />
+        <stop offset="1" stop-color="#407F95" />
+      </linearGradient>
+      <linearGradient id="deep-earth" x1="0" y1="0" x2="1" y2="1">
+        <stop stop-color="#4F612F" />
+        <stop offset="1" stop-color="#748640" />
+      </linearGradient>
+      <linearGradient id="deep-air" x1="0" y1="1" x2="1" y2="0">
+        <stop stop-color="#8DA9C5" />
+        <stop offset="1" stop-color="#D6E3EC" />
+      </linearGradient>
+      <linearGradient id="deep-core" x1="0" y1="1" x2="1" y2="0">
+        <stop stop-color="#D9853E" />
+        <stop offset=".52" stop-color="#FFBD6B" />
+        <stop offset="1" stop-color="#FFE8B7" />
+      </linearGradient>
+    </defs>
+    <g transform="translate(18 19)" stroke-linejoin="round">
+      <path d="M31 75V51c0-13 8-21 21-21h26L64 49H50v26Z" fill="url(#deep-fire)" />
+      <path d="M113 30h26c13 0 21 8 21 21v26l-18-14V49h-29Z" fill="url(#deep-water)" />
+      <path d="M160 113v26c0 13-8 21-21 21h-26l14-18h15v-29Z" fill="url(#deep-earth)" />
+      <path d="M79 160H53c-13 0-21-8-21-21v-26l18 14v15h29Z" fill="url(#deep-air)" />
+      <path d="M96 0V121H287V1372H96V1493H1438V1141H1300V1356H672V877H1063V1067H1200V551H1063V741H672V137H1319V352H1456V0Z" transform="translate(68.56055 121) scale(0.03515625 -0.03515625)" fill="url(#deep-core)" />
+    </g>
+    <g aria-hidden="true">
+      <path d="M113 0V106H303V1386H113V1493H1315V1161H1192V1370H506V870H995V1057H1118V561H995V748H506V123H1208V332H1331V0Z" transform="translate(225.00000 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H113V1493H696V1386H506V123H1188V373H1311V0Z" transform="translate(276.44873 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H113V1493H1315V1161H1192V1370H506V870H995V1057H1118V561H995V748H506V123H1208V332H1331V0Z" transform="translate(323.61279 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H102V1493H537L1061 430L1585 1493H1993V1386H1794V106H1985V0H1401V106H1591V1260L1079 219H938L426 1260V106H616V0Z" transform="translate(375.06152 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H113V1493H1315V1161H1192V1370H506V870H995V1057H1118V561H995V748H506V123H1208V332H1331V0Z" transform="translate(445.61670 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M100 0V106H301V1386H100V1493H483L1378 315V1386H1178V1493H1702V1386H1501V-29H1380L424 1229V106H625V0Z" transform="translate(497.06543 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M391 0V106H582V1374H143V1141H20V1493H1346V1141H1223V1374H784V106H975V0Z" transform="translate(557.94043 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M410 541H958L684 1251ZM-12 0V106H119L651 1493H819L1352 106H1499V0H956V106H1122L997 434H369L244 106H408V0Z" transform="translate(605.29492 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+      <path d="M113 0V106H303V1386H113V1493H696V1386H506V123H1188V373H1311V0Z" transform="translate(656.23584 135) scale(0.03173828 -0.03173828)" fill="#F7F1E4" />
+    </g>
+  </svg>
+  <path d="M558 1193 H1367" stroke="#407F95" stroke-width="3" stroke-linecap="round" opacity="0.9" />
+  <path d="M558 1300 H1367" stroke="#748640" stroke-width="3" stroke-linecap="round" opacity="0.9" />
+  <text x="850" y="1404" class="tagline" text-anchor="middle">Colete, construa, lute e viva essa aventura</text>
+</svg>

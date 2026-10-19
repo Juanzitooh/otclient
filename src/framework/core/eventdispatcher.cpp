@@ -45,9 +45,10 @@ void EventDispatcher::shutdown()
 
     m_scheduledEventList.clear();
     m_deferEventList.clear();
-    m_threads.clear();
 
+    std::unique_lock lock(m_lifecycleMutex);
     m_disabled = true;
+    m_threads.clear();
 }
 
 void EventDispatcher::poll()
@@ -66,6 +67,7 @@ ScheduledEventPtr EventDispatcher::scheduleEvent(const std::function<void()>& ca
 
 ScheduledEventPtr EventDispatcher::scheduleEventEx(const std::string& function, const std::function<void()>& callback, int delay)
 {
+    std::shared_lock lock(m_lifecycleMutex);
     if (m_disabled)
         return std::make_shared<ScheduledEvent>(function, nullptr, delay, 1);
 
@@ -83,6 +85,7 @@ ScheduledEventPtr EventDispatcher::cycleEvent(const std::function<void()>& callb
 
 ScheduledEventPtr EventDispatcher::cycleEventEx(const std::string& function, const std::function<void()>& callback, int delay)
 {
+    std::shared_lock lock(m_lifecycleMutex);
     if (m_disabled)
         return std::make_shared<ScheduledEvent>(function, nullptr, delay, 0);
 
@@ -100,13 +103,19 @@ EventPtr EventDispatcher::addEvent(const std::function<void()>& callback)
 
 EventPtr EventDispatcher::addEventEx(const std::string& function, const std::function<void()>& callback)
 {
-    if (m_disabled)
-        return std::make_shared<Event>(nullptr);
-
     if (&g_mainDispatcher == this && g_mainThreadId == stdext::getThreadId()) {
+        {
+            std::shared_lock lock(m_lifecycleMutex);
+            if (m_disabled)
+                return std::make_shared<Event>(nullptr);
+        }
         callback();
         return std::make_shared<Event>(nullptr);
     }
+
+    std::shared_lock lock(m_lifecycleMutex);
+    if (m_disabled)
+        return std::make_shared<Event>(nullptr);
 
     return pushThreadTask<EventPtr>([&](const std::unique_ptr<ThreadTask>& thread) {
         return thread->events.emplace_back(std::make_shared<Event>(callback, function));
@@ -118,6 +127,7 @@ void EventDispatcher::deferEvent(const std::function<void()>& callback) {
 }
 
 void EventDispatcher::deferEventEx(const std::string& function, const std::function<void()>& callback) {
+    std::shared_lock lock(m_lifecycleMutex);
     if (m_disabled)
         return;
 

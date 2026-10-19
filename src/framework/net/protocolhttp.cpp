@@ -23,6 +23,7 @@
 #include "protocolhttp.h"
 
 #include "framework/core/eventdispatcher.h"
+#include "framework/core/resourcemanager.h"
 #include "framework/util/crypt.h"
 
 #include <algorithm>
@@ -324,6 +325,18 @@ int Http::get(const std::string& url, int timeout)
 
 int Http::post(const std::string& url, const std::string& data, int timeout, bool isJson, bool /*checkContentLength*/)
 {
+    return postInternal(url, data, timeout, isJson, "");
+}
+
+int Http::postWithBearer(const std::string& url, const std::string& data, const std::string& token, int timeout)
+{
+    if (!url.starts_with("https://") || !token.starts_with("b1.") || token.size() != 46)
+        return -1;
+    return postInternal(url, data, timeout, true, token);
+}
+
+int Http::postInternal(const std::string& url, const std::string& data, int timeout, bool isJson, const std::string& bearerToken)
+{
     if (!timeout)
         timeout = 2;
     if (data.empty()) {
@@ -345,11 +358,15 @@ int Http::post(const std::string& url, const std::string& data, int timeout, boo
     context->result = result;
     context->kind = FetchKind::Post;
     context->body = data;
-    context->headerStorage.reserve((m_custom_header.size() * 2) + 4);
+    context->headerStorage.reserve((m_custom_header.size() * 2) + (bearerToken.empty() ? 4 : 6));
     context->headerStorage.emplace_back("Accept");
     context->headerStorage.emplace_back("*/*");
     context->headerStorage.emplace_back("Content-Type");
     context->headerStorage.emplace_back(isJson ? "application/json" : "application/x-www-form-urlencoded");
+    if (!bearerToken.empty()) {
+        context->headerStorage.emplace_back("Authorization");
+        context->headerStorage.emplace_back("Bearer " + bearerToken);
+    }
     for (const auto& header : m_custom_header) {
         context->headerStorage.emplace_back(header.first);
         context->headerStorage.emplace_back(header.second);
@@ -618,6 +635,13 @@ void Http::init()
     // if a request came in after Http::terminate() reset the pointer.
     if (!g_ixHttpClient) {
         g_ixHttpClient = std::make_shared<ix::HttpClient>(true);
+        ix::SocketTLSOptions tlsOptions;
+#ifdef ANDROID
+        tlsOptions.caFile = g_resources.getRealPath("cacert.pem");
+#else
+        tlsOptions.caFile = "./cacert.pem";
+#endif
+        g_ixHttpClient->setTLSOptions(tlsOptions);
     }
     m_working.store(true);
 }
@@ -738,6 +762,18 @@ int Http::get(const std::string& url, int timeout)
 
 int Http::post(const std::string& url, const std::string& data, int timeout, bool isJson, bool /*checkContentLength*/)
 {
+    return postInternal(url, data, timeout, isJson, "");
+}
+
+int Http::postWithBearer(const std::string& url, const std::string& data, const std::string& token, int timeout)
+{
+    if (!url.starts_with("https://") || !token.starts_with("b1.") || token.size() != 46)
+        return -1;
+    return postInternal(url, data, timeout, true, token);
+}
+
+int Http::postInternal(const std::string& url, const std::string& data, int timeout, bool isJson, const std::string& bearerToken)
+{
     if (!timeout)
         timeout = 2;
     if (data.empty()) {
@@ -755,12 +791,16 @@ int Http::post(const std::string& url, const std::string& data, int timeout, boo
     result->postData = data;
 
     auto request = buildRequest(url, ix::HttpClient::kPost, timeout);
+    if (!bearerToken.empty())
+        request->followRedirects = false;
     request->body = data;
     request->extraHeaders["Accept"] = "*/*";
     request->extraHeaders["Connection"] = "close";
     request->extraHeaders["Content-Type"] = isJson
         ? "application/json"
         : "application/x-www-form-urlencoded";
+    if (!bearerToken.empty())
+        request->extraHeaders["Authorization"] = "Bearer " + bearerToken;
     result->request = request;
 
     const auto lastProgress = std::make_shared<ticks_t>(0);

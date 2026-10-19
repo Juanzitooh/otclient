@@ -19,12 +19,68 @@ local motdEnabled = true
 local tokenWindow
 local authErrorBox
 local hasAttemptedAuthenticator = false
+local ELEMENTAL_MODAL_BLUR_SHADER = 'Elemental Modal Blur'
+local ELEMENTAL_UI_CLICK_SOUND = '/modules/client_entergame/sounds/digital-click.ogg'
+local ELEMENTAL_UI_CONFIRM_SOUND = '/modules/client_entergame/sounds/digital-confirm.ogg'
+local ELEMENTAL_LOGIN_TRANSITION_MS = 270
+local loginPending = false
+local loginTransitionEvent
+local loginPanelsHideEvent
+local elementalClientLayout = false
+
+local function cancelLoginPanelsHide()
+    if loginPanelsHideEvent then
+        removeEvent(loginPanelsHideEvent)
+        loginPanelsHideEvent = nil
+    end
+end
+
+function EnterGame.playUiClickSound()
+    if g_platform.isMobile() or not g_sounds or not g_sounds.isAudioEnabled() then
+        return
+    end
+
+    g_sounds.play(ELEMENTAL_UI_CLICK_SOUND, 0, 0.45)
+end
+
+function EnterGame.playUiConfirmSound()
+    if g_platform.isMobile() or not g_sounds or not g_sounds.isAudioEnabled() then
+        return
+    end
+
+    g_sounds.play(ELEMENTAL_UI_CONFIRM_SOUND, 0, 0.45)
+end
+
+function EnterGame.playUiLoginActionSound()
+    if loginPending then
+        EnterGame.playUiClickSound()
+        return
+    end
+
+    EnterGame.playUiConfirmSound()
+end
+
+local function cancelLoginTransition()
+    if loginTransitionEvent then
+        removeEvent(loginTransitionEvent)
+        loginTransitionEvent = nil
+    end
+
+    if enterGame then
+        g_effects.cancelFade(enterGame)
+        enterGame:setOpacity(1)
+    end
+end
 
 -- private functions
 local function onError(protocol, message, errorCode)
     if loadBox then
         loadBox:destroy()
         loadBox = nil
+    end
+
+    if loginPending then
+        EnterGame.setLoginPending(false)
     end
 
     if errorCode == 6 then
@@ -50,6 +106,16 @@ local function onError(protocol, message, errorCode)
         EnterGame.clearAccountFields()
     end
 
+    if elementalClientLayout then
+        EnterGame.show()
+        local statusMessage = message or tr('Unable to connect. Please try again.')
+        if type(statusMessage) == 'string' and statusMessage:match('[Hh][Tt][Tt][Pp]%s+401') then
+            statusMessage = 'E-mail ou senha invalidos.'
+        end
+        EnterGame.setLoginStatus(statusMessage, true)
+        return
+    end
+
     local errorBox = displayErrorBox(tr('Login Error'), message)
     connect(errorBox, {
         onOk = EnterGame.show
@@ -67,6 +133,7 @@ end
 
 local function onCharacterList(protocol, characters, account, otui)
     local httpLogin = enterGame:getChildById('httpLoginBox'):isChecked()
+    local betaLogin = type(G.host) == 'string' and G.host:match('^https://[^/]+/beta/v1/login$')
 
     -- Try add server to the server list
     ServerList.add(G.host, G.port, g_game.getClientVersion(), httpLogin)
@@ -75,7 +142,15 @@ local function onCharacterList(protocol, characters, account, otui)
     g_settings.set('staylogged', enterGame:getChildById('stayLoggedBox'):isChecked())
     g_settings.set('httpLogin', httpLogin)
 
-    if enterGame:getChildById('rememberEmailBox'):isChecked() then
+    if betaLogin then
+        g_settings.remove('password')
+        g_settings.set('autologin', false)
+        ServerList.setServerPassword(G.host, '')
+        ServerList.setServerAutologin(G.host, false)
+        ServerList.save()
+        enterGame:getChildById('accountPasswordTextEdit'):clearText()
+        G.password = ''
+    elseif enterGame:getChildById('rememberEmailBox'):isChecked() then
         local account = g_crypt.encrypt(G.account)
         local password = g_crypt.encrypt(G.password)
 
@@ -107,22 +182,33 @@ local function onCharacterList(protocol, characters, account, otui)
         end
     end
 
-    CharacterList.create(characters, account, otui)
-    CharacterList.show()
+    if loginPending then
+        EnterGame.setLoginPending(false)
+    end
 
-    if motdEnabled then
-        local lastMotdNumber = g_settings.getNumber('motd')
-        if G.motdNumber and G.motdNumber ~= lastMotdNumber then
-            g_settings.set('motd', G.motdNumber)
-            motdWindow = displayInfoBox(tr('Message of the day'), G.motdMessage)
-            connect(motdWindow, {
-                onOk = function()
-                    CharacterList.show()
-                    motdWindow = nil
-                end
-            })
-            CharacterList.hide()
+    CharacterList.create(characters, account, otui)
+
+    local lastMotdNumber = g_settings.getNumber('motd')
+    local hasNewMotd = motdEnabled and G.motdNumber and G.motdNumber ~= lastMotdNumber
+    if hasNewMotd and not elementalClientLayout then
+        g_settings.set('motd', G.motdNumber)
+        CharacterList.show()
+        motdWindow = displayInfoBox(tr('Message of the day'), G.motdMessage)
+        connect(motdWindow, {
+            onOk = function()
+                CharacterList.show()
+                motdWindow = nil
+            end
+        })
+        CharacterList.hide()
+        if not g_platform.isMobile() then
+            EnterGame.hide()
         end
+    elseif elementalClientLayout then
+        CharacterList.showWithTransition(ELEMENTAL_LOGIN_TRANSITION_MS)
+        EnterGame.transitionToCharacterList(ELEMENTAL_LOGIN_TRANSITION_MS)
+    else
+        CharacterList.show()
     end
 end
 
@@ -132,10 +218,17 @@ local function onUpdateNeeded(protocol, signature)
         loadBox = nil
     end
 
+    if loginPending then
+        EnterGame.setLoginPending(false)
+    end
+
     if EnterGame.updateFunc then
         local continueFunc = EnterGame.show
         local cancelFunc = EnterGame.show
         EnterGame.updateFunc(signature, continueFunc, cancelFunc)
+    elseif elementalClientLayout then
+        EnterGame.show()
+        EnterGame.setLoginStatus('O cliente precisa ser atualizado para entrar.', true)
     else
         local errorBox = displayErrorBox(tr('Update needed'), tr('Your client needs updating, try redownloading it.'))
         connect(errorBox, {
@@ -145,6 +238,10 @@ local function onUpdateNeeded(protocol, signature)
 end
 
 local function updateLabelText()
+    if not g_platform.isMobile() or elementalClientLayout then
+        return
+    end
+
     if enterGame:getChildById('clientComboBox') and tonumber(enterGame:getChildById('clientComboBox'):getText()) > 1080 then
         enterGame:setText("Journey Onwards")
         enterGame:getChildById('emailLabel'):setText("Email:")
@@ -164,9 +261,60 @@ local function loadServerListModule()
     end
 end
 
+local function configureLocalTestProfile()
+    if os.getenv("ELEMENTAL_LOCAL_TEST") ~= "1" then
+        return
+    end
+
+    local savedServers = g_settings.getNode("ServerList") or {}
+    local testAccount = os.getenv("ELEMENTAL_TEST_ACCOUNT")
+    local testPassword = os.getenv("ELEMENTAL_TEST_PASSWORD")
+    if not testAccount or testAccount == "" or not testPassword or testPassword == "" then
+        g_logger.warning("Elemental local test credentials are missing; automatic login is disabled.")
+        g_settings.set("autologin", false)
+        return
+    end
+
+    local testHost = os.getenv("ELEMENTAL_LOGIN_URL") or "http://127.0.0.1:8088/login"
+    local testPort = tonumber(os.getenv("ELEMENTAL_LOGIN_PORT")) or 8088
+    local testAutoLogin = os.getenv("ELEMENTAL_TEST_AUTOLOGIN") ~= "0"
+    local testServer = {
+        account = g_crypt.encrypt(testAccount),
+        password = g_crypt.encrypt(testPassword),
+        port = testPort,
+        protocol = 1525,
+        httpLogin = true,
+        autologin = testAutoLogin,
+        useAuthenticator = false,
+    }
+    savedServers[testHost] = testServer
+
+    g_settings.setNode("ServerList", savedServers)
+    g_settings.set("host", testHost)
+    g_settings.set("port", testPort)
+    g_settings.set("httpLogin", true)
+    g_settings.set("autologin", testAutoLogin)
+
+    local testCharacter = os.getenv("ELEMENTAL_TEST_CHARACTER")
+    if testCharacter and testCharacter ~= "" then
+        g_settings.set("last-used-character", testCharacter)
+    end
+end
+
 -- public functions
 function EnterGame.init()
-    enterGame = g_ui.displayUI('entergame')
+    configureLocalTestProfile()
+
+    if g_sounds then
+        g_sounds.preload(ELEMENTAL_UI_CLICK_SOUND)
+        g_sounds.preload(ELEMENTAL_UI_CONFIRM_SOUND)
+    end
+
+    elementalClientLayout = true
+    g_ui.importStyle('elemental_brand')
+    g_shaders.createFragmentShader(ELEMENTAL_MODAL_BLUR_SHADER,
+        '/modules/client_entergame/shaders/elemental-modal-blur.frag')
+    enterGame = g_ui.displayUI('entergame_elemental_desktop')
     Keybind.new("Misc.", "Change Character", "Ctrl+G", "")
     Keybind.bind("Misc.", "Change Character", {
       {
@@ -253,6 +401,13 @@ function EnterGame.init()
             local account = enterGame:getChildById('accountNameTextEdit'):getText()
             local password = enterGame:getChildById('accountPasswordTextEdit'):getText()
 
+            if type(host) == 'string' and host:match('^https://[^/]+/beta/v1/login$') then
+                ServerList.setServerPassword(host, '')
+                ServerList.setServerAutologin(host, false)
+                ServerList.save()
+                return
+            end
+
             if checked and #account > 0 then
                 ServerList.setServerAccount(host, account)
                 ServerList.setServerPassword(host, password)
@@ -298,6 +453,9 @@ function EnterGame.init()
     })
 
     if g_app.isRunning() and not g_game.isOnline() then
+        if elementalClientLayout then
+            EnterGame.hidePanels()
+        end
         enterGame:show()
     end
 end
@@ -306,10 +464,25 @@ function EnterGame.hidePanels()
     if g_modules.getModule("client_bottommenu"):isLoaded()  then
         modules.client_bottommenu.hide()
     end
-    modules.client_topmenu.hide()
+    local gameInterface = g_modules.getModule('game_interface')
+    if gameInterface and gameInterface:isLoaded() then
+        modules.client_topmenu.hide()
+    end
+
+    local backgroundModule = g_modules.getModule("client_background")
+    if backgroundModule and backgroundModule:isLoaded() and modules.client_background.hideVersionLabel then
+        modules.client_background.hideVersionLabel()
+    end
 end
 
 function EnterGame.showPanels()
+    local gameInterface = g_modules.getModule('game_interface')
+    if elementalClientLayout and gameInterface and gameInterface:isLoaded() and
+        modules.game_interface.getInterfaceProfile() == 'elemental' then
+        EnterGame.hidePanels()
+        return
+    end
+
     if g_modules.getModule("client_bottommenu"):isLoaded()  then
         modules.client_bottommenu.show()
     end
@@ -354,6 +527,10 @@ end
 
 function EnterGame.terminate()
     Keybind.delete("Misc.", "Change Character")
+    cancelLoginPanelsHide()
+    if destroyCreateAccount then
+        destroyCreateAccount()
+    end
 
     disconnect(clientBox, {
         onOptionChange = EnterGame.onClientVersionChange
@@ -364,6 +541,9 @@ function EnterGame.terminate()
     disconnect(g_game, {
         onGameEnd = EnterGame.showPanels
     })
+
+    cancelLoginTransition()
+    loginPending = false
 
     if enterGame then
         enterGame:destroy()
@@ -547,14 +727,113 @@ function EnterGame.show()
         return
     end
 
+    cancelLoginTransition()
+    if loginPending then
+        EnterGame.setLoginPending(false)
+    end
+
+    if elementalClientLayout then
+        EnterGame.hidePanels()
+    end
+
+    EnterGame.clearLoginStatus()
     enterGame:show()
     enterGame:raise()
     enterGame:focus()
+    cancelLoginPanelsHide()
+    loginPanelsHideEvent = scheduleEvent(function()
+        loginPanelsHideEvent = nil
+        if elementalClientLayout then
+            EnterGame.hidePanels()
+        end
+    end, 100)
     hasAttemptedAuthenticator = false
 end
 
 function EnterGame.hide()
+    cancelLoginPanelsHide()
     enterGame:hide()
+end
+
+function EnterGame.setLoginStatus(message, isError)
+    if not enterGame or not elementalClientLayout then
+        return
+    end
+
+    local status = enterGame:getChildById('loginStatus')
+    if not status then
+        return
+    end
+
+    status:setText(message or '')
+    status:setColor(isError and '#e56b6b' or '#aeb4c0')
+    status:setVisible(type(message) == 'string' and message ~= '')
+end
+
+function EnterGame.setLoginPending(pending, message)
+    if not enterGame or not elementalClientLayout then
+        return
+    end
+
+    loginPending = pending == true
+    local loginButton = enterGame:getChildById('btnLogin')
+    if loginButton then
+        loginButton:setText(loginPending and 'Cancelar' or 'Entrar')
+        loginButton:setTooltip(loginPending and 'Cancelar conexão' or '')
+    end
+
+    for _, widgetId in ipairs({
+        'accountNameTextEdit', 'accountPasswordTextEdit', 'rememberEmailBox',
+        'Forgot_password_email', 'btnCreateNewAccount'
+    }) do
+        local widget = enterGame:getChildById(widgetId)
+        if widget then
+            widget:setEnabled(not loginPending)
+        end
+    end
+
+    if loginPending then
+        EnterGame.setLoginStatus(message or 'Conectando ao Elemental…', false)
+    else
+        EnterGame.clearLoginStatus()
+    end
+end
+
+function EnterGame.cancelLogin()
+    if not loginPending then
+        return
+    end
+
+    G.requestId = 0
+    if protocolLogin then
+        protocolLogin:cancelLogin()
+        protocolLogin = nil
+    end
+
+    EnterGame.setLoginPending(false)
+    EnterGame.show()
+end
+
+function EnterGame.transitionToCharacterList(duration)
+    if not enterGame or not elementalClientLayout then
+        return
+    end
+
+    duration = duration or ELEMENTAL_LOGIN_TRANSITION_MS
+    cancelLoginTransition()
+    g_effects.fadeOut(enterGame, duration)
+    loginTransitionEvent = scheduleEvent(function()
+        loginTransitionEvent = nil
+        if enterGame then
+            g_effects.cancelFade(enterGame)
+            enterGame:setOpacity(1)
+            enterGame:hide()
+        end
+    end, duration + 30)
+end
+
+function EnterGame.clearLoginStatus()
+    EnterGame.setLoginStatus('', false)
 end
 
 function EnterGame.openWindow()
@@ -576,6 +855,18 @@ function EnterGame.setPassword(password)
     enterGame:getChildById('accountPasswordTextEdit'):setText(safeDecrypt(password or ''))
 end
 
+function EnterGame.prepareBetaRelogin(email)
+    if type(email) == 'string' then
+        G.account = email
+        enterGame:getChildById('accountNameTextEdit'):setText(email)
+    end
+    G.password = ''
+    G.sessionKey = nil
+    G.authenticatorToken = nil
+    enterGame:getChildById('accountPasswordTextEdit'):clearText()
+    enterGame:getChildById('rememberEmailBox'):setChecked(false)
+end
+
 function EnterGame.setHttpLogin(httpLogin)
     if type(httpLogin) == "boolean" then
         enterGame:getChildById('httpLoginBox'):setChecked(httpLogin)
@@ -593,6 +884,10 @@ function EnterGame.clearAccountFields()
 end
 
 function EnterGame.toggleStayLoggedBox(clientVersion, init)
+    if not g_platform.isMobile() then
+        return
+    end
+
     local enabled = (clientVersion >= 1074)
     if enabled == enterGame.stayLoggedBoxEnabled then
         return
@@ -602,12 +897,13 @@ function EnterGame.toggleStayLoggedBox(clientVersion, init)
 
     local newHeight = enterGame:getHeight()
     local newY = enterGame:getY()
+    local stayLoggedBoxHeight = enterGame.stayLoggedBoxHeight or 0
     if enabled then
-        newY = newY - enterGame.stayLoggedBoxHeight
-        newHeight = newHeight + enterGame.stayLoggedBoxHeight
+        newY = newY - stayLoggedBoxHeight
+        newHeight = newHeight + stayLoggedBoxHeight
     else
-        newY = newY + enterGame.stayLoggedBoxHeight
-        newHeight = newHeight - enterGame.stayLoggedBoxHeight
+        newY = newY + stayLoggedBoxHeight
+        newHeight = newHeight - stayLoggedBoxHeight
     end
 
     if not init then
@@ -626,6 +922,10 @@ function EnterGame.onClientVersionChange(comboBox, text, data)
 end
 
 function EnterGame.tryHttpLogin(clientVersion, httpLogin)
+    if elementalClientLayout then
+        EnterGame.setLoginPending(true, 'Conectando ao Elemental…')
+    end
+
     g_game.setClientVersion(clientVersion)
     g_game.setProtocolVersion(g_game.getClientProtocolVersion(clientVersion))
     g_game.chooseRsa(G.host)
@@ -635,22 +935,29 @@ function EnterGame.tryHttpLogin(clientVersion, httpLogin)
             loadBox = nil
         end
 
-        local errorBox = displayErrorBox(tr("Login Error"), string.format("Things are not loaded, please put assets in things/%d/<assets>.", clientVersion))
-        connect(errorBox, {
-            onOk = EnterGame.show
-        })
+        local errorMessage = string.format("Things are not loaded, please put assets in things/%d/<assets>.", clientVersion)
+        if elementalClientLayout then
+            EnterGame.setLoginPending(false)
+            EnterGame.setLoginStatus(errorMessage, true)
+        else
+            local errorBox = displayErrorBox(tr("Login Error"), errorMessage)
+            connect(errorBox, {
+                onOk = EnterGame.show
+            })
+        end
         return
     end
 
-    -- Show connecting message immediately
-    loadBox = displayCancelBox(tr('Connecting'), tr('Your character list is being loaded. Please wait.'))
-    connect(loadBox, {
-        onCancel = function(msgbox)
-            loadBox = nil
-            G.requestId = 0
-            EnterGame.show()
-        end
-    })
+    if g_platform.isMobile() and not elementalClientLayout then
+        loadBox = displayCancelBox(tr('Connecting'), tr('Your character list is being loaded. Please wait.'))
+        connect(loadBox, {
+            onCancel = function(msgbox)
+                loadBox = nil
+                G.requestId = 0
+                EnterGame.show()
+            end
+        })
+    end
 
     local host, path = G.host, "/"
     local httpsScheme = G.host:find("^https://") ~= nil
@@ -667,6 +974,8 @@ function EnterGame.tryHttpLogin(clientVersion, httpLogin)
         if hostPort then
             host = host:gsub(":%d+$", "")
             G.port = tonumber(hostPort)
+        elseif path == '/beta/v1/login' and httpsScheme then
+            G.port = 443
         end
     end
 
@@ -706,19 +1015,21 @@ function EnterGame.loginSuccess(requestId, jsonSession, jsonWorlds, jsonCharacte
         return
     end
 
-    -- Update the existing loadBox message or create new one if it doesn't exist
-    if loadBox then
-        loadBox:destroy()
-    end
-    loadBox = displayCancelBox(tr('Connecting'), tr('Your character list is being loaded. Please wait.'))
-
-    connect(loadBox, {
-        onCancel = function(msgbox)
-            loadBox = nil
-            G.requestId = 0
-            EnterGame.show()
+    if g_platform.isMobile() and not elementalClientLayout then
+        if loadBox then
+            loadBox:destroy()
         end
-    })
+        loadBox = displayCancelBox(tr('Connecting'), tr('Your character list is being loaded. Please wait.'))
+        connect(loadBox, {
+            onCancel = function(msgbox)
+                loadBox = nil
+                G.requestId = 0
+                EnterGame.show()
+            end
+        })
+    else
+        EnterGame.setLoginPending(true, 'Preparando a lista de personagens…')
+    end
 
     if tokenWindow then
         tokenWindow:destroy()
@@ -746,6 +1057,9 @@ function EnterGame.loginSuccess(requestId, jsonSession, jsonWorlds, jsonCharacte
             dailyreward = character.dailyrewardstate,
             hidden = character.ishidden,
             vocation = character.vocation,
+            vocationId = character.vocationId,
+            raceId = character.raceId,
+            raceName = character.raceName,
             outfitid = character.outfitid,
             headcolor = character.headcolor,
             torsocolor = character.torsocolor,
@@ -772,6 +1086,10 @@ function EnterGame.loginSuccess(requestId, jsonSession, jsonWorlds, jsonCharacte
 
     -- set session key
     G.sessionKey = session.sessionkey
+    if os.getenv("ELEMENTAL_LOCAL_TEST") == "1" and
+        os.getenv("ELEMENTAL_LOCAL_TEST_PASSWORD_SESSION") == "1" then
+        G.sessionKey = G.account .. '\n' .. G.password
+    end
 
     onCharacterList(nil, characters, account)
 end
@@ -784,6 +1102,11 @@ function EnterGame.loginFailed(requestId, msg, result)
 end
 
 function EnterGame.doLogin()
+    if loginPending then
+        EnterGame.cancelLogin()
+        return
+    end
+
     G.account = enterGame:getChildById('accountNameTextEdit'):getText()
     G.password = enterGame:getChildById('accountPasswordTextEdit'):getText()
     G.stayLogged = enterGame:getChildById('stayLoggedBox'):isChecked()
@@ -794,6 +1117,10 @@ function EnterGame.doLogin()
     local httpLogin = enterGame:getChildById('httpLoginBox'):isChecked()
 
     if g_game.isOnline() then
+        if elementalClientLayout then
+            EnterGame.setLoginStatus('A sessão atual já está conectada.', true)
+            return
+        end
         local errorBox = displayErrorBox(tr('Login Error'), tr('Cannot login while already in game.'))
         connect(errorBox, {
             onOk = EnterGame.show
@@ -814,17 +1141,27 @@ function EnterGame.doLogin()
                 return
             end
 
-            local errorBox = displayErrorBox(tr('Login Error'), message or tr('Unable to download client assets.'))
-            connect(errorBox, {
-                onOk = EnterGame.show
-            })
+            local errorMessage = message or tr('Unable to download client assets.')
+            if elementalClientLayout then
+                EnterGame.setLoginStatus(errorMessage, true)
+            else
+                local errorBox = displayErrorBox(tr('Login Error'), errorMessage)
+                connect(errorBox, {
+                    onOk = EnterGame.show
+                })
+            end
         end)
         return
     end
 
-    EnterGame.hide()
+    if g_platform.isMobile() and not elementalClientLayout then
+        EnterGame.hide()
+    else
+        EnterGame.setLoginPending(true, 'Conectando ao Elemental…')
+    end
 
-    if clientVersion >= 1281 and G.port ~= 7171 then
+    local betaLogin = type(G.host) == 'string' and G.host:match('^https://[^/]+/beta/v1/login$')
+    if clientVersion >= 1281 and (betaLogin or G.port ~= 7171) then
         EnterGame.tryHttpLogin(clientVersion, httpLogin)
     else
         protocolLogin = ProtocolLogin.create()
@@ -834,15 +1171,17 @@ function EnterGame.doLogin()
         protocolLogin.onCharacterList = onCharacterList
         protocolLogin.onUpdateNeeded = onUpdateNeeded
 
-        loadBox = displayCancelBox(tr('Please wait'), tr('Connecting to login server...'))
+        if g_platform.isMobile() and not elementalClientLayout then
+            loadBox = displayCancelBox(tr('Please wait'), tr('Connecting to login server...'))
 
-        connect(loadBox, {
-            onCancel = function(msgbox)
-                loadBox = nil
-                protocolLogin:cancelLogin()
-                EnterGame.show()
-            end
-        })
+            connect(loadBox, {
+                onCancel = function(msgbox)
+                    loadBox = nil
+                    protocolLogin:cancelLogin()
+                    EnterGame.show()
+                end
+            })
+        end
 
         g_game.setClientVersion(clientVersion)
         g_game.setProtocolVersion(g_game.getClientProtocolVersion(clientVersion))
@@ -856,13 +1195,32 @@ function EnterGame.doLogin()
                 loadBox = nil
             end
 
-            local errorBox = displayErrorBox(tr("Login Error"), string.format("Things are not loaded, please put spr and dat in things/%d/<here>.", clientVersion))
-            connect(errorBox, {
-               onOk = EnterGame.show
-            })
+            local errorMessage = string.format("Things are not loaded, please put spr and dat in things/%d/<here>.", clientVersion)
+            if elementalClientLayout then
+                EnterGame.setLoginPending(false)
+                EnterGame.setLoginStatus(errorMessage, true)
+            else
+                local errorBox = displayErrorBox(tr("Login Error"), errorMessage)
+                connect(errorBox, {
+                   onOk = EnterGame.show
+                })
+            end
             return
         end
     end
+end
+
+function EnterGame.reloadCharacterList()
+    if type(G.account) ~= 'string' or G.account == '' or type(G.password) ~= 'string' or G.password == '' or
+        type(G.host) ~= 'string' or G.host == '' or not G.port or not G.clientVersion or
+        G.clientVersion < 1281 or G.port == 7171 then
+        return false
+    end
+
+    local httpLogin = enterGame:getChildById('httpLoginBox'):isChecked()
+    EnterGame.hide()
+    EnterGame.tryHttpLogin(G.clientVersion, httpLogin)
+    return true
 end
 
 function EnterGame.displayMotd()
@@ -934,15 +1292,10 @@ function EnterGame.setUniqueServer(host, port, protocol, windowWidth, windowHeig
     local rememberEmailBox = enterGame:getChildById('rememberEmailBox')
     rememberEmailBox:setMarginTop(5)
 
-    if not windowWidth then
-        windowWidth = 380
+    if g_platform.isMobile() and not elementalClientLayout then
+        enterGame:setWidth(windowWidth or 380)
+        enterGame:setHeight(windowHeight or 229)
     end
-    enterGame:setWidth(windowWidth)
-    if not windowHeight then
-        windowHeight = 229
-    end
-
-    enterGame:setHeight(windowHeight)
     enterGame.disableToken = true
     local server = Servers_init[host]
     enterGame.disableToken = not (server and server.useAuthenticator)

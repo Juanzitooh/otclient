@@ -25,6 +25,8 @@
 #include <framework/core/inputevent.h>
 #include <framework/global.h>
 
+#include <atomic>
+
 #include "staticdata.h"
 
 #ifdef __EMSCRIPTEN__
@@ -67,6 +69,8 @@ public:
     }
     bool isBrowser() { return m_device.type == Browser; }
     bool isConsole() { return m_device.type == Console; }
+    int getSoftKeyboardHeight() const { return m_softKeyboardHeight.load(); }
+    void setSoftKeyboardHeight(const int height) { m_softKeyboardHeight.store(height > 0 ? height : 0); }
     std::string getDeviceShortName(DeviceType type = DeviceUnknown);
     std::string getOsShortName(OperatingSystem os = OsUnknown);
     std::string traceback(std::string_view where, int level = 1, int maxDepth = 32);
@@ -77,6 +81,7 @@ public:
 
 private:
     Device m_device{ Device(Desktop, Windows) };
+    std::atomic_int m_softKeyboardHeight{ 0 };
 
     static std::unordered_map<DeviceType, std::string> m_deviceShortNames;
     static std::unordered_map<OperatingSystem, std::string> m_osShortNames;

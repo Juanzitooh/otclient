@@ -144,7 +144,397 @@ consolePanel = nil
 consoleContentPanel = nil
 local extendedViewButtonToggleChat = nil
 local extendedViewButtonShowAlphaChat = nil
+local elementalMobileChatButton = nil
+local elementalIndicatorDock = nil
+local elementalCooldownWindow = nil
+local elementalCooldownOriginalParent = nil
 local gameBottomPanel = nil
+local useElementalChatUi = false
+local isElementalChatMinimized = false
+local elementalChatExpandedVisibility = nil
+local elementalChatInputFocusable = nil
+local elementalChatExpandedRect = nil
+local setElementalChatMinimized = nil
+local elementalChatStartEvent = nil
+local elementalChatOriginalGeometryChange = nil
+local elementalMobileHudGeometryWidgets = {}
+local elementalMobileHudReflowEvent = nil
+local elementalMobileChatApplyingGeometry = false
+local elementalKeyboardReflowEvent = nil
+local elementalLastKeyboardHeight = 0
+local elementalChatRectBeforeKeyboard = nil
+local isElementalProfileActive = nil
+local updateElementalIndicatorDock = nil
+local ELEMENTAL_INDICATOR_HEIGHT = 30
+local ELEMENTAL_INDICATOR_GAP = 3
+local ELEMENTAL_MOBILE_HUD_MARGIN = 12
+local ELEMENTAL_MOBILE_CHAT_GAP = 8
+local ELEMENTAL_MOBILE_CHAT_COMPACT_HEIGHT = 80
+local ELEMENTAL_MOBILE_INDICATOR_WIDTH = 420
+local ELEMENTAL_CHAT_EXPANDED_CONTENT_MARGIN_TOP = 31
+local ELEMENTAL_CHAT_COLLAPSED_WIDGETS = {
+    'background', 'textLineWindow', 'lockButton', 'prevChannelButton', 'consoleTabBar', 'hidesubchat',
+    'nextChannelButton', 'closeChannelButton', 'clearChannelButton', 'channelsButton', 'ignoreButton',
+    'hideChatButton', 'enterBackground', 'consoleTextEdit', 'sayModeButton', 'toggleChat', 'readOnlyButton',
+    'readOnlyPanel', 'exivaOption', 'extendedViewDraggable', 'extendedViewHide',
+    'elementalWindowRightResize', 'elementalWindowBottomResize'
+}
+
+local function destroyElementalMobileChatButton()
+    if elementalMobileChatButton and not elementalMobileChatButton:isDestroyed() then
+        elementalMobileChatButton:destroy()
+    end
+    elementalMobileChatButton = nil
+end
+
+local function restoreElementalIndicatorDock()
+    if modules.game_healthcircle and modules.game_healthcircle.setElementalStatusIconDock then
+        modules.game_healthcircle.setElementalStatusIconDock(nil)
+    end
+
+    if elementalCooldownWindow and not elementalCooldownWindow:isDestroyed() then
+        if elementalCooldownOriginalParent and not elementalCooldownOriginalParent:isDestroyed() then
+            elementalCooldownWindow:setParent(elementalCooldownOriginalParent)
+        end
+        elementalCooldownWindow:setMarginRight(0)
+    end
+    elementalCooldownWindow = nil
+    elementalCooldownOriginalParent = nil
+
+    if elementalIndicatorDock and not elementalIndicatorDock:isDestroyed() then
+        elementalIndicatorDock:destroy()
+    end
+    elementalIndicatorDock = nil
+end
+
+local function createElementalMobileChatButton()
+    if not useElementalChatUi or not g_platform.isMobile() or elementalMobileChatButton then
+        return
+    end
+
+    local rootPanel = modules.game_interface.getRootPanel()
+    if not rootPanel then
+        return
+    end
+
+    elementalMobileChatButton = g_ui.createWidget('GameAction', rootPanel)
+    elementalMobileChatButton:setId('elementalMobileChatButton')
+    elementalMobileChatButton:breakAnchors()
+    elementalMobileChatButton:setSize('48 48')
+    elementalMobileChatButton:addAnchor(AnchorHorizontalCenter, 'parent', AnchorHorizontalCenter)
+    elementalMobileChatButton:addAnchor(AnchorTop, 'parent', AnchorTop)
+    elementalMobileChatButton:setMarginTop(ELEMENTAL_MOBILE_HUD_MARGIN)
+    elementalMobileChatButton:setBackgroundColor('#171A20DD')
+    elementalMobileChatButton:setBorderWidth(1)
+    elementalMobileChatButton:setBorderColor('#FFB829')
+    elementalMobileChatButton:setPhantom(false)
+    elementalMobileChatButton.image:setImageSource('/images/game/mobile/chat')
+    elementalMobileChatButton.image:setImageColor('#F4E9D6')
+    elementalMobileChatButton.image:setSize('34 34')
+    elementalMobileChatButton:setVisible(isElementalChatMinimized)
+    elementalMobileChatButton:raise()
+    elementalMobileChatButton.onClick = function()
+        if isElementalChatMinimized then
+            modules.game_interface.showElementalWindow('chat')
+            setElementalChatMinimized(false)
+        else
+            setElementalChatMinimized(true)
+        end
+    end
+end
+
+local function getElementalMobileHudLayout()
+    if not g_platform.isMobile() then
+        return nil
+    end
+
+    local rootPanel = modules.game_interface.getRootPanel()
+    local width = rootPanel:getWidth()
+    local height = rootPanel:getHeight()
+    local keyboardPixelHeight = g_platform.getSoftKeyboardHeight and g_platform.getSoftKeyboardHeight() or 0
+    local displayHeight = g_window.getDisplayHeight()
+    local keyboardRatio = displayHeight > 0 and math.min(0.75, keyboardPixelHeight / displayHeight) or 0
+    local keyboardHeight = math.floor(height * keyboardRatio)
+    local keyboardVisible = keyboardHeight > 0
+    local left = ELEMENTAL_MOBILE_HUD_MARGIN
+    local right = width - ELEMENTAL_MOBILE_HUD_MARGIN
+    local controlsTop = height - ELEMENTAL_MOBILE_HUD_MARGIN
+    local controlsBottom = height
+
+    local joystick = modules.game_joystick and modules.game_joystick.getPanel and
+        modules.game_joystick.getPanel()
+    if joystick and not joystick:isDestroyed() and joystick:isVisible() then
+        left = math.max(left, joystick:getX() + joystick:getWidth() + ELEMENTAL_MOBILE_HUD_MARGIN)
+        controlsTop = math.min(controlsTop, joystick:getY())
+        controlsBottom = math.max(controlsBottom, joystick:getY() + joystick:getHeight())
+    end
+
+    local actions = modules.game_shortcuts and modules.game_shortcuts.getPanel and
+        modules.game_shortcuts.getPanel()
+    if actions and not actions:isDestroyed() and actions:isVisible() then
+        right = math.min(right, actions:getX() - ELEMENTAL_MOBILE_HUD_MARGIN)
+        controlsTop = math.min(controlsTop, actions:getY())
+        controlsBottom = math.max(controlsBottom, actions:getY() + actions:getHeight())
+    end
+
+    if right - left < 240 then
+        left = ELEMENTAL_MOBILE_HUD_MARGIN
+        right = width - ELEMENTAL_MOBILE_HUD_MARGIN
+    end
+
+    local laneWidth = math.max(160, right - left)
+    local chatBottom = keyboardVisible and math.max(12, height - keyboardHeight - ELEMENTAL_MOBILE_CHAT_GAP) or
+        math.max(12, controlsTop - ELEMENTAL_MOBILE_CHAT_GAP)
+    local availableHeight = math.max(80, chatBottom - 12)
+    local expandedHeight = keyboardVisible and availableHeight or
+        math.min(360, math.max(160, math.floor(height * 0.45)), availableHeight)
+    local indicatorWidth = math.min(ELEMENTAL_MOBILE_INDICATOR_WIDTH, laneWidth)
+    local indicatorY = controlsTop + math.floor((controlsBottom - controlsTop - ELEMENTAL_INDICATOR_HEIGHT) / 2)
+
+    return {
+        chatX = left,
+        chatWidth = laneWidth,
+        chatBottom = chatBottom,
+        availableHeight = availableHeight,
+        keyboardVisible = keyboardVisible,
+        keyboardHeight = keyboardHeight,
+        compactChat = {
+            x = left,
+            y = math.max(8, chatBottom - ELEMENTAL_MOBILE_CHAT_COMPACT_HEIGHT),
+            width = laneWidth,
+            height = math.min(ELEMENTAL_MOBILE_CHAT_COMPACT_HEIGHT, availableHeight)
+        },
+        expandedChat = {
+            x = left,
+            y = math.max(8, chatBottom - expandedHeight),
+            width = laneWidth,
+            height = expandedHeight
+        },
+        indicators = {
+            x = right - indicatorWidth,
+            y = math.max(0, math.min(height - ELEMENTAL_INDICATOR_HEIGHT, indicatorY)),
+            width = indicatorWidth,
+            height = ELEMENTAL_INDICATOR_HEIGHT
+        }
+    }
+end
+
+local function applyElementalMobileChatGeometry(minimized, rect)
+    if not g_platform.isMobile() or not consolePanel or consolePanel:isDestroyed() then
+        return
+    end
+
+    local layout = getElementalMobileHudLayout()
+    if not layout then
+        return
+    end
+
+    if not rect then
+        rect = minimized and layout.compactChat or layout.expandedChat
+    elseif not minimized then
+        local width = math.min(tonumber(rect.width) or layout.chatWidth, layout.chatWidth)
+        local height = math.min(tonumber(rect.height) or layout.expandedChat.height,
+            layout.availableHeight)
+        rect = {
+            x = layout.chatX + math.floor((layout.chatWidth - width) / 2),
+            y = math.max(8, layout.chatBottom - height),
+            width = width,
+            height = height
+        }
+    end
+
+    elementalMobileChatApplyingGeometry = true
+    consolePanel:setRect(rect)
+    consolePanel:bindRectToParent()
+    elementalMobileChatApplyingGeometry = false
+end
+
+local function scheduleElementalKeyboardReflow()
+    if not g_platform.isMobile() or not isElementalProfileActive() or
+        isElementalChatMinimized or elementalKeyboardReflowEvent then
+        return
+    end
+    elementalKeyboardReflowEvent = scheduleEvent(function()
+        elementalKeyboardReflowEvent = nil
+        if not isElementalProfileActive() or isElementalChatMinimized or
+            not consolePanel or consolePanel:isDestroyed() then
+            return
+        end
+
+        local keyboardHeight = g_platform.getSoftKeyboardHeight and g_platform.getSoftKeyboardHeight() or 0
+        if keyboardHeight ~= elementalLastKeyboardHeight then
+            if keyboardHeight > 0 and elementalLastKeyboardHeight == 0 then
+                elementalChatRectBeforeKeyboard = consolePanel:getRect()
+            end
+            elementalLastKeyboardHeight = keyboardHeight
+            if keyboardHeight == 0 and elementalChatRectBeforeKeyboard then
+                applyElementalMobileChatGeometry(false, elementalChatRectBeforeKeyboard)
+                elementalChatRectBeforeKeyboard = nil
+            else
+                applyElementalMobileChatGeometry(false)
+            end
+        end
+
+        scheduleElementalKeyboardReflow()
+    end, 100)
+end
+
+local function scheduleElementalMobileHudReflow()
+    if not g_platform.isMobile() or not isElementalProfileActive() or isElementalChatMinimized then
+        return
+    end
+    if elementalMobileHudReflowEvent then
+        removeEvent(elementalMobileHudReflowEvent)
+    end
+    elementalMobileHudReflowEvent = scheduleEvent(function()
+        elementalMobileHudReflowEvent = nil
+        if not isElementalProfileActive() or not consolePanel or consolePanel:isDestroyed() then
+            return
+        end
+        applyElementalMobileChatGeometry(isElementalChatMinimized)
+        updateElementalIndicatorDock()
+    end, 75)
+end
+
+local function connectElementalMobileHudGeometry()
+    if not g_platform.isMobile() then
+        return
+    end
+
+    local connected = {}
+    for _, widget in ipairs(elementalMobileHudGeometryWidgets) do
+        connected[widget] = true
+    end
+    local widgets = {
+        modules.game_interface.getRootPanel(),
+        modules.game_joystick and modules.game_joystick.getPanel and modules.game_joystick.getPanel(),
+        modules.game_shortcuts and modules.game_shortcuts.getPanel and modules.game_shortcuts.getPanel()
+    }
+    for _, widget in pairs(widgets) do
+        if widget and not widget:isDestroyed() and not connected[widget] then
+            connect(widget, { onGeometryChange = scheduleElementalMobileHudReflow })
+            table.insert(elementalMobileHudGeometryWidgets, widget)
+            connected[widget] = true
+        end
+    end
+end
+
+local function disconnectElementalMobileHudGeometry()
+    if elementalMobileHudReflowEvent then
+        removeEvent(elementalMobileHudReflowEvent)
+        elementalMobileHudReflowEvent = nil
+    end
+    for _, widget in ipairs(elementalMobileHudGeometryWidgets) do
+        if widget and not widget:isDestroyed() then
+            disconnect(widget, { onGeometryChange = scheduleElementalMobileHudReflow })
+        end
+    end
+    elementalMobileHudGeometryWidgets = {}
+end
+
+isElementalProfileActive = function()
+    return useElementalChatUi and modules.game_interface and
+        modules.game_interface.isElementalProfileInWorld()
+end
+
+updateElementalIndicatorDock = function()
+    if not isElementalProfileActive() or not consolePanel or consolePanel:isDestroyed() or
+        not gameBottomPanel or gameBottomPanel:isDestroyed() then
+        return
+    end
+    gameBottomPanel:hide()
+
+    local windowLayer = modules.game_interface.getElementalWindowLayer()
+    if not windowLayer or windowLayer:isDestroyed() then
+        return
+    end
+
+    if not elementalIndicatorDock or elementalIndicatorDock:isDestroyed() then
+        elementalIndicatorDock = g_ui.createWidget('Panel', windowLayer)
+        elementalIndicatorDock:setId('elementalIndicatorDock')
+        elementalIndicatorDock:setBackgroundColor('#00000000')
+        elementalIndicatorDock:setImageSource(nil)
+        elementalIndicatorDock:setImageColor('alpha')
+        elementalIndicatorDock:setFocusable(false)
+        elementalIndicatorDock:setPhantom(true)
+    end
+
+    if not elementalCooldownWindow or elementalCooldownWindow:isDestroyed() then
+        elementalCooldownWindow = gameBottomPanel:getChildById('cooldownWindow')
+        if elementalCooldownWindow then
+            elementalCooldownOriginalParent = elementalCooldownWindow:getParent()
+            elementalCooldownWindow:setParent(elementalIndicatorDock)
+            elementalCooldownWindow:breakAnchors()
+            elementalCooldownWindow:addAnchor(AnchorTop, 'parent', AnchorTop)
+            elementalCooldownWindow:addAnchor(AnchorLeft, 'parent', AnchorLeft)
+            elementalCooldownWindow:addAnchor(AnchorRight, 'parent', AnchorRight)
+            elementalCooldownWindow:setHeight(ELEMENTAL_INDICATOR_HEIGHT)
+        end
+    end
+
+    elementalIndicatorDock:breakAnchors()
+    local dockRect
+    if g_platform.isMobile() then
+        local layout = getElementalMobileHudLayout()
+        dockRect = layout and layout.indicators
+    end
+    dockRect = dockRect or {
+        x = consolePanel:getX(),
+        y = math.max(0, consolePanel:getY() - ELEMENTAL_INDICATOR_HEIGHT - ELEMENTAL_INDICATOR_GAP),
+        width = consolePanel:getWidth(),
+        height = ELEMENTAL_INDICATOR_HEIGHT
+    }
+    elementalIndicatorDock:setRect(dockRect)
+    elementalIndicatorDock:bindRectToParent()
+    elementalIndicatorDock:show()
+    elementalIndicatorDock:raise()
+
+    local statusIconPanel = nil
+    if modules.game_healthcircle and modules.game_healthcircle.setElementalStatusIconDock then
+        statusIconPanel = modules.game_healthcircle.setElementalStatusIconDock(elementalIndicatorDock)
+    end
+
+    if elementalCooldownWindow then
+        elementalCooldownWindow:setBackgroundColor('#00000000')
+        elementalCooldownWindow:setImageSource(nil)
+        elementalCooldownWindow:setImageColor('alpha')
+        elementalCooldownWindow:show()
+        if not modules.client_options.getOption('showSpellGroupCooldowns') then
+            elementalCooldownWindow:hide()
+        end
+    end
+
+    if os.getenv("ELEMENTAL_LOCAL_TEST") == "1" then
+        g_logger.info(string.format(
+            'Elemental QA indicator dock: rect=%d,%d %dx%d bottomPanelVisible=%s cooldown=%s status=%s',
+            elementalIndicatorDock:getX(), elementalIndicatorDock:getY(),
+            elementalIndicatorDock:getWidth(), elementalIndicatorDock:getHeight(),
+            tostring(gameBottomPanel:isVisible()), tostring(elementalCooldownWindow ~= nil),
+            tostring(statusIconPanel ~= nil)))
+    end
+end
+
+local function connectElementalChatGeometry()
+    if not useElementalChatUi or not consolePanel then
+        return
+    end
+
+    elementalChatOriginalGeometryChange = consolePanel.onGeometryChange
+    consolePanel.onGeometryChange = function(...)
+        if elementalChatOriginalGeometryChange then
+            elementalChatOriginalGeometryChange(...)
+        end
+        if g_platform.isMobile() and not elementalMobileChatApplyingGeometry then
+            if isElementalChatMinimized then
+                scheduleElementalMobileHudReflow()
+            else
+                elementalChatExpandedRect = consolePanel:getRect()
+            end
+        end
+        updateElementalIndicatorDock()
+    end
+end
+
 -- Tibia-like: when returnDisablesChat is enabled, pressing Enter in walk (WASD) mode opens a
 -- temporary chat (marked with '*') that returns to WASD after a single message is sent.
 local walkAfterSend = false
@@ -186,6 +576,14 @@ local communicationSettings = {
 }
 
 function consoleController:onInit()
+    if elementalChatStartEvent then
+        removeEvent(elementalChatStartEvent)
+        elementalChatStartEvent = nil
+    end
+    isElementalChatMinimized = false
+    elementalChatExpandedVisibility = nil
+    elementalChatInputFocusable = nil
+    elementalChatExpandedRect = nil
     self:registerEvents(g_game, {
         onTalk = onTalk,
         onChannelList = onChannelList,
@@ -201,14 +599,25 @@ function consoleController:onInit()
         onChannelEvent = onChannelEvent
     })
     gameBottomPanel = modules.game_interface.getBottomPanel()
-    consolePanel = g_ui.loadUI('console', gameBottomPanel)
+    useElementalChatUi = modules.game_interface.getInterfaceProfile() == 'elemental'
+    local consoleUi = useElementalChatUi and 'console_elemental' or 'console'
+    consolePanel = g_ui.loadUI(consoleUi, gameBottomPanel)
+    if useElementalChatUi and g_platform.isMobile() then
+        local hideButton = consolePanel:getChildById('hideChatButton')
+        hideButton:breakAnchors()
+        hideButton:addAnchor(AnchorHorizontalCenter, 'parent', AnchorHorizontalCenter)
+        hideButton:addAnchor(AnchorTop, 'parent', AnchorTop)
+        hideButton:setSize('44 28')
+        hideButton:setMarginTop(4)
+        hideButton:setMarginRight(0)
+    end
     consoleTextEdit = consolePanel:getChildById('consoleTextEdit')
     consoleContentPanel = consolePanel:getChildById('consoleContentPanel')
     consoleTabBar = consolePanel:getChildById('consoleTabBar')
     consoleTabBar:setContentWidget(consoleContentPanel)
     channels = {}
-    defaultTab = addTab(tr('Local Chat'), true)
-    serverTab = addTab(tr('Server Log'), false)
+    defaultTab = addTab(tr(useElementalChatUi and 'Conversa' or 'Local Chat'), true)
+    serverTab = useElementalChatUi and defaultTab or addTab(tr('Server Log'), false)
 
     local clientVersion = g_game.getClientVersion()
     if clientVersion >= 820 then
@@ -314,6 +723,12 @@ function consoleController:onInit()
 
     -- toggle WASD
     consoleToggleChat = consolePanel:getChildById('toggleChat')
+    if useElementalChatUi then
+        local hideMessagesToggle = consolePanel:getChildById('hidesubchat')
+        hideMessagesToggle:show()
+        hideMessagesToggle:setChecked(g_settings.getBoolean('hidesubchat'))
+        hideMessagesToggle.onClick = toggleElementalChatHideMessages
+    end
     readOnlyButton = consolePanel:getChildById("readOnlyButton")
     readOnlyPanel = consolePanel:getChildById("readOnlyPanel")
     function readOnlyButton.onMousePress(tab, mousePos, mouseButton)
@@ -326,6 +741,24 @@ function consoleController:onInit()
         activateReadOnlyMode(draggedWidget:getText())
     end)
     load()
+    modules.game_interface.registerElementalWindow('chat', 'Chat', consolePanel, {
+        directWindow = useElementalChatUi,
+        wrap = not useElementalChatUi,
+        fitContent = not useElementalChatUi,
+        fitContentOnResize = not useElementalChatUi,
+        resizable = true,
+        minimumWidth = useElementalChatUi and (g_platform.isMobile() and 160 or 500) or 480,
+        minimumHeight = useElementalChatUi and (g_platform.isMobile() and 140 or 155) or 240
+    })
+    connectElementalChatGeometry()
+    connectElementalMobileHudGeometry()
+    if os.getenv("ELEMENTAL_LOCAL_TEST") == "1" then
+        g_logger.info(string.format(
+            'Elemental QA console init: mobile=%s profile=%s online=%s panel=%dx%d parent=%s',
+            tostring(g_platform.isMobile()), modules.game_interface.getInterfaceProfile(),
+            tostring(g_game.isOnline()), consolePanel:getWidth(), consolePanel:getHeight(),
+            consolePanel:getParent():getId()))
+    end
 end
 
 function clearSelection(consoleBuffer)
@@ -365,6 +798,116 @@ function toggleChat()
     end
 
     updateChatMode()
+end
+
+function toggleElementalWindow()
+    if useElementalChatUi and consolePanel and not consolePanel:isVisible() then
+        setElementalChatMinimized(false)
+    end
+    return modules.game_interface.toggleElementalWindow('chat')
+end
+
+function toggleElementalChatHideMessages(widget)
+    local hideMessages = not g_settings.getBoolean('hidesubchat')
+    g_settings.set('hidesubchat', hideMessages)
+    g_settings.save()
+    widget:setChecked(hideMessages)
+    if isElementalChatMinimized and consoleContentPanel then
+        consoleContentPanel:setVisible(not hideMessages)
+    end
+end
+
+setElementalChatMinimized = function(minimized)
+    if not useElementalChatUi or not consolePanel or consolePanel:isDestroyed() or
+        isElementalChatMinimized == minimized then
+        return false
+    end
+
+    if minimized then
+        elementalChatExpandedVisibility = {}
+        for _, widgetId in ipairs(ELEMENTAL_CHAT_COLLAPSED_WIDGETS) do
+            local widget = consolePanel:getChildById(widgetId)
+            if widget then
+                elementalChatExpandedVisibility[widgetId] = widget:isVisible()
+                widget:hide()
+            end
+        end
+        elementalChatInputFocusable = consoleTextEdit:isFocusable()
+        consoleTextEdit:setFocusable(false)
+        consoleContentPanel:setVisible(not g_settings.getBoolean('hidesubchat'))
+        consolePanel:setPhantom(true)
+        if g_platform.isMobile() then
+            elementalChatExpandedRect = {
+                x = consolePanel:getX(),
+                y = consolePanel:getY(),
+                width = consolePanel:getWidth(),
+                height = consolePanel:getHeight()
+            }
+            if elementalKeyboardReflowEvent then
+                removeEvent(elementalKeyboardReflowEvent)
+                elementalKeyboardReflowEvent = nil
+            end
+            elementalChatRectBeforeKeyboard = nil
+            elementalLastKeyboardHeight = g_platform.getSoftKeyboardHeight and g_platform.getSoftKeyboardHeight() or 0
+            consolePanel:hide()
+            if elementalMobileChatButton then
+                elementalMobileChatButton:show()
+                elementalMobileChatButton:raise()
+            end
+        end
+        local restoreButton = consolePanel:getChildById('hideChatButton2')
+        if g_platform.isMobile() then
+            restoreButton:hide()
+        else
+            restoreButton:show()
+        end
+        modules.game_interface.getRootPanel():focus()
+    else
+        if g_platform.isMobile() then
+            if elementalMobileChatButton then
+                elementalMobileChatButton:hide()
+            end
+            consolePanel:show()
+        end
+        for widgetId, visible in pairs(elementalChatExpandedVisibility or {}) do
+            local widget = consolePanel:getChildById(widgetId)
+            if widget then
+                widget:setVisible(visible)
+            end
+        end
+        consoleContentPanel:show()
+        if g_platform.isMobile() then
+            consoleContentPanel:setMarginTop(ELEMENTAL_CHAT_EXPANDED_CONTENT_MARGIN_TOP)
+            elementalLastKeyboardHeight = g_platform.getSoftKeyboardHeight and g_platform.getSoftKeyboardHeight() or 0
+            applyElementalMobileChatGeometry(false)
+        end
+        consolePanel:getChildById('hideChatButton2'):hide()
+        consolePanel:setPhantom(false)
+        if g_platform.isMobile() then
+            applyElementalMobileChatGeometry(false, elementalChatExpandedRect)
+        end
+        if elementalChatInputFocusable ~= nil then
+            consoleTextEdit:setFocusable(elementalChatInputFocusable)
+        end
+        consolePanel:raise()
+        elementalChatExpandedVisibility = nil
+        elementalChatInputFocusable = nil
+    end
+
+    isElementalChatMinimized = minimized
+    if g_platform.isMobile() and not minimized then
+        scheduleElementalKeyboardReflow()
+    end
+    updateElementalIndicatorDock()
+    return true
+end
+
+function minimizeElementalChat()
+    return setElementalChatMinimized(true)
+end
+
+function restoreElementalChat()
+    return setElementalChatMinimized(false)
 end
 
 -- id of object first and then action
@@ -469,6 +1012,29 @@ function isChatEnabled()
 end
 
 function consoleController:onTerminate()
+    if elementalChatStartEvent then
+        removeEvent(elementalChatStartEvent)
+        elementalChatStartEvent = nil
+    end
+    if elementalKeyboardReflowEvent then
+        removeEvent(elementalKeyboardReflowEvent)
+        elementalKeyboardReflowEvent = nil
+    end
+    destroyElementalMobileChatButton()
+    disconnectElementalMobileHudGeometry()
+    if consolePanel and not consolePanel:isDestroyed() then
+        consolePanel.onGeometryChange = elementalChatOriginalGeometryChange
+    end
+    elementalChatOriginalGeometryChange = nil
+    if isElementalChatMinimized then
+        setElementalChatMinimized(false)
+    end
+    isElementalChatMinimized = false
+    elementalChatExpandedVisibility = nil
+    elementalChatInputFocusable = nil
+    elementalChatExpandedRect = nil
+    restoreElementalIndicatorDock()
+    modules.game_interface.unregisterElementalWindow('chat', consolePanel)
     save()
     Keybind.delete("Chat Channel", "Close Current Channel")
     Keybind.delete("Chat Channel", "Next Channel")
@@ -935,6 +1501,9 @@ end
 
 function addText(text, speaktype, tabName, creatureName)
     local tab = getTab(tabName)
+    if useElementalChatUi and (tabName == tr('Local Chat') or tabName == tr('Server Log')) then
+        tab = defaultTab
+    end
     if tab ~= nil then
         addTabText(text, speaktype, tab, creatureName)
     end
@@ -2336,6 +2905,38 @@ end
 function consoleController:onGameStart()
     consoleTabBar:selectTab(defaultTab)
 
+    if elementalChatStartEvent then
+        removeEvent(elementalChatStartEvent)
+        elementalChatStartEvent = nil
+    end
+    if useElementalChatUi then
+        elementalChatStartEvent = scheduleEvent(function()
+            elementalChatStartEvent = nil
+            if not g_game.isOnline() then
+                return
+            end
+            consoleTabBar:selectTab(defaultTab)
+            connectElementalMobileHudGeometry()
+            if g_platform.isMobile() then
+                elementalChatExpandedRect = nil
+                applyElementalMobileChatGeometry(false)
+            end
+            modules.game_interface.showElementalWindow('chat')
+            setElementalChatMinimized(true)
+            createElementalMobileChatButton()
+            updateElementalIndicatorDock()
+            if os.getenv("ELEMENTAL_LOCAL_TEST") == "1" then
+                g_logger.info(string.format(
+                    'Elemental QA chat: mobile=%s active=%s minimized=%s panel=%dx%d rect=%d,%d visible=%s button=%s parent=%s',
+                    tostring(g_platform.isMobile()), tostring(modules.game_interface.isElementalProfileInWorld()),
+                    tostring(isElementalChatMinimized), consolePanel:getWidth(), consolePanel:getHeight(),
+                    consolePanel:getX(), consolePanel:getY(), tostring(consolePanel:isVisible()),
+                    tostring(elementalMobileChatButton ~= nil and elementalMobileChatButton:isVisible()),
+                    elementalMobileChatButton and elementalMobileChatButton:getParent():getId() or 'nil'))
+            end
+        end, 500)
+    end
+
     local clientVersion = g_game.getClientVersion()
     if clientVersion < 862 then
         Keybind.new("Dialogs", "Open Rule Violation", "Ctrl+R", "")
@@ -2391,6 +2992,19 @@ function consoleController:onGameStart()
 end
 
 function consoleController:onGameEnd()
+    if elementalChatStartEvent then
+        removeEvent(elementalChatStartEvent)
+        elementalChatStartEvent = nil
+    end
+    if elementalKeyboardReflowEvent then
+        removeEvent(elementalKeyboardReflowEvent)
+        elementalKeyboardReflowEvent = nil
+    end
+    destroyElementalMobileChatButton()
+    if isElementalChatMinimized then
+        setElementalChatMinimized(false)
+    end
+    restoreElementalIndicatorDock()
     clear()
     self:closeWindowExiva()
 end
@@ -2424,6 +3038,11 @@ function onTextChange(text)
 end
 
 function setExtendedView(bool)
+    if isElementalProfileActive() then
+        updateElementalIndicatorDock()
+        return
+    end
+
     if bool then
         consolePanel:setMarginRight(10)
         consolePanel:setMarginBottom(10)
@@ -2446,6 +3065,11 @@ function extendedViewDraggable(bool)
 end
 
 function extendedViewCanSee(bool)
+    if isElementalProfileActive() then
+        updateElementalIndicatorDock()
+        return
+    end
+
     local consoleTabBar = gameBottomPanel:getChildById('consolePanel'):getChildById('consoleTabBar')
     local consoleBuffer = consoleTabBar:getCurrentTab().tabPanel:getChildById('consoleBuffer')
 
@@ -2480,6 +3104,11 @@ function extendedViewCanSee(bool)
 end
 
 function returnChat()
+    if isElementalProfileActive() then
+        updateElementalIndicatorDock()
+        return
+    end
+
     local consoleTabBar = gameBottomPanel:getChildById('consolePanel'):getChildById('consoleTabBar')
     local consoleBuffer = consoleTabBar:getCurrentTab().tabPanel:getChildById('consoleBuffer')
 
@@ -2506,6 +3135,11 @@ function returnChat()
 end
 
 function extendedViewHide(bool)
+    if isElementalProfileActive() then
+        updateElementalIndicatorDock()
+        return
+    end
+
     if bool then
         gameBottomPanel:hide()
         createButtonChat()

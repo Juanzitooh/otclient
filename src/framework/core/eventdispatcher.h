@@ -24,6 +24,8 @@
 
 #include "scheduledevent.h"
 #include <framework/util/spinlock.h>
+#include <mutex>
+#include <shared_mutex>
 
 enum class TaskGroup : int8_t
 {
@@ -143,6 +145,7 @@ private:
     }
 
     size_t m_pollEventsSize{};
+    std::shared_mutex m_lifecycleMutex;
     bool m_disabled{ false };
 
     std::vector<std::unique_ptr<ThreadTask>> m_threads;

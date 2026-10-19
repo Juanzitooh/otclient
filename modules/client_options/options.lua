@@ -290,6 +290,7 @@ end
 
 local function setup()
     panels.gameMapPanel = modules.game_interface.getMapPanel()
+    g_settings.setDefault('gameInterfaceProfile', 'elemental')
 
     setupComboBox()
 
@@ -323,6 +324,8 @@ local function setup()
     if modules.game_interface and modules.game_interface.onOptionsLoaded then
         modules.game_interface.onOptionsLoaded()
     end
+    local gameInterfaceProfileCombobox = panels.interface:recursiveGetChildById('gameInterfaceProfile')
+    gameInterfaceProfileCombobox:setCurrentOptionByData(getOption('gameInterfaceProfile'), true)
     
     -- Special handling for mouseControlMode to ensure it's in sync with the underlying options
     local mouseControlMode = g_settings.getNumber('mouseControlMode')
@@ -397,6 +400,13 @@ controller = Controller:new()
 controller:setUI('options')
 
 function controller:onInit()
+    if not g_settings.getBoolean('startupMusicDefaultMigrated', false) then
+        if not g_settings.exists('enableMusicSound') then
+            g_settings.set('enableMusicSound', true)
+        end
+        g_settings.set('startupMusicDefaultMigrated', true)
+    end
+
     for k, obj in pairs(options) do
         if type(obj) ~= "table" then
             obj = { value = obj }
@@ -421,6 +431,12 @@ function controller:onInit()
     panels.graphicsEffectsPanel = g_ui.loadUI('styles/graphics/effects', controller.ui.optionsTabContent)
 
     panels.interface = g_ui.loadUI('styles/interface/interface', controller.ui.optionsTabContent)
+    local gameInterfaceProfileCombobox = panels.interface:recursiveGetChildById('gameInterfaceProfile')
+    gameInterfaceProfileCombobox:addOption('Elemental', 'elemental')
+    gameInterfaceProfileCombobox:addOption('Classic', 'classic')
+    gameInterfaceProfileCombobox.onOptionChange = function(comboBox)
+        setOption('gameInterfaceProfile', comboBox:getCurrentOption().data)
+    end
     panels.interfaceConsole = g_ui.loadUI('styles/interface/console', controller.ui.optionsTabContent)
     panels.interfaceHUD = g_ui.loadUI('styles/interface/HUD', controller.ui.optionsTabContent)
     panels.actionbars = g_ui.loadUI('styles/interface/actionbars', controller.ui.optionsTabContent)

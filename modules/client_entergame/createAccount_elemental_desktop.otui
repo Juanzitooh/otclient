@@ -1,0 +1,118 @@
+ElementalDesktopAccountInput < TextEdit
+  height: 40
+  padding: 9
+  color: #f7f1e4
+  font: verdana-11px-antialised
+  background-color: #10151d
+  border-width: 1
+  border-color: #39424e
+  image-color: #ffffff00
+  image-border: 0
+  selection-color: #f7f1e4
+  selection-background-color: #596473
+  change-cursor-image: false
+  @onClick: EnterGame.playUiClickSound()
+
+  $focus:
+    border-color: #ffe2a7
+
+ElementalDesktopAccountPassword < ElementalDesktopAccountInput
+  text-hidden: true
+
+ElementalDesktopAccountModal < ElementalModal
+
+ElementalDesktopAccountModal
+  id: mainWindow
+  size: 540 468
+  anchors.horizontalCenter: parent.horizontalCenter
+  anchors.verticalCenter: parent.verticalCenter
+  margin-left: 140
+  text: Criar conta
+  @onEscape: toggleCreateAccount(true)
+  @onEnter: onClickStartPlaying()
+
+  Label
+    id: accountIntro
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: parent.top
+    height: 36
+    text-wrap: true
+    color: #aeb4c0
+    text: Crie sua conta para comecar a aventura no Elemental.
+
+  Label
+    anchors.top: accountIntro.bottom
+    anchors.left: parent.left
+    margin-top: 10
+    text: E-mail
+    color: #aeb4c0
+
+  ElementalDesktopAccountInput
+    id: accountEmail
+    anchors.top: prev.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 5
+    @onTextChange: onCreateAccountInputChanged()
+
+  Label
+    anchors.top: accountEmail.bottom
+    anchors.left: parent.left
+    margin-top: 12
+    text: Senha
+    color: #aeb4c0
+
+  ElementalDesktopAccountPassword
+    id: accountPassword
+    anchors.top: prev.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 5
+    @onTextChange: onCreateAccountInputChanged()
+
+  Label
+    anchors.top: accountPassword.bottom
+    anchors.left: parent.left
+    margin-top: 12
+    text: Repetir senha
+    color: #aeb4c0
+
+  ElementalDesktopAccountPassword
+    id: repeatPassword
+    anchors.top: prev.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 5
+    @onTextChange: onCreateAccountInputChanged()
+
+  Label
+    id: accountStatus
+    anchors.top: repeatPassword.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 8
+    height: 42
+    text-wrap: true
+    color: #aeb4c0
+
+  ElementalSecondaryButton
+    anchors.left: parent.left
+    anchors.bottom: parent.bottom
+    width: 166
+    height: 40
+    text: Voltar ao login
+    @onClick: |
+      EnterGame.playUiClickSound()
+      toggleCreateAccount(true)
+
+  ElementalPrimaryButton
+    id: buttonStartPlaying
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    width: 166
+    height: 40
+    text: Criar conta
+    @onClick: |
+      EnterGame.playUiClickSound()
+      onClickStartPlaying()

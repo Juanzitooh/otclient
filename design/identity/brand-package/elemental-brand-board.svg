@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1800" height="1400" viewBox="0 0 1800 1400" role="img" aria-labelledby="title desc">
+  <title id="title">Elemental — entrega de identidade</title>
+  <desc id="desc">Três aplicações da marca: assinatura com slogan, assinatura sem slogan e símbolo sozinho.</desc>
+  <defs>
+    <style>
+      text { font-family: 'DejaVu Serif', serif; }
+      .heading { fill: #F7F1E4; font-size: 34px; letter-spacing: 3px; }
+      .subheading { fill: #B5B4AD; font-size: 18px; letter-spacing: 1px; }
+      .row { fill: #121820; stroke: #27323B; stroke-width: 1.5; }
+      .label { fill: #E8E1D5; font-size: 18px; letter-spacing: 2px; }
+      .note { fill: #9AA3A5; font-size: 14px; }
+    </style>
+  </defs>
+  <rect width="1800" height="1400" fill="#080A10" />
+  <text class="heading" x="84" y="92">ELEMENTAL — ASSINATURAS DE MARCA</text>
+  <text class="subheading" x="86" y="132">Paleta refinada • azul e verde escurecidos • slogan como opção de assinatura</text>
+  <rect x="84" y="160" width="18" height="18" rx="4" fill="#559FB4" />
+  <text class="note" x="110" y="174">ÁGUA #559FB4</text>
+  <rect x="278" y="160" width="18" height="18" rx="4" fill="#8C9F55" />
+  <text class="note" x="304" y="174">TERRA #8C9F55</text>
+
+  <g>
+    <rect class="row" x="55" y="210" width="1690" height="380" rx="14" />
+    <text class="label" x="84" y="252">01 / COM SLOGAN</text>
+    <image x="300" y="270" width="1200" height="297" preserveAspectRatio="xMidYMid meet" xlink:href="elemental-signature-tagline-dark.svg" />
+  </g>
+  <g>
+    <rect class="row" x="55" y="620" width="1690" height="360" rx="14" />
+    <text class="label" x="84" y="662">02 / SEM SLOGAN</text>
+    <image x="350" y="645" width="1100" height="333" preserveAspectRatio="xMidYMid meet" xlink:href="elemental-signature-dark.svg" />
+  </g>
+  <g>
+    <rect class="row" x="55" y="1010" width="1690" height="320" rx="14" />
+    <text class="label" x="84" y="1052">03 / SÍMBOLO</text>
+    <image x="800" y="1050" width="240" height="240" preserveAspectRatio="xMidYMid meet" xlink:href="elemental-symbol.svg" />
+  </g>
+  <text class="note" x="84" y="1365">Fontes vetoriais editáveis • opções dark e light • versão animada transparente incluída</text>
+</svg>

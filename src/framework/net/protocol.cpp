@@ -80,6 +80,22 @@ void Protocol::connect(const std::string_view host, const uint16_t port)
         }
     });
 }
+
+void Protocol::connectSecure(const std::string_view host, const uint16_t port, const std::string_view caFile)
+{
+    m_connection = std::make_shared<Connection>();
+    std::weak_ptr<Protocol> weakSelf = asProtocol();
+    m_connection->setErrorCallback([weakSelf](auto&& err) {
+        if (auto self = weakSelf.lock())
+            self->onError(std::forward<decltype(err)>(err));
+    });
+    m_connection->connectSecure(host, port, caFile, [weakSelf] {
+        if (auto self = weakSelf.lock()) {
+            if (!self->m_disconnected)
+                self->onConnect();
+        }
+    });
+}
 #else
 void Protocol::connect(const std::string_view host, uint16_t port, bool gameWorld)
 {

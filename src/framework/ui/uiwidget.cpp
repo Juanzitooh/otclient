@@ -1215,18 +1215,33 @@ bool UIWidget::setRect(const Rect& rect)
         auto self = static_self_cast<UIWidget>();
         g_dispatcher.deferEvent([self, oldRect] {
             self->setProp(PropUpdateEventScheduled, false);
+            if (self->isDestroyed())
+                return;
+
             const auto& rect = self->getRect();
             if (oldRect != rect) {
                 // update hovered widget when moved behind mouse area
-                if (self->containsPoint(g_window.getMousePosition()))
+                if (self->containsPoint(g_window.getMousePosition())) {
                     g_ui.updateHoveredWidget();
+                    if (self->isDestroyed())
+                        return;
+                }
 
-                if (oldRect.width() != rect.width())
+                if (oldRect.width() != rect.width()) {
                     self->callLuaField("onWidthChange", rect.width(), oldRect.width());
-                if (oldRect.height() != rect.height())
+                    if (self->isDestroyed())
+                        return;
+                }
+                if (oldRect.height() != rect.height()) {
                     self->callLuaField("onHeightChange", rect.height(), oldRect.height());
+                    if (self->isDestroyed())
+                        return;
+                }
 
                 self->callLuaField("onResize", oldRect, rect);
+                if (self->isDestroyed())
+                    return;
+
                 self->onGeometryChange(oldRect, rect);
             }
         });

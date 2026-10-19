@@ -45,6 +45,24 @@ function HTTP.post(url, data, callback, checkContentLength)
   return operation
 end
 
+function HTTP.postWithBearer(url, data, token, callback)
+  if not g_http or not g_http.postWithBearer then
+    return error("HTTP.postWithBearer is not supported")
+  end
+  if type(data) == "table" then
+    data = json.encode(data)
+  end
+  local operation = g_http.postWithBearer(url, data, token, HTTP.timeout)
+  if operation < 0 then
+    if callback then
+      callback(nil, "secure_request_unavailable")
+    end
+    return nil
+  end
+  HTTP.operations[operation] = { type = "post", url = url, callback = callback }
+  return operation
+end
+
 function HTTP.postJSON(url, data, callback)
   if not g_http or not g_http.post then
     return error("HTTP.postJSON is not supported")

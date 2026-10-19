@@ -25,6 +25,7 @@
 #include "declarations.h"
 
 #include <framework/luaengine/luaobject.h>
+#include <asio/ssl.hpp>
 
 class Connection final : public LuaObject
 {
@@ -47,6 +48,9 @@ public:
     static void terminate();
 
     void connect(std::string_view host, uint16_t port, const std::function<void()>& connectCallback);
+    // @dontbind
+    void connectSecure(std::string_view host, uint16_t port, std::string_view caFile,
+                       const std::function<void()>& connectCallback);
     void close();
 
     void write(const uint8_t* buffer, size_t size);
@@ -69,6 +73,8 @@ protected:
     void internal_write();
     void onResolve(const std::error_code& error, const asio::ip::tcp::resolver::iterator& endpointIterator);
     void onConnect(const std::error_code& error);
+    void onHandshake(const std::error_code& error);
+    void finishConnect();
     void onCanWrite(const std::error_code& error);
     void onWrite(const std::error_code& error, size_t writeSize, const std::shared_ptr<asio::streambuf>&
                  outputStream);
@@ -85,12 +91,16 @@ protected:
     asio::basic_waitable_timer<std::chrono::high_resolution_clock> m_delayedWriteTimer;
     asio::ip::tcp::resolver m_resolver;
     asio::ip::tcp::socket m_socket;
+    asio::ssl::context m_sslContext;
+    std::unique_ptr<asio::ssl::stream<asio::ip::tcp::socket>> m_secureSocket;
 
     static std::list<std::shared_ptr<asio::streambuf>> m_outputStreams;
     std::shared_ptr<asio::streambuf> m_outputStream;
     asio::streambuf m_inputStream;
     bool m_connected{ false };
     bool m_connecting{ false };
+    bool m_useTls{ false };
+    std::string m_secureHost;
     std::error_code m_error;
     stdext::timer m_activityTimer;
 

@@ -5,6 +5,28 @@ UIWidget
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.top: parent.top
+    height: 55
+
+    Label
+      text: Perfil da interface
+      anchors.left: parent.left
+      anchors.right: gameInterfaceProfile.left
+      anchors.verticalCenter: parent.verticalCenter
+      margin-left: 12
+      color: #c0c0c0ff
+
+    QtComboBox
+      id: gameInterfaceProfile
+      width: 150
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      margin-right: 12
+      mouse-scroll: false
+
+  SmallReversedQtPanel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: parent.top
     height: 22
 
     OptionCheckBox

@@ -536,6 +536,9 @@ function extendedView(extendedView)
 end
 
 function toggle()
+    if modules.game_interface.isElementalProfileInWorld() then
+        return false
+    end
     if iconTopMenu:isOn() then
         inventoryController.ui:hide()
         iconTopMenu:setOn(false)

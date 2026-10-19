@@ -11,6 +11,7 @@ class FakeEditText : View, View.OnKeyListener {
     lateinit var ic: InputConnection
 
     init {
+        ic = NativeInputConnection(this, true)
         isFocusableInTouchMode = true
         isFocusable = true
         setOnKeyListener(this)

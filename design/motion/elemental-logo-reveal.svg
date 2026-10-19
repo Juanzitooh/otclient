@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+  <title id="title">Elemental — assinatura animada</title>
+  <desc id="desc">O símbolo se abre primeiro. Os traços azul e verde avançam junto com o nome Elemental; o slogan surge logo abaixo do traço verde, alinhado ao nome.</desc>
+  <defs>
+    <clipPath id="signature-reveal" clipPathUnits="userSpaceOnUse">
+      <rect id="signature-mask" x="300" y="390" width="0" height="410" />
+    </clipPath>
+    <style>
+      .signature { opacity: 0; animation: signature-in 6s ease-out 1 both; }
+      #signature-mask { animation: write-signature 6s cubic-bezier(.18,.7,.2,1) 1 both; }
+      .tagline { opacity: 0; animation: tagline-in 6s ease-out 1 both; }
+      @keyframes signature-in { 0%, 6% { opacity: 0; } 14%, 100% { opacity: 1; } }
+      @keyframes write-signature { 0%, 6% { width: 0; } 23% { width: 330px; } 72%, 100% { width: 1320px; } }
+      @keyframes tagline-in { 0%, 64% { opacity: 0; } 75%, 91% { opacity: 1; } 100% { opacity: 0; } }
+      @media (prefers-reduced-motion: reduce) {
+        .signature, #signature-mask, .tagline { animation: none; }
+        .signature, .tagline { opacity: 1; }
+        #signature-mask { width: 1320px; }
+      }
+    </style>
+  </defs>
+
+  <g class="signature">
+    <g clip-path="url(#signature-reveal)">
+      <image x="300" y="390" width="1320" height="399" xlink:href="../identity/brand-package/elemental-signature-dark.svg" />
+    </g>
+  </g>
+  <text class="tagline" x="1102" y="683" text-anchor="middle" fill="#F7F1E4" font-family="DejaVu Serif, serif" font-size="19" letter-spacing="1.2">COLETE, CONSTRUA, LUTE E VIVA ESSA AVENTURA</text>
+</svg>

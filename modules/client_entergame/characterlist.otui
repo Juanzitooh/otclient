@@ -1,3 +1,442 @@
+ElementalCharacterAssemblyWindow < MainWindow
+  id: elementalCharacterAssemblyWindow
+  size: 510 515
+  !text: tr('Create Character')
+  @onEscape: CharacterList.closeCharacterAssembly()
+
+  Panel
+    id: assemblyPanel
+    anchors.fill: parent
+    margin: 12
+
+    Label
+      id: assemblyIntro
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.right
+      height: 30
+      text-wrap: true
+      text: 'Choose every field before entering the world. No race or vocation is preselected.'
+
+    Label
+      id: characterNameLabel
+      anchors.top: assemblyIntro.bottom
+      anchors.left: parent.left
+      margin-top: 5
+      !text: tr('Character Name')
+
+    TextEdit
+      id: characterNameEdit
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      width: 245
+      margin-top: 3
+      height: 22
+
+    Label
+      id: sexLabel
+      anchors.top: characterNameEdit.bottom
+      anchors.left: parent.left
+      margin-top: 7
+      !text: tr('Sex')
+
+    QtComboBox
+      id: sexCombo
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      margin-top: 3
+      width: 245
+
+    Button
+      id: retryOptionsButton
+      anchors.left: sexCombo.right
+      anchors.verticalCenter: sexCombo.verticalCenter
+      margin-left: 6
+      width: 78
+      height: 22
+      !text: tr('Retry')
+      visible: false
+
+    Label
+      id: raceLabel
+      anchors.top: sexCombo.bottom
+      anchors.left: parent.left
+      margin-top: 7
+      !text: tr('Race')
+
+    QtComboBox
+      id: raceCombo
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      margin-top: 3
+      width: 245
+
+    Label
+      id: vocationLabel
+      anchors.top: raceCombo.bottom
+      anchors.left: parent.left
+      margin-top: 7
+      !text: tr('Vocation')
+
+    QtComboBox
+      id: vocationCombo
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      margin-top: 3
+      width: 245
+
+    Label
+      id: appearanceLabel
+      anchors.top: vocationCombo.bottom
+      anchors.left: parent.left
+      margin-top: 7
+      !text: tr('Appearance:')
+
+    QtComboBox
+      id: appearanceCombo
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      margin-top: 3
+      width: 245
+
+    Label
+      id: colorsLabel
+      anchors.top: appearanceCombo.bottom
+      anchors.left: parent.left
+      margin-top: 7
+      !text: tr('Colors')
+
+    Label
+      id: headColorLabel
+      anchors.top: colorsLabel.bottom
+      anchors.left: parent.left
+      margin-top: 4
+      !text: tr('Head')
+
+    QtComboBox
+      id: headColorCombo
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      margin-top: 2
+      width: 112
+
+    Label
+      id: bodyColorLabel
+      anchors.top: colorsLabel.bottom
+      anchors.left: headColorCombo.right
+      margin-left: 12
+      margin-top: 4
+      !text: tr('Body')
+
+    QtComboBox
+      id: bodyColorCombo
+      anchors.top: bodyColorLabel.bottom
+      anchors.left: bodyColorLabel.left
+      margin-top: 2
+      width: 112
+
+    Label
+      id: legsColorLabel
+      anchors.top: headColorCombo.bottom
+      anchors.left: parent.left
+      margin-top: 5
+      !text: tr('Legs')
+
+    QtComboBox
+      id: legsColorCombo
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      margin-top: 2
+      width: 112
+
+    Label
+      id: feetColorLabel
+      anchors.top: legsColorLabel.top
+      anchors.left: bodyColorLabel.left
+      !text: tr('Feet')
+
+    QtComboBox
+      id: feetColorCombo
+      anchors.top: feetColorLabel.bottom
+      anchors.left: feetColorLabel.left
+      margin-top: 2
+      width: 112
+
+    Label
+      id: addonsLabel
+      anchors.top: legsColorCombo.bottom
+      anchors.left: parent.left
+      margin-top: 6
+      !text: tr('Addons')
+
+    QtComboBox
+      id: addonsCombo
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      margin-top: 2
+      width: 245
+
+    Label
+      id: previewTitle
+      anchors.top: characterNameLabel.top
+      anchors.left: parent.left
+      margin-left: 315
+      !text: tr('Preview')
+
+    UICreature
+      id: appearancePreview
+      size: 128 128
+      anchors.top: previewTitle.bottom
+      anchors.left: previewTitle.left
+      margin-top: 8
+      fixed-creature-size: true
+      visible: false
+
+    Label
+      id: previewHint
+      anchors.top: appearancePreview.bottom
+      anchors.left: previewTitle.left
+      width: 160
+      height: 48
+      margin-top: 5
+      text-wrap: true
+      text-align: center
+      text: 'The preview appears after every appearance field is selected.'
+
+    Label
+      id: assemblyStatus
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: cancelAssemblyButton.top
+      margin-bottom: 7
+      height: 30
+      text-wrap: true
+      color: #c0c0c0
+
+    Button
+      id: cancelAssemblyButton
+      anchors.right: createCharacterButton.left
+      anchors.bottom: parent.bottom
+      margin-right: 8
+      width: 82
+      height: 24
+      !text: tr('Cancel')
+
+    UIButton
+      id: createCharacterButton
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      width: 120
+      height: 28
+      text: 'Create Character'
+      font: cipsoftFont
+      image-source: /images/ui/createaccount/button_startplaying
+      $pressed:
+        image-source: /images/ui/createaccount/button_startplaying_down
+        text-offset: 1 1
+
+    Button
+      id: refreshCharactersButton
+      anchors.right: cancelAssemblyButton.left
+      anchors.bottom: parent.bottom
+      margin-right: 6
+      width: 96
+      height: 24
+      !text: tr('Refresh List')
+      visible: false
+
+ElementalBetaAccountWindow < MainWindow
+  id: elementalBetaAccountWindow
+  size: 480 520
+  !text: tr('Account settings')
+  @onEscape: CharacterList.closeAccountManagement()
+
+  Panel
+    id: accountPanel
+    anchors.fill: parent
+    margin: 12
+
+    Label
+      id: accountIntro
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.right
+      height: 18
+      !text: tr('Current login email:')
+
+    Label
+      id: currentEmailValue
+      anchors.left: parent.left
+      anchors.top: accountIntro.bottom
+      margin-top: 2
+      height: 18
+      color: #d7d7d7
+
+    Label
+      id: passwordSectionTitle
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: currentEmailValue.bottom
+      margin-top: 5
+      height: 18
+      !text: tr('Change password')
+      color: #f0c36d
+
+    Label
+      anchors.left: parent.left
+      anchors.top: passwordSectionTitle.bottom
+      margin-top: 2
+      height: 16
+      !text: tr('Current password')
+
+    HiddenTextQtEdit
+      id: passwordCurrentEdit
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: prev.bottom
+      margin-top: 1
+      height: 22
+      text-hidden: true
+
+    Label
+      anchors.left: parent.left
+      anchors.top: passwordCurrentEdit.bottom
+      margin-top: 3
+      height: 16
+      !text: tr('New password')
+
+    HiddenTextQtEdit
+      id: passwordNewEdit
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: prev.bottom
+      margin-top: 1
+      height: 22
+      text-hidden: true
+
+    Label
+      anchors.left: parent.left
+      anchors.top: passwordNewEdit.bottom
+      margin-top: 3
+      height: 16
+      !text: tr('Repeat new password')
+
+    HiddenTextQtEdit
+      id: passwordConfirmEdit
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: prev.bottom
+      margin-top: 1
+      height: 22
+      text-hidden: true
+
+    Button
+      id: changePasswordButton
+      anchors.left: parent.left
+      anchors.top: passwordConfirmEdit.bottom
+      margin-top: 4
+      width: 170
+      height: 24
+      !text: tr('Change password')
+
+    HorizontalSeparator
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: changePasswordButton.bottom
+      margin-top: 5
+
+    Label
+      id: emailSectionTitle
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: prev.bottom
+      margin-top: 5
+      height: 18
+      !text: tr('Change email')
+      color: #f0c36d
+
+    Label
+      anchors.left: parent.left
+      anchors.top: emailSectionTitle.bottom
+      margin-top: 1
+      height: 16
+      !text: tr('Current password')
+
+    HiddenTextQtEdit
+      id: emailCurrentPasswordEdit
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: prev.bottom
+      margin-top: 1
+      height: 22
+      text-hidden: true
+
+    Label
+      anchors.left: parent.left
+      anchors.top: emailCurrentPasswordEdit.bottom
+      margin-top: 2
+      height: 16
+      !text: tr('New email address')
+
+    TextEdit
+      id: emailNewAddressEdit
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: prev.bottom
+      margin-top: 1
+      height: 22
+
+    Label
+      anchors.left: parent.left
+      anchors.top: emailNewAddressEdit.bottom
+      margin-top: 2
+      height: 16
+      !text: tr('Confirmation code')
+
+    TextEdit
+      id: emailCodeEdit
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: prev.bottom
+      margin-top: 1
+      height: 22
+
+    Button
+      id: requestEmailCodeButton
+      anchors.left: parent.left
+      anchors.top: emailCodeEdit.bottom
+      margin-top: 4
+      width: 190
+      height: 24
+      !text: tr('Send confirmation code')
+
+    Button
+      id: confirmEmailButton
+      anchors.left: requestEmailCodeButton.right
+      anchors.top: requestEmailCodeButton.top
+      margin-left: 8
+      width: 150
+      height: 24
+      !text: tr('Confirm email')
+
+    Label
+      id: accountStatus
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: closeAccountButton.top
+      margin-bottom: 5
+      height: 32
+      text-wrap: true
+      color: #c0c0c0
+
+    Button
+      id: closeAccountButton
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      width: 82
+      height: 24
+      !text: tr('Close')
+
 CharacterWidget < UIWidget
   height: 14
   background-color: alpha
@@ -159,6 +598,21 @@ CharacterWidget < UIWidget
       color: #ffffff
 
   Label
+    id: raceName
+    color: #aaaaaa
+    anchors.top: vocation.bottom
+    anchors.left: parent.left
+    margin-left: 410
+    margin-top: 2
+    font: verdana-11px-monochrome
+    text-auto-resize: true
+    background-color: alpha
+    @onSetup: |
+      if not(g_game.getFeature(GameEnterGameShowAppearance)) then
+        self:hide()
+      end
+
+  Label
     id: worldName
     color: #bbbbbb
     anchors.top: parent.top
@@ -232,6 +686,18 @@ MainWindow
       else
         self:setBackgroundColor("#565656")
       end
+
+  Label
+    id: emptyCharacterPrompt
+    anchors.fill: characters
+    margin-top: 38
+    padding-left: 12
+    padding-right: 12
+    text-wrap: true
+    text-align: center
+    text-vertical-auto-resize: true
+    color: #c0c0c0
+    visible: false
 
   UIWidget
     id: characterTable
@@ -712,6 +1178,16 @@ MainWindow
       image-color: green
 
   Button
+    id: buttonAccount
+    anchors.left: autoReconnect.right
+    anchors.verticalCenter: autoReconnect.verticalCenter
+    margin-left: 8
+    width: 92
+    !text: tr('Account')
+    visible: false
+    @onClick: CharacterList.openAccountManagement()
+
+  Button
     id: buttonOk
     !text: tr('Ok')
     width: 64
@@ -719,6 +1195,16 @@ MainWindow
     anchors.bottom: parent.bottom
     margin-right: 10
     @onClick: CharacterList.doLogin()
+
+  Button
+    id: buttonCreateCharacter
+    !text: tr('Create Character')
+    width: 112
+    anchors.right: next.left
+    anchors.bottom: parent.bottom
+    margin-right: 10
+    visible: false
+    @onClick: CharacterList.openCharacterAssembly()
 
   Button
     id: buttonCancel

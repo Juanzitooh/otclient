@@ -73,6 +73,7 @@ public:
     // compatibility. ixwebsocket does not expose the old Content-Length hook,
     // so new call-sites should omit it.
     int post(const std::string& url, const std::string& data, int timeout = 5, bool isJson = false, bool checkContentLength = true);
+    int postWithBearer(const std::string& url, const std::string& data, const std::string& token, int timeout = 5);
     int download(const std::string& url, const std::string& path, int timeout = 5);
     int ws(const std::string& url, int timeout = 5);
     bool wsSend(int operationId, const std::string& message);
@@ -100,6 +101,7 @@ public:
     void setEnableTimeOutOnReadWrite(const bool enable_time_out_on_read_write) { m_enable_time_out_on_read_write = enable_time_out_on_read_write; }
 
 private:
+    int postInternal(const std::string& url, const std::string& data, int timeout, bool isJson, const std::string& bearerToken);
 #ifdef __EMSCRIPTEN__
     struct FetchContext;
     struct WebSocketContext;

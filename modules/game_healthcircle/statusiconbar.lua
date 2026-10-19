@@ -4,6 +4,10 @@ ConditionsHUD = {}
 StatusIconBar = {}
 
 local statusIconPanel = nil
+local statusIconPanelOriginalParent = nil
+local elementalDockPanel = nil
+local statusIconTopDecoration = nil
+local statusIconBottomDecoration = nil
 local activeIcons = {} -- conditionId -> widget
 local conditionLookup = {}
 local visibleConditions = {}
@@ -20,6 +24,9 @@ local config = {
 
 local SETTINGS_FILE = '/settings_conditions_hud.json'
 local DECORATIVE_CHILD_COUNT = 2
+local ELEMENTAL_DOCK_HEIGHT = 28
+local ELEMENTAL_DOCK_ICON_SIZE = 16
+local ELEMENTAL_DOCK_ICON_GAP = 1
 local SELECTED_COLOR = '#585858'
 local ROW_COLOR_ODD = '#484848'
 local ROW_COLOR_EVEN = '#414141'
@@ -635,6 +642,14 @@ function StatusIconBar.updatePosition()
         return
     end
 
+    if elementalDockPanel and not elementalDockPanel:isDestroyed() then
+        statusIconPanel:setPosition({
+            x = math.max(0, elementalDockPanel:getWidth() - statusIconPanel:getWidth()),
+            y = math.max(0, math.floor((elementalDockPanel:getHeight() - statusIconPanel:getHeight()) / 2))
+        })
+        return
+    end
+
     local healthX = healthCircle:getX()
     local healthY = healthCircle:getY()
     local healthHeight = imageSizeBroad or 0
@@ -654,6 +669,45 @@ function StatusIconBar.updateWidgetHeight()
         return
     end
 
+    if elementalDockPanel then
+        local iconCount = 0
+        local previousIcon = nil
+        for _, child in ipairs(statusIconPanel:getChildren()) do
+            if child == statusIconTopDecoration or child == statusIconBottomDecoration then
+                child:hide()
+            else
+                child:show()
+                child:setImageSource(nil)
+                child:setWidth(ELEMENTAL_DOCK_ICON_SIZE)
+                child:setHeight(ELEMENTAL_DOCK_ICON_SIZE)
+                child:breakAnchors()
+                child:addAnchor(AnchorTop, 'parent', AnchorTop)
+                if previousIcon then
+                    child:addAnchor(AnchorLeft, previousIcon:getId(), AnchorRight)
+                    child:setMarginLeft(ELEMENTAL_DOCK_ICON_GAP)
+                else
+                    child:addAnchor(AnchorLeft, 'parent', AnchorLeft)
+                    child:setMarginLeft(0)
+                end
+                child:setMarginTop(math.floor((ELEMENTAL_DOCK_HEIGHT - ELEMENTAL_DOCK_ICON_SIZE) / 2))
+                previousIcon = child
+                iconCount = iconCount + 1
+            end
+        end
+
+        local width = iconCount * ELEMENTAL_DOCK_ICON_SIZE + math.max(0, iconCount - 1) * ELEMENTAL_DOCK_ICON_GAP
+        statusIconPanel:setWidth(width)
+        statusIconPanel:setHeight(ELEMENTAL_DOCK_HEIGHT)
+        statusIconPanel:setVisible(iconCount > 0)
+        StatusIconBar.updatePosition()
+
+        local cooldownWindow = elementalDockPanel:getChildById('cooldownWindow')
+        if cooldownWindow then
+            cooldownWindow:setMarginRight(iconCount > 0 and width + 4 or 0)
+        end
+        return
+    end
+
     local height = 0
     local childCount = statusIconPanel:getChildCount()
     for i = 1, childCount do
@@ -668,6 +722,78 @@ function StatusIconBar.updateWidgetHeight()
 
     statusIconPanel:setHeight(height)
     StatusIconBar.updatePosition()
+end
+
+function StatusIconBar.setElementalDock(parent)
+    if not statusIconPanel then
+        return nil
+    end
+
+    if parent then
+        statusIconPanelOriginalParent = statusIconPanelOriginalParent or statusIconPanel:getParent()
+        elementalDockPanel = parent
+        if statusIconPanel:getParent() ~= parent then
+            statusIconPanel:setParent(parent)
+        end
+        StatusIconBar.updateWidgetHeight()
+        return statusIconPanel
+    end
+
+    if not elementalDockPanel then
+        return statusIconPanel
+    end
+
+    local cooldownWindow = nil
+    if not elementalDockPanel:isDestroyed() then
+        cooldownWindow = elementalDockPanel:getChildById('cooldownWindow')
+    end
+    if cooldownWindow then
+        cooldownWindow:setMarginRight(0)
+    end
+    elementalDockPanel = nil
+    if statusIconPanelOriginalParent and not statusIconPanelOriginalParent:isDestroyed() then
+        statusIconPanel:setParent(statusIconPanelOriginalParent)
+    end
+
+    if statusIconTopDecoration then
+        statusIconPanel:moveChildToIndex(statusIconTopDecoration, 1)
+        statusIconTopDecoration:show()
+    end
+    if statusIconBottomDecoration then
+        statusIconPanel:moveChildToIndex(statusIconBottomDecoration, statusIconPanel:getChildCount())
+        statusIconBottomDecoration:show()
+    end
+
+    local previous = statusIconTopDecoration
+    for _, child in ipairs(statusIconPanel:getChildren()) do
+        if child == statusIconBottomDecoration then
+            child:breakAnchors()
+            child:addAnchor(AnchorLeft, 'parent', AnchorLeft)
+            if previous then
+                child:addAnchor(AnchorTop, previous:getId(), AnchorBottom)
+            else
+                child:addAnchor(AnchorTop, 'parent', AnchorTop)
+            end
+            child:setMarginTop(1)
+        elseif child ~= statusIconTopDecoration then
+            child:setImageSource('images/bar_box.png')
+            child:setWidth(config.iconSize)
+            child:setHeight(config.iconSize)
+            child:breakAnchors()
+            child:addAnchor(AnchorLeft, 'parent', AnchorLeft)
+            if previous then
+                child:addAnchor(AnchorTop, previous:getId(), AnchorBottom)
+            else
+                child:addAnchor(AnchorTop, 'parent', AnchorTop)
+            end
+            child:setMarginTop(1)
+            child:setMarginLeft(0)
+            previous = child
+        end
+    end
+
+    StatusIconBar.updateWidgetHeight()
+    return statusIconPanel
 end
 
 function StatusIconBar.refreshIcons()
@@ -785,6 +911,7 @@ function StatusIconBar.onGameStart()
 end
 
 function StatusIconBar.onGameEnd()
+    StatusIconBar.setElementalDock(nil)
     StatusIconBar.clearAll()
 end
 
@@ -795,8 +922,11 @@ function StatusIconBar.init()
 
     if not statusIconPanel then
         statusIconPanel = g_ui.createWidget('StatusIconPanel', mapPanel)
-        g_ui.createWidget('StatusIconTop', statusIconPanel)
-        g_ui.createWidget('StatusIconBottom', statusIconPanel)
+        statusIconTopDecoration = g_ui.createWidget('StatusIconTop', statusIconPanel)
+        statusIconTopDecoration:setId('statusIconBarTop')
+        statusIconBottomDecoration = g_ui.createWidget('StatusIconBottom', statusIconPanel)
+        statusIconBottomDecoration:setId('statusIconBarBottom')
+        statusIconPanelOriginalParent = statusIconPanel:getParent()
         statusIconPanel:setVisible(false)
         statusIconPanel:setHeight(config.topBottomSize * 2 + 1)
         StatusIconBar.updatePosition()

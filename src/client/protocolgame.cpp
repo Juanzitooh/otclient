@@ -21,6 +21,7 @@
  */
 
 #include "framework/net/inputmessage.h"
+#include "framework/core/resourcemanager.h"
 #include "game.h"
 #include "protocolgame.h"
 
@@ -34,7 +35,15 @@ void ProtocolGame::login(const std::string_view accountName, const std::string_v
     m_characterName = characterName;
 
 #ifndef __EMSCRIPTEN__
-    connect(host, port);
+    if (m_sessionKey.starts_with("b1.")) {
+#ifdef ANDROID
+        const auto caFile = g_resources.getBaseDir() + "/game_data/cacert.pem";
+        connectSecure(host, port, caFile);
+#else
+        connectSecure(host, port, "./cacert.pem");
+#endif
+    } else
+        connect(host, port);
 #else
     if (port == 7172)
         port = 443;

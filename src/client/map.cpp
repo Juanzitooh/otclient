@@ -837,8 +837,14 @@ bool Map::isAwareOfPosition(const Position& pos, const AwareRange& awareRange) c
 
 void Map::setAwareRange(const AwareRange& range)
 {
+    if (m_awareRange == range)
+        return;
+
     m_awareRange = range;
     removeUnawareThings();
+
+    for (const auto& mapView : m_mapViews)
+        mapView->updateGeometry(mapView->m_visibleDimension);
 }
 
 void Map::resetAwareRange() {

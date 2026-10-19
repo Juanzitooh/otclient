@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 230" role="img" aria-labelledby="title desc">
+  <title id="title">Elemental — marca Portal da Origem</title>
+  <desc id="desc">Monograma E elemental acompanhado do nome Elemental.</desc>
+  <defs>
+    <linearGradient id="fire" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#E56B3F"/><stop offset="1" stop-color="#FF9E51"/></linearGradient>
+    <linearGradient id="water" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#3DA6C2"/><stop offset="1" stop-color="#74D7EE"/></linearGradient>
+    <linearGradient id="earth" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7D964A"/><stop offset="1" stop-color="#B3C878"/></linearGradient>
+    <linearGradient id="air" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#8DA9C5"/><stop offset="1" stop-color="#F1F5F4"/></linearGradient>
+    <linearGradient id="core" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#D9853E"/><stop offset=".52" stop-color="#FFBD6B"/><stop offset="1" stop-color="#FFE8B7"/></linearGradient>
+  </defs>
+  <g transform="translate(18 19) scale(1.0)" stroke-linejoin="round">
+    <path d="M31 75V51c0-13 8-21 21-21h26L64 49H50v26Z" fill="url(#fire)"/>
+    <path d="M113 30h26c13 0 21 8 21 21v26l-18-14V49h-29Z" fill="url(#water)"/>
+    <path d="M160 113v26c0 13-8 21-21 21h-26l14-18h15v-29Z" fill="url(#earth)"/>
+    <path d="M79 160H53c-13 0-21-8-21-21v-26l18 14v15h29Z" fill="url(#air)"/>
+    <path d="M74 66h44v15H91v8h24v15H91v10h27v15H74Z" fill="url(#core)"/>
+  </g>
+  <text x="225" y="117" fill="#F7F1E4" font-family="DejaVu Serif, Georgia, serif" font-size="65" letter-spacing="4">ELEMENTAL</text>
+  <path d="M230 145h598" stroke="#FFBD6B" stroke-opacity=".54" stroke-width="1"/>
+</svg>

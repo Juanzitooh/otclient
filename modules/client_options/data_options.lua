@@ -27,6 +27,14 @@ return {
             g_window.setFullscreen(value)
         end
     },
+    gameInterfaceProfile              = {
+        value = 'elemental',
+        action = function(value)
+            if modules.game_interface and modules.game_interface.setInterfaceProfile then
+                modules.game_interface.setInterfaceProfile(value)
+            end
+        end
+    },
     classicControl                    = {
         value = g_platform.isMobile() and true or false,
         action = function(value, options, controller, panels, extraWidgets)
@@ -211,9 +219,21 @@ return {
             g_app.setMaxFps(v)
         end
     },
-    -- Kept only so g_sounds.setAudioEnabled has a persisted default at client startup;
-    -- muting/unmuting at runtime is handled by the master volume slider (see soundMaster below).
+    -- Master volume and muting are controlled by soundMaster.
     enableAudio                       = true,
+    enableMusicSound                  = {
+        value = true,
+        action = function(value)
+            if not g_sounds then
+                return
+            end
+
+            local musicChannel = g_sounds.getChannel(SoundChannels.Music)
+            if musicChannel then
+                musicChannel:setEnabled(value)
+            end
+        end
+    },
     enableLights                      = {
         value = true,
         action = function(value, options, controller, panels, extraWidgets)

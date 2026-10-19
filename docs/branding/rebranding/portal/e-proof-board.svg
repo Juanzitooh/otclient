@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1800" height="1040" viewBox="0 0 1800 1040">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#10151E"/><stop offset="1" stop-color="#080A10"/></linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#1B202B"/><stop offset="1" stop-color="#10151D"/></linearGradient>
+    <linearGradient id="fire" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#E56B3F"/><stop offset="1" stop-color="#FF9E51"/></linearGradient>
+    <linearGradient id="water" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#3DA6C2"/><stop offset="1" stop-color="#74D7EE"/></linearGradient>
+    <linearGradient id="earth" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7D964A"/><stop offset="1" stop-color="#B3C878"/></linearGradient>
+    <linearGradient id="air" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#8DA9C5"/><stop offset="1" stop-color="#D6E3EC"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#D9853E"/><stop offset=".52" stop-color="#FFBD6B"/><stop offset="1" stop-color="#FFE2A7"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#000" flood-opacity=".36"/></filter>
+    <g id="frame" stroke-linejoin="round">
+      <path d="M31 75V51c0-13 8-21 21-21h26L64 49H50v26Z" fill="url(#fire)"/>
+      <path d="M113 30h26c13 0 21 8 21 21v26l-18-14V49h-29Z" fill="url(#water)"/>
+      <path d="M160 113v26c0 13-8 21-21 21h-26l14-18h15v-29Z" fill="url(#earth)"/>
+      <path d="M79 160H53c-13 0-21-8-21-21v-26l18 14v15h29Z" fill="url(#air)"/>
+    </g>
+  </defs>
+  <rect width="1800" height="1040" fill="url(#page)"/>
+  <circle cx="1660" cy="20" r="300" fill="#1B4353" opacity=".12"/>
+  <circle cx="120" cy="1010" r="310" fill="#914622" opacity=".08"/>
+  <text x="64" y="72" fill="#FFBD6B" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="4">ELEMENTAL  /  ESTUDO DO MONOGRAMA</text>
+  <text x="64" y="132" fill="#F7F1E4" font-family="DejaVu Serif, Georgia, serif" font-size="42">Três caminhos para o E central</text>
+  <text x="64" y="170" fill="#AEB4C0" font-family="DejaVu Sans, Arial, sans-serif" font-size="16">O portal e as quatro cores permanecem; cada prova muda somente o conceito do monograma.</text>
+
+  <g filter="url(#shadow)">
+    <rect x="64" y="220" width="530" height="700" rx="14" fill="url(#panel)" stroke="#FFBD6B" stroke-width="2"/>
+    <rect x="635" y="220" width="530" height="700" rx="14" fill="url(#panel)" stroke="#F7F1E4" stroke-opacity=".14"/>
+    <rect x="1206" y="220" width="530" height="700" rx="14" fill="url(#panel)" stroke="#F7F1E4" stroke-opacity=".14"/>
+  </g>
+
+  <g font-family="DejaVu Sans, Arial, sans-serif">
+    <text x="98" y="266" fill="#FFBD6B" font-size="11" font-weight="700" letter-spacing="2.2">01 · LETRA</text>
+    <rect x="476" y="242" width="88" height="27" rx="13.5" fill="#FFBD6B"/>
+    <text x="520" y="260" text-anchor="middle" fill="#080A10" font-size="9" font-weight="700" letter-spacing="1.1">ESCOLHIDO</text>
+    <text x="669" y="266" fill="#FFBD6B" font-size="11" font-weight="700" letter-spacing="2.2">02 · ELEMENTO COM LETRA INTERNA</text>
+    <text x="1240" y="266" fill="#FFBD6B" font-size="11" font-weight="700" letter-spacing="2.2">03 · LETRA FORMADA PELOS ELEMENTOS</text>
+  </g>
+
+  <!-- Proof 1: a display-serif E aligned with the wordmark. -->
+  <use xlink:href="#frame" transform="translate(233 314) scale(1.0)"/>
+  <text x="329" y="435" text-anchor="middle" fill="url(#gold)" font-family="DejaVu Serif, Georgia, serif" font-size="72" font-weight="700">E</text>
+  <text x="329" y="548" text-anchor="middle" fill="#F7F1E4" font-family="DejaVu Serif, Georgia, serif" font-size="29" letter-spacing="3">ELEMENTAL</text>
+  <path d="M108 586h442" stroke="#F7F1E4" stroke-opacity=".11"/>
+  <text x="108" y="632" fill="#F7F1E4" font-family="DejaVu Serif, Georgia, serif" font-size="21">E tipográfico</text>
+  <text x="108" y="668" fill="#AEB4C0" font-family="DejaVu Sans, Arial, sans-serif" font-size="12">Serifas firmes, da mesma família visual</text>
+  <text x="108" y="690" fill="#AEB4C0" font-family="DejaVu Sans, Arial, sans-serif" font-size="12">da assinatura. Direto e fácil de reconhecer.</text>
+  <text x="108" y="857" fill="#FFBD6B" font-family="DejaVu Sans, Arial, sans-serif" font-size="10" letter-spacing="1.1">LEITURA TIPOGRÁFICA · ÂMBAR</text>
+
+  <!-- Proof 2: a flame silhouette with the E cut out in the negative space. -->
+  <use xlink:href="#frame" transform="translate(804 314) scale(1.0)"/>
+  <path d="M900 365c-11 14-27 25-30 46-5 30 13 53 31 53 20 0 36-18 33-42-2-18-12-30-23-40 0 11-4 18-11 23 2-15-2-28-14-40 2 11-1 19-7 25-4-8-2-17 1-25 3-7 8-14 20-20Z" fill="url(#fire)"/>
+  <path d="M889 397h23v7h-15v6h13v7h-13v7h16v7h-24Z" fill="#10151D"/>
+  <text x="900" y="548" text-anchor="middle" fill="#F7F1E4" font-family="DejaVu Serif, Georgia, serif" font-size="29" letter-spacing="3">ELEMENTAL</text>
+  <path d="M679 586h442" stroke="#F7F1E4" stroke-opacity=".11"/>
+  <text x="679" y="632" fill="#F7F1E4" font-family="DejaVu Serif, Georgia, serif" font-size="21">E em uma chama</text>
+  <text x="679" y="668" fill="#AEB4C0" font-family="DejaVu Sans, Arial, sans-serif" font-size="12">O fogo vira a silhueta; o E aparece</text>
+  <text x="679" y="690" fill="#AEB4C0" font-family="DejaVu Sans, Arial, sans-serif" font-size="12">vazado por dentro, como parte do elemento.</text>
+  <text x="679" y="857" fill="#FFBD6B" font-family="DejaVu Sans, Arial, sans-serif" font-size="10" letter-spacing="1.1">LETRA EM NEGATIVO · FOGO</text>
+
+  <!-- Proof 3: the E is constructed from elemental strokes around an amber spine. -->
+  <use xlink:href="#frame" transform="translate(1375 314) scale(1.0)"/>
+  <path d="M1437 380h12v74h-12Z" fill="url(#gold)"/>
+  <path d="M1447 380h44v15h-44Z" fill="url(#fire)"/>
+  <path d="M1447 410h35v14h-35Z" fill="url(#water)"/>
+  <path d="M1447 439h44v15h-44Z" fill="url(#earth)"/>
+  <text x="1471" y="548" text-anchor="middle" fill="#F7F1E4" font-family="DejaVu Serif, Georgia, serif" font-size="29" letter-spacing="3">ELEMENTAL</text>
+  <path d="M1250 586h442" stroke="#F7F1E4" stroke-opacity=".11"/>
+  <text x="1250" y="632" fill="#F7F1E4" font-family="DejaVu Serif, Georgia, serif" font-size="21">E elemental</text>
+  <text x="1250" y="668" fill="#AEB4C0" font-family="DejaVu Sans, Arial, sans-serif" font-size="12">Fogo, água e terra desenham as barras;</text>
+  <text x="1250" y="690" fill="#AEB4C0" font-family="DejaVu Sans, Arial, sans-serif" font-size="12">o núcleo âmbar sustenta o traço vertical.</text>
+  <text x="1250" y="857" fill="#FFBD6B" font-family="DejaVu Sans, Arial, sans-serif" font-size="10" letter-spacing="1.1">MONOGRAMA MULTICOR · NÚCLEO ÂMBAR</text>
+
+  <text x="64" y="990" fill="#FFBD6B" font-family="DejaVu Sans, Arial, sans-serif" font-size="10" letter-spacing="1.2">DIREÇÃO SELECIONADA: 01 · E TIPOGRÁFICO · PORTAL E PALETA MANTIDOS</text>
+</svg>

@@ -39,20 +39,6 @@ Panel
   anchors.horizontalCenter: parent.horizontalCenter
   image-source: /images/ui/panel_top
   
-  Label
-    phantom: true
-    anchors.bottom: parent.bottom
-    anchors.horizontalCenter: parent.horizontalCenter
-    text-align: center
-    text-auto-resize: true
-    color: #c0c0c0ff
-    margin-bottom: 110
-    text: OTClient Redemption
-    ttf-font: martel
-    ttf-font-size: 90
-    stroke: 2 black
-    shader: Map - Party
-    
   MiniQtScrollableWindow
     id: showOffWindow
     anchors.bottom: parent.bottom

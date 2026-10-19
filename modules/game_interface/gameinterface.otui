@@ -44,6 +44,81 @@ GameMapPanel < UIGameMap
   $on:
     padding: 0
 
+ElementalFloatingWindow < UIWindow
+  size: 320 240
+  background-color: #0b0d13ee
+  border-width: 1
+  border-color: #c68b48
+  focusable: true
+  draggable: true
+  visible: false
+
+  $dragging:
+    opacity: 0.92
+
+  Label
+    id: elementalWindowTitle
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: elementalWindowCloseButton.left
+    height: 30
+    margin-left: 12
+    margin-top: 1
+    color: #f3b45f
+    font: cipsoftFont
+    text-align: left
+    text-offset: 0 7
+    phantom: true
+
+  Button
+    id: elementalWindowCloseButton
+    anchors.top: parent.top
+    anchors.right: parent.right
+    size: 28 28
+    margin-right: 4
+    margin-top: 2
+    text: X
+    color: #eee8dc
+    background-color: #171922
+    border-width: 1
+    border-color: #514334
+    focusable: false
+    $hover:
+      border-color: #e4a34f
+
+  Panel
+    id: elementalWindowContent
+    anchors.top: elementalWindowTitle.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    margin: 0 7 8 7
+    background-color: #11141c
+    border-width: 1
+    border-color: #3a3030
+
+  ResizeBorder
+    id: elementalWindowRightResize
+    anchors.right: parent.right
+    anchors.top: elementalWindowTitle.bottom
+    anchors.bottom: parent.bottom
+    margin-right: -8
+    width: 12
+    minimum: 200
+    maximum: 1000
+    phantom: false
+
+  ResizeBorder
+    id: elementalWindowBottomResize
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    margin-bottom: -8
+    height: 12
+    minimum: 140
+    maximum: 800
+    phantom: false
+
 UIWidget
   id: gameRootPanel
   anchors.fill: parent
@@ -58,14 +133,6 @@ UIWidget
     focusable: false
     margin-top: 1
     margin-bottom: 1
-
-    Button
-      id: showTopMenuButton
-      anchors.top: parent.top
-      anchors.left: parent.left
-      !text: tr('Show Top Menu')
-      height: 32
-      visible: false
 
 // actionbar
   Panel
@@ -386,3 +453,9 @@ UIWidget
 
     $disabled:
       image-clip: 0 27 9 27
+
+  Panel
+    id: elementalWindowLayer
+    anchors.fill: parent
+    phantom: true
+    visible: false

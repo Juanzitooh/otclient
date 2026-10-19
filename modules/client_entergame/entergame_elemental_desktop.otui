@@ -1,0 +1,227 @@
+ElementalDesktopLoginInput < TextEdit
+  height: 42
+  padding: 9
+  color: #f7f1e4
+  font: verdana-11px-antialised
+  background-color: #10151d
+  border-width: 1
+  border-color: #39424e
+  image-color: #ffffff00
+  image-border: 0
+  selection-color: #f7f1e4
+  selection-background-color: #596473
+  change-cursor-image: false
+  @onClick: EnterGame.playUiClickSound()
+
+  $focus:
+    border-color: #ffe2a7
+
+ElementalDesktopPasswordInput < ElementalDesktopLoginInput
+  text-hidden: true
+
+ElementalDesktopLoginLabel < Label
+  color: #aeb4c0
+  font: verdana-11px-antialised
+  text-auto-resize: true
+
+ElementalDesktopLogin < ElementalDesktopIdentityBanner
+  focusable: true
+  @onEnter: |
+    EnterGame.playUiLoginActionSound()
+    EnterGame.doLogin()
+
+ElementalDesktopLogin
+  id: enterGame
+
+  UIWidget
+    id: brandSignature
+    size: 380 115
+    anchors.top: parent.top
+    anchors.horizontalCenter: parent.horizontalCenter
+    margin-top: 3
+    image-source: /images/brand/elemental-signature-dark.png
+    image-size: 380 115
+    image-smooth: true
+    phantom: true
+    focusable: false
+
+  Label
+    id: brandTagline
+    anchors.top: brandSignature.bottom
+    anchors.horizontalCenter: parent.horizontalCenter
+    margin-left: 36
+    margin-top: -20
+    width: 300
+    height: 14
+    text: COLETE, CONSTRUA, LUTE E VIVA ESSA AVENTURA
+    text-align: center
+    text-auto-resize: false
+    color: #f7f1e4
+    font: Verdana Bold-10px
+
+  ElementalDesktopLoginLabel
+    id: emailLabel
+    anchors.top: parent.verticalCenter
+    anchors.left: parent.left
+    margin-top: -87
+    text: E-mail
+
+  ElementalDesktopLoginInput
+    id: accountNameTextEdit
+    anchors.top: emailLabel.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 6
+    @onTextChange: EnterGame.clearLoginStatus()
+
+  ElementalDesktopLoginLabel
+    id: passwordLabel
+    anchors.top: accountNameTextEdit.bottom
+    anchors.left: parent.left
+    margin-top: 16
+    text: Senha
+
+  ElementalDesktopPasswordInput
+    id: accountPasswordTextEdit
+    anchors.top: passwordLabel.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 6
+    @onTextChange: EnterGame.clearLoginStatus()
+
+  QtCheckBox
+    id: rememberEmailBox
+    anchors.top: accountPasswordTextEdit.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 12
+    text: Lembrar conta e senha neste dispositivo
+    tooltip: Os dados serao guardados no arquivo config.otml.
+    color: #aeb4c0
+    font: verdana-11px-antialised
+    @onCheckChange: |
+      self:getParent():getChildById('autoLoginBox'):setEnabled(self:isChecked())
+      self:getParent():getChildById('rememberEmailTip'):setOn(self:isChecked())
+    @onClick: EnterGame.playUiClickSound()
+
+  UIWidget
+    id: rememberEmailTip
+    image-source: /images/icons/show_gui_help_grey
+    specialtooltip: Os dados serao guardados no arquivo config.otml.
+    anchors.right: accountNameTextEdit.right
+    anchors.verticalCenter: rememberEmailBox.verticalCenter
+    visible: false
+    phantom: true
+
+    $on:
+      visible: true
+
+    $!on:
+      visible: false
+
+  UIButton
+    id: Forgot_password_email
+    anchors.left: parent.left
+    anchors.top: rememberEmailBox.bottom
+    margin-top: 8
+    font: verdana-11px-antialised
+    color: #ffbd6b
+    text-align: left
+    text: Esqueci minha senha
+    @onClick: |
+      EnterGame.playUiClickSound()
+      if Services and Services.websites then
+        g_platform.openUrl(Services.websites)
+      else
+        EnterGame.setLoginStatus('A recuperacao de senha ainda nao esta configurada.', true)
+      end
+
+    $hover:
+      color: #ffe2a7
+
+  Label
+    id: loginStatus
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: Forgot_password_email.bottom
+    margin-top: 10
+    height: 34
+    color: #e56b6b
+    text-wrap: true
+    visible: false
+
+  ElementalPrimaryButton
+    id: btnLogin
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    margin-bottom: 54
+    height: 44
+    text: Entrar
+    @onClick: |
+      EnterGame.playUiLoginActionSound()
+      EnterGame.doLogin()
+
+  ElementalSecondaryButton
+    id: btnCreateNewAccount
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    height: 40
+    text: Criar conta
+    @onClick: |
+      EnterGame.playUiClickSound()
+      self:disable()
+      createWidgetAccount()
+    @onSetup: |
+      if Services and Servers_init and table.size(Servers_init) == 1 and Services.createAccount then
+        self:show()
+      else
+        self:hide()
+      end
+
+  QtCheckBox
+    id: autoLoginBox
+    visible: false
+    enabled: false
+
+  QtCheckBox
+    id: stayLoggedBox
+    visible: false
+
+  QtCheckBox
+    id: httpLoginBox
+    visible: false
+
+  Label
+    id: serverLabel
+    visible: false
+
+  UIButton
+    id: serverListButton
+    visible: false
+
+  TextEdit
+    id: serverHostTextEdit
+    visible: false
+
+  ComboBox
+    id: clientComboBox
+    visible: false
+
+  Label
+    id: clientLabel
+    visible: false
+
+  Label
+    id: portLabel
+    visible: false
+
+  TextEdit
+    id: serverPortTextEdit
+    text: 7171
+    visible: false
+
+  Label
+    id: serverInfoLabel
+    visible: false

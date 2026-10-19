@@ -6,7 +6,7 @@ Services = {
     --updater = "http://localhost/api/updater.php", --./updater
     --status = "http://localhost/login.php", --./client_entergame | ./client_topmenu
     --websites = "http://localhost/?subtopic=accountmanagement", --./client_entergame "Forgot password and/or email"
-    --createAccount = "http://localhost/clientcreateaccount.php", --./client_entergame -- createAccount.lua
+    createAccount = "http://127.0.0.1:8080/elemental/createaccount", -- local development account creation
     --getCoinsUrl = "http://localhost/?subtopic=shop&step=terms", --./game_market
     clientAssets = {
         enabled = true,
@@ -63,7 +63,7 @@ if ENABLE_SERVERS then
     --
     Servers_init = {
 
-        -- Local login server
+        -- Canary local login-server HTTP API
         ---
         -- Configuration for local login server.
         -- @class table
@@ -73,31 +73,17 @@ if ENABLE_SERVERS then
         -- @field httpLogin Enables HTTP-based login on the server
         -- @field useAuthenticator Enables additional authentication layer
         --
-        ["http://127.0.0.1/login.php"] = {
-            port = 80,
-            protocol = 1511,
+        ["http://127.0.0.1:8088/login"] = {
+            port = 8088,
+            protocol = 1525,
             httpLogin = true,
             useAuthenticator = false
         },
 
-        -- External server
-        ---
-        -- Configuration for external server ip.net.
-        -- @class table
-        -- @name ip_net
-        -- @field port TCP port used for connection
-        -- @field protocol Protocol identifier used by the server
-        -- @field httpLogin Indicates if the server allows HTTP login
-        --
-        ["ip.net"] = {
-            port = 7171,
-            protocol = 860,
-            httpLogin = false
-        }
     }
 end
 
-g_app.setName("OTClient - Redemption");
+g_app.setName("Elemental");
 g_app.setCompactName("otclient");
 g_app.setOrganizationName("otcr");
 
@@ -147,6 +133,19 @@ g_resources.searchAndAddPackages('/', '.otpkg', true)
 -- load settings
 g_configs.loadSettings('/config.otml')
 
+if os.getenv("ELEMENTAL_LOCAL_TEST") == "1" then
+    local test_host = os.getenv("ELEMENTAL_LOGIN_URL") or "http://127.0.0.1:8088/login"
+    local test_port = tonumber(os.getenv("ELEMENTAL_LOGIN_PORT")) or 8088
+    Servers_init = {}
+    Servers_init[test_host] = {
+        port = test_port,
+        protocol = 1525,
+        httpLogin = true,
+        useAuthenticator = false,
+    }
+    g_logger.info("Elemental local test mode enabled for loopback HTTP login.")
+end
+
 g_modules.discoverModules()
 
 -- libraries modules 0-99
@@ -172,14 +171,17 @@ local function loadModules()
     g_modules.autoLoadModules(9999)
     g_modules.ensureModuleLoaded('client_mods')
 
-    local script = '/' .. g_app.getCompactName() .. 'rc.lua'
+    local otuiDesignMode = os.getenv("ELEMENTAL_OTUI_DESIGN") == "1"
+    local script = otuiDesignMode and '/otuirc.lua' or ('/' .. g_app.getCompactName() .. 'rc.lua')
 
     if g_resources.fileExists(script) then
         dofile(script)
     end
 
-    -- uncomment the line below so that modules are reloaded when modified. (Note: Use only mod dev)
-    -- g_modules.enableAutoReload()
+    if otuiDesignMode then
+        g_modules.enableAutoReload()
+        g_logger.info("Elemental OTUI design mode enabled (custom rc.lua and module auto-reload).")
+    end
 end
 
 -- run updater, must use data.zip

@@ -135,6 +135,7 @@ void Application::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_platform", "isMobile", &Platform::isMobile, &g_platform);
     g_lua.bindSingletonFunction("g_platform", "isBrowser", &Platform::isBrowser, &g_platform);
     g_lua.bindSingletonFunction("g_platform", "isConsole", &Platform::isConsole, &g_platform);
+    g_lua.bindSingletonFunction("g_platform", "getSoftKeyboardHeight", &Platform::getSoftKeyboardHeight, &g_platform);
     g_lua.bindSingletonFunction("g_platform", "openDir", &Platform::openDir, &g_platform);
 
     // Application
@@ -215,6 +216,7 @@ void Application::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_http", "addCustomHeader", &Http::addCustomHeader, &g_http);
     g_lua.bindSingletonFunction("g_http", "get", &Http::get, &g_http);
     g_lua.bindSingletonFunction("g_http", "post", &Http::post, &g_http);
+    g_lua.bindSingletonFunction("g_http", "postWithBearer", &Http::postWithBearer, &g_http);
     g_lua.bindSingletonFunction("g_http", "download", &Http::download, &g_http);
     g_lua.bindSingletonFunction("g_http", "ws", &Http::ws, &g_http);
     g_lua.bindSingletonFunction("g_http", "wsSend", &Http::wsSend, &g_http);

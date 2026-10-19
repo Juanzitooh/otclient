@@ -2,6 +2,8 @@ name: CI
 
 on:
   workflow_dispatch:
+  release:
+    types: [published]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
@@ -79,11 +81,11 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      compile: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group') && 'true' || steps.filter.outputs.compile }}
-      macos: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group') && 'true' || steps.filter.outputs.macos }}
-      android: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group') && 'true' || steps.filter.outputs.android }}
-      docker: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group') && 'true' || steps.filter.outputs.docker }}
-      browser: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group') && 'true' || steps.filter.outputs.browser }}
+      compile: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || github.event_name == 'release') && 'true' || steps.filter.outputs.compile }}
+      macos: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || github.event_name == 'release') && 'true' || steps.filter.outputs.macos }}
+      android: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || github.event_name == 'release') && 'true' || steps.filter.outputs.android }}
+      docker: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || github.event_name == 'release') && 'true' || steps.filter.outputs.docker }}
+      browser: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || github.event_name == 'release') && 'true' || steps.filter.outputs.browser }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -92,7 +94,7 @@ jobs:
 
       - name: Detect changed paths
         id: filter
-        if: github.event_name != 'workflow_dispatch' && github.event_name != 'merge_group'
+        if: github.event_name != 'workflow_dispatch' && github.event_name != 'merge_group' && github.event_name != 'release'
         uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
         with:
           filters: |
@@ -188,7 +190,7 @@ jobs:
   build-linux:
     name: Build - Linux
     needs: [changes, checks, tests-lua]
-    if: needs.changes.outputs.compile == 'true' && needs.checks.result == 'success' && needs.tests-lua.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    if: needs.changes.outputs.compile == 'true' && needs.checks.result == 'success' && needs.tests-lua.result == 'success' && (github.event_name == 'release' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       packages: read
@@ -198,7 +200,7 @@ jobs:
   build-windows:
     name: Build - Windows
     needs: [changes, checks, tests-lua]
-    if: needs.changes.outputs.compile == 'true' && needs.checks.result == 'success' && needs.tests-lua.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    if: needs.changes.outputs.compile == 'true' && needs.checks.result == 'success' && needs.tests-lua.result == 'success' && (github.event_name == 'release' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       packages: read
@@ -208,7 +210,7 @@ jobs:
   build-macos:
     name: Build - macOS
     needs: [changes, checks, tests-lua]
-    if: needs.changes.outputs.macos == 'true' && needs.checks.result == 'success' && needs.tests-lua.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    if: needs.changes.outputs.macos == 'true' && needs.checks.result == 'success' && needs.tests-lua.result == 'success' && (github.event_name == 'release' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       pull-requests: read
@@ -218,7 +220,7 @@ jobs:
   build-android-apk:
     name: Build - Android APK
     needs: [changes, checks, tests-lua]
-    if: needs.changes.outputs.android == 'true' && needs.checks.result == 'success' && needs.tests-lua.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    if: needs.changes.outputs.android == 'true' && needs.checks.result == 'success' && needs.tests-lua.result == 'success' && (github.event_name == 'release' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       pull-requests: read
@@ -228,7 +230,7 @@ jobs:
   build-docker:
     name: Build - Docker
     needs: [changes, checks, tests-lua]
-    if: needs.changes.outputs.docker == 'true' && needs.checks.result == 'success' && needs.tests-lua.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    if: needs.changes.outputs.docker == 'true' && needs.checks.result == 'success' && needs.tests-lua.result == 'success' && (github.event_name == 'release' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       packages: write
@@ -241,7 +243,7 @@ jobs:
   build-browser:
     name: Build - Browser
     needs: [changes, checks, tests-lua]
-    if: needs.changes.outputs.browser == 'true' && needs.checks.result == 'success' && needs.tests-lua.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    if: needs.changes.outputs.browser == 'true' && needs.checks.result == 'success' && needs.tests-lua.result == 'success' && (github.event_name == 'release' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
     uses: ./.github/workflows/reusable-build-browser.yml

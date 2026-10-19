@@ -1,0 +1,914 @@
+ElementalDesktopCharacterWidget < UIWidget
+  height: 50
+  focusable: true
+  background-color: #10151d
+  border-width: 1
+  border-color: #39424e
+  &updateOnStates: |
+    function(self)
+      local focused = self:isFocused()
+      if focused then
+        self:setBackgroundColor('#252d38')
+        self:setBorderColor('#ffbd6b')
+      else
+        self:setBackgroundColor('#10151d')
+        self:setBorderColor('#39424e')
+      end
+    end
+  @onFocusChange: self:updateOnStates()
+  @onSetup: self:updateOnStates()
+
+  UICreature
+    id: outfitCreatureBox
+    size: 1 1
+    fixed-creature-size: true
+    visible: false
+
+  Label
+    id: name
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 14
+    margin-right: 8
+    height: 20
+    color: #f7f1e4
+    font: Verdana Bold-11px
+    text-auto-resize: false
+    text-wrap: false
+
+  Label
+    id: worldName
+    visible: false
+
+  Label
+    id: mainCharacter
+    visible: false
+
+ElementalDesktopCreateCharacterWidget < ElementalDesktopCharacterWidget
+  @onClick: |
+    EnterGame.playUiClickSound()
+    CharacterList.openCharacterAssembly()
+
+ElementalCharacterListScrollButton < UIButton
+  size: 42 30
+  background-color: #1b202b
+  border-width: 1
+  border-color: #39424e
+  image-source:
+  image-color: #ffffff00
+  text-align: center
+  color: #ffbd6b
+  font: Verdana Bold-13px
+
+  $hover:
+    background-color: #252d38
+    border-color: #ffbd6b
+    color: #ffe2a7
+
+  $pressed:
+    background-color: #10151d
+    color: #ffe2a7
+
+ElementalDesktopAssemblyLabel < Label
+  height: 16
+  color: #f7f1e4
+  font: verdana-11px-antialised
+  text-auto-resize: false
+
+ElementalDesktopAssemblyCombo < QtComboBox
+  height: 24
+  background-color: #10151d
+  border-width: 1
+  border-color: #39424e
+  image-color: #252d38
+  color: #f7f1e4
+  font: verdana-11px-antialised
+  @onClick: EnterGame.playUiClickSound()
+
+ElementalDesktopAssemblyComboPopupMenuButton < QtComboBoxPopupMenuButton
+  color: #f7f1e4ff
+  @onClick: EnterGame.playUiClickSound()
+
+  $hover !disabled:
+    color: #080a10ff
+    background-color: #ffbd6bff
+
+ElementalDesktopAssemblyComboPopupMenu < QtComboBoxPopupMenu
+  image-source:
+  background-color: #10151d
+  border-width: 1
+  border-color: #ffbd6b
+
+ElementalDesktopAssemblyComboPopupScrollMenuButton < QtComboBoxPopupScrollMenuButton
+  color: #f7f1e4ff
+  @onClick: EnterGame.playUiClickSound()
+
+  $hover !disabled:
+    color: #080a10ff
+    background-color: #ffbd6bff
+
+ElementalDesktopAssemblyComboPopupScrollMenu < QtComboBoxPopupScrollMenu
+  image-source:
+  background-color: #10151d
+  border-width: 1
+  border-color: #ffbd6b
+
+ElementalDesktopAssemblyInput < ElementalInput
+  background-color: #10151d
+  border-width: 1
+  border-color: #39424e
+  image-source:
+  image-color: #ffffff00
+  color: #f7f1e4
+  font: verdana-11px-antialised
+  padding: 4
+
+ElementalDesktopCharacterAssemblyWindow < UIWidget
+  anchors.left: characterSidebar.right
+  anchors.right: parent.right
+  anchors.verticalCenter: parent.verticalCenter
+  margin-left: 34
+  margin-right: 32
+  margin-top: 28
+  height: 360
+  focusable: true
+  background-color: #080a10f4
+  border-width: 1
+  border-color: #ffbd6b
+  @onEscape: CharacterList.cancelCharacterAssembly()
+
+  Panel
+    id: assemblyPanel
+    anchors.fill: parent
+    margin: 14
+
+    Label
+      id: assemblyEyebrow
+      anchors.top: parent.top
+      anchors.left: parent.left
+      text: FORJE SUA JORNADA
+      color: #ffbd6b
+      font: Verdana Bold-11px
+      text-auto-resize: true
+
+    Label
+      id: assemblyTitle
+      anchors.top: assemblyEyebrow.bottom
+      anchors.left: parent.left
+      margin-top: 3
+      text: Criar personagem
+      color: #f7f1e4
+      font: Verdana Bold-11px
+      text-auto-resize: true
+
+    Label
+      id: assemblyIntro
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: assemblyTitle.bottom
+      margin-top: 4
+      height: 18
+      text: Escolha a origem, vocacao e aparencia do seu personagem.
+      color: #aeb4c0
+      font: verdana-11px-antialised
+      text-auto-resize: false
+
+    Panel
+      id: assemblyFormPanel
+      anchors.top: assemblyIntro.bottom
+      anchors.left: parent.left
+      anchors.right: previewPanel.left
+      anchors.bottom: assemblyStatus.top
+      margin-top: 9
+      margin-right: 10
+      margin-bottom: 6
+      background-color: #10151d
+      border-width: 1
+      border-color: #252d38
+      padding: 6
+
+      ElementalDesktopAssemblyLabel
+        id: characterNameLabel
+        anchors.top: parent.top
+        anchors.left: parent.left
+        margin-top: 3
+        width: 88
+        text: Nome do personagem
+
+      ElementalDesktopAssemblyInput
+        id: characterNameEdit
+        anchors.top: parent.top
+        anchors.left: characterNameLabel.right
+        anchors.right: parent.right
+        height: 22
+
+      ElementalDesktopAssemblyLabel
+        id: sexLabel
+        anchors.left: parent.left
+        anchors.top: characterNameEdit.bottom
+        margin-top: 8
+        width: 38
+        text: Sexo
+
+      ElementalDesktopAssemblyCombo
+        id: sexCombo
+        anchors.top: characterNameEdit.bottom
+        anchors.left: sexLabel.right
+        anchors.right: parent.horizontalCenter
+        margin-top: 5
+        height: 22
+
+      ElementalSecondaryButton
+        id: retryOptionsButton
+        anchors.right: sexCombo.right
+        anchors.verticalCenter: sexCombo.verticalCenter
+        width: 52
+        height: 22
+        text: Tentar
+        visible: false
+
+      ElementalDesktopAssemblyLabel
+        id: raceLabel
+        anchors.left: parent.horizontalCenter
+        anchors.top: sexCombo.top
+        margin-left: 4
+        margin-top: 3
+        width: 40
+        text: Raca
+
+      ElementalDesktopAssemblyCombo
+        id: raceCombo
+        anchors.top: sexCombo.top
+        anchors.left: raceLabel.right
+        anchors.right: parent.right
+        height: 22
+
+      ElementalDesktopAssemblyLabel
+        id: vocationLabel
+        anchors.left: parent.left
+        anchors.top: sexCombo.bottom
+        margin-top: 8
+        width: 58
+        text: Vocacao
+
+      ElementalDesktopAssemblyCombo
+        id: vocationCombo
+        anchors.top: sexCombo.bottom
+        anchors.left: vocationLabel.right
+        anchors.right: parent.horizontalCenter
+        margin-top: 5
+        height: 22
+
+      ElementalDesktopAssemblyLabel
+        id: appearanceLabel
+        anchors.top: vocationCombo.top
+        anchors.left: parent.horizontalCenter
+        margin-left: 4
+        margin-top: 3
+        width: 58
+        text: Aparencia
+
+      ElementalDesktopAssemblyCombo
+        id: appearanceCombo
+        anchors.top: vocationCombo.top
+        anchors.left: appearanceLabel.right
+        anchors.right: parent.right
+        height: 22
+
+      ElementalDesktopAssemblyLabel
+        id: colorsLabel
+        anchors.top: vocationCombo.bottom
+        anchors.left: parent.left
+        margin-top: 5
+        text: Cores
+        color: #ffbd6b
+        font: Verdana Bold-11px
+
+      ElementalDesktopAssemblyLabel
+        id: headColorLabel
+        anchors.top: colorsLabel.bottom
+        anchors.left: parent.left
+        margin-top: 5
+        width: 42
+        text: Cabeca
+
+      ElementalDesktopAssemblyCombo
+        id: headColorCombo
+        anchors.top: colorsLabel.bottom
+        anchors.left: headColorLabel.right
+        anchors.right: parent.horizontalCenter
+        margin-top: 2
+        height: 22
+
+      ElementalDesktopAssemblyLabel
+        id: bodyColorLabel
+        anchors.top: headColorCombo.top
+        anchors.left: parent.horizontalCenter
+        margin-left: 4
+        margin-top: 3
+        width: 44
+        text: Tronco
+
+      ElementalDesktopAssemblyCombo
+        id: bodyColorCombo
+        anchors.top: headColorCombo.top
+        anchors.left: bodyColorLabel.right
+        anchors.right: parent.right
+        height: 22
+
+      ElementalDesktopAssemblyLabel
+        id: legsColorLabel
+        anchors.top: headColorCombo.bottom
+        anchors.left: parent.left
+        margin-top: 7
+        width: 42
+        text: Pernas
+
+      ElementalDesktopAssemblyCombo
+        id: legsColorCombo
+        anchors.top: headColorCombo.bottom
+        anchors.left: legsColorLabel.right
+        anchors.right: parent.horizontalCenter
+        margin-top: 4
+        height: 22
+
+      ElementalDesktopAssemblyLabel
+        id: feetColorLabel
+        anchors.top: legsColorCombo.top
+        anchors.left: parent.horizontalCenter
+        margin-left: 4
+        margin-top: 3
+        width: 44
+        text: Detalhes
+
+      ElementalDesktopAssemblyCombo
+        id: feetColorCombo
+        anchors.top: legsColorCombo.top
+        anchors.left: feetColorLabel.right
+        anchors.right: parent.right
+        height: 22
+
+      ElementalDesktopAssemblyLabel
+        id: addonsLabel
+        anchors.top: legsColorCombo.bottom
+        anchors.left: parent.left
+        margin-top: 7
+        width: 52
+        text: Extras
+
+      ElementalDesktopAssemblyCombo
+        id: addonsCombo
+        anchors.top: legsColorCombo.bottom
+        anchors.left: addonsLabel.right
+        anchors.right: parent.right
+        margin-top: 4
+        height: 22
+
+    Panel
+      id: previewPanel
+      anchors.top: assemblyIntro.bottom
+      anchors.right: parent.right
+      anchors.bottom: assemblyStatus.top
+      margin-bottom: 6
+      width: 220
+      background-color: #10151d
+      border-width: 1
+      border-color: #252d38
+
+      Label
+        id: previewTitle
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        margin-top: 8
+        height: 16
+        text: PREVIA DO PERSONAGEM
+        text-align: center
+        color: #ffbd6b
+        font: Verdana Bold-11px
+        text-auto-resize: false
+
+      UICreature
+        id: appearancePreview
+        size: 130 130
+        anchors.top: previewTitle.bottom
+        anchors.horizontalCenter: parent.horizontalCenter
+        margin-top: 3
+        fixed-creature-size: true
+        visible: false
+
+      Label
+        id: previewHint
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        margin-left: 8
+        margin-right: 8
+        margin-bottom: 5
+        height: 26
+        text-wrap: true
+        text-align: center
+        color: #aeb4c0
+        font: verdana-11px-antialised
+        text: Escolha aparencia e cores para visualizar seu personagem.
+
+    Label
+      id: assemblyStatus
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: cancelAssemblyButton.top
+      margin-bottom: 5
+      height: 24
+      text-wrap: true
+      color: #aeb4c0
+      font: verdana-11px-antialised
+
+    ElementalSecondaryButton
+      id: refreshCharactersButton
+      anchors.left: parent.left
+      anchors.bottom: parent.bottom
+      width: 96
+      height: 34
+      text: Atualizar
+      visible: false
+
+    ElementalSecondaryButton
+      id: cancelAssemblyButton
+      anchors.right: createCharacterButton.left
+      anchors.bottom: parent.bottom
+      margin-right: 8
+      width: 102
+      height: 34
+      text: Voltar
+
+    ElementalPrimaryButton
+      id: createCharacterButton
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      width: 174
+      height: 38
+      text: Criar personagem
+
+UIWidget
+  id: charactersWindow
+  anchors.fill: parent
+  visible: false
+  focusable: true
+  @onEnter: CharacterList.doLogin()
+  @onEscape: |
+    if not CharacterList.cancelLogin() then
+      CharacterList.hide(true)
+    end
+  @onSetup: |
+    g_keyboard.bindKeyPress('Up', function()
+      local list = self:recursiveGetChildById('characters')
+      if list then list:focusPreviousChild(KeyboardFocusReason) end
+    end, self)
+    g_keyboard.bindKeyPress('Down', function()
+      local list = self:recursiveGetChildById('characters')
+      if list then list:focusNextChild(KeyboardFocusReason) end
+    end, self)
+
+  Panel
+    id: characterArtDimmer
+    anchors.fill: parent
+    background-color: #080a1080
+    phantom: true
+    focusable: false
+
+  ElementalDesktopIdentityBanner
+    id: characterSidebar
+
+    UIWidget
+      id: brandSignature
+      size: 380 115
+      anchors.top: parent.top
+      anchors.horizontalCenter: parent.horizontalCenter
+      margin-top: 3
+      image-source: /images/brand/elemental-signature-dark.png
+      image-size: 380 115
+      image-smooth: true
+      phantom: true
+      focusable: false
+
+    Label
+      id: brandTagline
+      anchors.top: brandSignature.bottom
+      anchors.horizontalCenter: parent.horizontalCenter
+      margin-left: 36
+      margin-top: -20
+      width: 300
+      height: 14
+      text: COLETE, CONSTRUA, LUTE E VIVA ESSA AVENTURA
+      text-align: center
+      text-auto-resize: false
+      color: #f7f1e4
+      font: Verdana Bold-10px
+
+    Label
+      id: characterCountLabel
+      anchors.left: parent.left
+      anchors.top: brandTagline.bottom
+      margin-top: 14
+      text: 0 personagens
+      color: #ffbd6b
+      font: Verdana Bold-11px
+      text-auto-resize: true
+      visible: false
+
+    CheckBox
+      id: checkBoxHidden
+      anchors.left: characterCountLabel.right
+      anchors.verticalCenter: characterCountLabel.verticalCenter
+      margin-left: 18
+      text: Ocultos
+      color: #aeb4c0
+      font: verdana-11px-antialised
+      text-auto-resize: true
+      @onCheckChange: onShowHiddenCharacters(self, self:isChecked())
+      @onClick: EnterGame.playUiClickSound()
+      visible: false
+
+    ElementalCharacterListScrollButton
+      id: characterListUpButton
+      anchors.top: brandTagline.bottom
+      anchors.horizontalCenter: parent.horizontalCenter
+      margin-top: 18
+      text: ^
+      @onClick: |
+        EnterGame.playUiClickSound()
+        self:getParent():getChildById('characterListScrollBar'):decrement()
+
+    ElementalCharacterListScrollButton
+      id: characterListDownButton
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.bottom: buttonBack.top
+      margin-bottom: 40
+      text: v
+      @onClick: |
+        EnterGame.playUiClickSound()
+        self:getParent():getChildById('characterListScrollBar'):increment()
+
+    TextList
+      id: characters
+      anchors.top: characterListUpButton.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: characterListDownButton.top
+      margin-top: 8
+      margin-right: 8
+      margin-bottom: 6
+      spacing: 5
+      padding: 2
+      focusable: false
+      auto-focus: first
+      vertical-scrollbar: characterListScrollBar
+      background-color: #080a10aa
+      border-width: 1
+      border-color: #252d38
+
+    Label
+      id: emptyCharacterPrompt
+      anchors.fill: characters
+      margin: 24
+      text-wrap: true
+      text-align: center
+      text-vertical-auto-resize: true
+      color: #aeb4c0
+      text: Nenhum personagem
+      visible: false
+
+    VerticalScrollBar
+      id: characterListScrollBar
+      anchors.fill: characters
+      width: 0
+      step: 55
+      pixels-scroll: true
+      visible: false
+
+    Label
+      id: accountStatusCaption
+      anchors.left: parent.left
+      anchors.bottom: accountStatusLabel.top
+      margin-bottom: 4
+      text: Status da conta
+      color: #aeb4c0
+      font: verdana-11px-antialised
+      text-auto-resize: true
+      visible: false
+
+    Label
+      id: accountStatusIcon
+      size: 22 20
+      anchors.left: parent.left
+      anchors.bottom: accountStatusLabel.bottom
+      image-source: /images/game/entergame/premium
+      image-clip: 0 0 22 20
+      visible: false
+
+    Label
+      id: accountStatusLabel
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: buttonCreateCharacter.top
+      margin-left: 8
+      margin-bottom: 10
+      height: 18
+      text-offset: 22 0
+      color: #f7f1e4
+      font: verdana-11px-antialised
+      text-auto-resize: false
+      visible: false
+
+    Button
+      id: autoReconnect
+      visible: false
+
+    ElementalSecondaryButton
+      id: buttonAccount
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      margin-right: 24
+      width: 148
+      height: 34
+      text: Gerenciar conta
+      visible: false
+      @onClick: |
+        EnterGame.playUiClickSound()
+        CharacterList.openAccountManagement()
+
+    ElementalPrimaryButton
+      id: buttonCreateCharacter
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      width: 174
+      height: 38
+      text: Criar personagem
+      visible: false
+      @onClick: |
+        EnterGame.playUiClickSound()
+        CharacterList.openCharacterAssembly()
+
+    ElementalSecondaryButton
+      id: buttonBack
+      anchors.left: parent.left
+      anchors.bottom: parent.bottom
+      margin-left: 24
+      width: 142
+      height: 34
+      text: Voltar
+      @onClick: |
+        EnterGame.playUiClickSound()
+        CharacterList.hide(true)
+
+  Panel
+    id: characterDetailsPanel
+    anchors.left: characterSidebar.right
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    height: 360
+    margin-left: 34
+    margin-right: 32
+    margin-top: 28
+    background-color: #080a10e8
+    border-width: 1
+    border-color: #39424e
+
+    Panel
+      id: selectedCharacterDetails
+      anchors.fill: parent
+      margin-left: -6
+      margin-right: 48
+      margin-top: 35
+      margin-bottom: 35
+      visible: false
+      phantom: true
+
+      UICreature
+        id: selectedCharacterPreview
+        size: 180 205
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        margin-left: 8
+        fixed-creature-size: true
+        visible: false
+
+      Label
+        id: selectedCharacterName
+        anchors.left: selectedCharacterPreview.left
+        anchors.right: selectedCharacterPreview.right
+        anchors.bottom: selectedCharacterPreview.top
+        margin-bottom: 6
+        height: 24
+        color: #f7f1e4
+        font: Verdana Bold-13px
+        text-auto-resize: false
+        text-wrap: false
+        text-align: center
+
+      Label
+        id: detailsEyebrow
+        anchors.left: selectedCharacterName.right
+        anchors.right: parent.right
+        anchors.verticalCenter: selectedCharacterName.verticalCenter
+        margin-left: 24
+        text: FICHA DO PERSONAGEM
+        color: #ffbd6b
+        font: Verdana Bold-11px
+        text-auto-resize: false
+        text-wrap: false
+        text-align: center
+
+      Panel
+        id: selectedCharacterFacts
+        anchors.left: selectedCharacterPreview.right
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        height: 112
+        margin-left: 24
+
+        Panel
+          id: selectedCharacterLevelCard
+          anchors.top: parent.top
+          anchors.left: parent.left
+          anchors.right: parent.horizontalCenter
+          margin-right: 6
+          height: 52
+          background-color: #10151d
+          border-width: 1
+          border-color: #39424e
+
+          Label
+            id: selectedCharacterLevelHeading
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            margin-top: 7
+            text: NIVEL
+            color: #aeb4c0
+            font: Verdana Bold-10px
+            text-auto-resize: true
+
+          Label
+            id: selectedCharacterLevel
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            margin-bottom: 7
+            color: #ffbd6b
+            font: Verdana Bold-11px
+            text-auto-resize: true
+            visible: false
+
+        Panel
+          id: selectedCharacterVocationCard
+          anchors.top: parent.top
+          anchors.left: parent.horizontalCenter
+          anchors.right: parent.right
+          margin-left: 6
+          height: 52
+          background-color: #10151d
+          border-width: 1
+          border-color: #39424e
+
+          Label
+            id: selectedCharacterVocationHeading
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            margin-top: 7
+            text: VOCACAO
+            color: #aeb4c0
+            font: Verdana Bold-10px
+            text-auto-resize: true
+
+          Label
+            id: selectedCharacterVocation
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            margin-bottom: 7
+            color: #f7f1e4
+            font: Verdana Bold-11px
+            text-auto-resize: true
+            visible: false
+
+        Panel
+          id: selectedCharacterRaceCard
+          anchors.top: selectedCharacterLevelCard.bottom
+          anchors.left: parent.left
+          anchors.right: parent.horizontalCenter
+          margin-top: 8
+          margin-right: 6
+          height: 52
+          background-color: #10151d
+          border-width: 1
+          border-color: #39424e
+
+          Label
+            id: selectedCharacterRaceHeading
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            margin-top: 7
+            text: ORIGEM
+            color: #aeb4c0
+            font: Verdana Bold-10px
+            text-auto-resize: true
+
+          Label
+            id: selectedCharacterRace
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            margin-bottom: 7
+            color: #aeb4c0
+            font: verdana-11px-antialised
+            text-auto-resize: true
+            visible: false
+
+        Panel
+          id: selectedCharacterWorldCard
+          anchors.top: selectedCharacterVocationCard.bottom
+          anchors.left: parent.horizontalCenter
+          anchors.right: parent.right
+          margin-top: 8
+          margin-left: 6
+          height: 52
+          background-color: #10151d
+          border-width: 1
+          border-color: #39424e
+
+          Label
+            id: selectedCharacterWorldHeading
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            margin-top: 7
+            text: MUNDO
+            color: #aeb4c0
+            font: Verdana Bold-10px
+            text-auto-resize: true
+
+          Label
+            id: selectedCharacterWorld
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            margin-bottom: 7
+            color: #aeb4c0
+            font: verdana-11px-antialised
+            text-auto-resize: true
+            visible: false
+
+      ElementalPrimaryButton
+        id: buttonOk
+        anchors.horizontalCenter: parent.horizontalCenter
+        margin-left: 105
+        anchors.bottom: parent.bottom
+        margin-bottom: -17
+        width: 290
+        height: 48
+        text: Escolher Personagem
+        visible: false
+        @onClick: |
+          if CharacterList.cancelLogin() then
+            EnterGame.playUiClickSound()
+            return
+          end
+          EnterGame.playUiConfirmSound()
+          CharacterList.doLogin()
+
+      Label
+        id: worldConnectionStatus
+        anchors.horizontalCenter: parent.horizontalCenter
+        margin-left: 105
+        anchors.bottom: buttonOk.top
+        margin-bottom: 4
+        width: 290
+        height: 24
+        color: #ffbd6b
+        font: Verdana Bold-11px
+        text-wrap: true
+        text-align: center
+        text-vertical-auto-resize: false
+        visible: false
+
+    Label
+      id: selectedCharacterEmpty
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      margin-left: 36
+      margin-right: 36
+      height: 50
+      text: Crie seu primeiro personagem para entrar no mundo Elemental.
+      text-wrap: true
+      text-align: center
+      color: #aeb4c0
+      font: verdana-11px-antialised
+
+    ElementalSecondaryButton
+      id: buttonCancel
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      width: 110
+      height: 38
+      text: Sair
+      visible: false
+      @onClick: |
+        EnterGame.playUiClickSound()
+        CharacterList.hide(true)

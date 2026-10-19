@@ -108,6 +108,7 @@ class AndroidManager(
     }
 
     fun onImeVisibilityChanged(visible: Boolean, imeHeight: Int) {
+        nativeOnImeVisibilityChanged(visible, if (visible) imeHeight else 0)
         handler.post {
             isImeVisible = visible
             this.imeHeight = imeHeight
@@ -139,6 +140,7 @@ class AndroidManager(
 
     external fun nativeInit()
     external fun nativeSetAudioEnabled(enabled: Boolean)
+    external fun nativeOnImeVisibilityChanged(visible: Boolean, imeHeight: Int)
 
     private fun showPreviewInternal(animate: Boolean = true) {
         previewContainer.animate().cancel()

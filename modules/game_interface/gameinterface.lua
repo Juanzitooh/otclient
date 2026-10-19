@@ -11,7 +11,6 @@ panelsRadioGroup = nil
 gameTopPanel = nil
 gameBottomStatsBarPanel = nil
 gameBottomPanel = nil
-showTopMenuButton = nil
 logoutButton = nil
 logOutMainButton = nil
 mouseGrabberWidget = nil
@@ -47,6 +46,249 @@ local mobileConfig = {
     mobileHeightShortcuts = 0
 }
 local isExtendedViewActive = false
+local ELEMENTAL_PROFILE_KEY = 'gameInterfaceProfile'
+local ELEMENTAL_PROFILE_NAME = 'elemental'
+local CLASSIC_PROFILE_NAME = 'classic'
+local isElementalProfileActive = false
+local classicViewModeBeforeElemental = nil
+local elementalTopMenuWasVisible = nil
+local elementalLegacyWidgetVisibility = nil
+local elementalWindowLayer = nil
+local ELEMENTAL_WINDOW_SETTINGS_KEY = 'ElementalDesktopWindows'
+local elementalMapAwareRangeEvent = nil
+local lastElementalMapAwareRange = nil
+local elementalMapAwareRangeFeatureWasEnabled = nil
+local MAP_AWARE_RANGE_DEFAULT_X = 18
+local MAP_AWARE_RANGE_DEFAULT_Y = 14
+local MAP_AWARE_RANGE_ELEMENTAL_MIN_X = 36
+local MAP_AWARE_RANGE_ELEMENTAL_MIN_Y = 20
+local MAP_AWARE_RANGE_MAX_X = 52
+local MAP_AWARE_RANGE_MAX_Y = 24
+local ELEMENTAL_HIDDEN_WIDGET_IDS = {
+    'gameLeftActionPanel', 'lockLeftPanel', 'gameRightActionPanel', 'lockRightPanel',
+    'gameBottomActionPanel', 'lockPanel', 'gameBottomCooldownPanel', 'gameBottomPanel',
+    'gameLeftPanel', 'gameLeftExtraPanel', 'gameMainRightPanel', 'gameRightPanel',
+    'gameRightExtraPanel', 'gameSelectLeftColumn', 'gameSelectRightColumn',
+    'gameSelectRightExtraColumn', 'gameSelectLeftExtraColumn', 'bottomSplitter',
+    'gameTopPanel', 'gameBottomStatsBarPanel', 'leftIncreaseSidePanels',
+    'leftDecreaseSidePanels', 'rightIncreaseSidePanels', 'rightDecreaseSidePanels'
+}
+
+local function anchorGameRootToClient()
+    gameRootPanel:breakAnchors()
+    gameRootPanel:addAnchor(AnchorLeft, 'parent', AnchorLeft)
+    gameRootPanel:addAnchor(AnchorRight, 'parent', AnchorRight)
+    gameRootPanel:addAnchor(AnchorTop, 'topMenu', AnchorBottom)
+    gameRootPanel:addAnchor(AnchorBottom, 'parent', AnchorBottom)
+end
+
+local function anchorMapToClassicPanels()
+    gameMapPanel:breakAnchors()
+    gameMapPanel:addAnchor(AnchorLeft, 'gameLeftActionPanel', AnchorRight)
+    gameMapPanel:addAnchor(AnchorRight, 'gameRightActionPanel', AnchorLeft)
+    gameMapPanel:addAnchor(AnchorTop, 'gameTopPanel', AnchorBottom)
+    gameMapPanel:addAnchor(AnchorBottom, 'bottomSplitter', AnchorTop)
+    gameMapPanel:setMarginTop(1)
+    gameMapPanel:setMarginBottom(1)
+end
+
+function registerElementalWindow(id, title, widget, options)
+    return ElementalWindowHost.register(id, title, widget, options)
+end
+
+function unregisterElementalWindow(id, widget)
+    return ElementalWindowHost.unregister(id, widget)
+end
+
+function toggleElementalWindow(id)
+    return ElementalWindowHost.toggle(id)
+end
+
+function showElementalWindow(id)
+    return ElementalWindowHost.show(id)
+end
+
+function getElementalWindowLayer()
+    return elementalWindowLayer
+end
+
+function isElementalProfileInWorld()
+    return isElementalProfileActive
+end
+
+local function saveAllElementalWindowGeometry()
+    ElementalWindowHost.saveAll()
+end
+
+local function normalizeMapAwareRange(range, minimum, maximum)
+    range = math.max(minimum, math.min(maximum, range))
+    if range % 2 ~= 0 then
+        range = range - 1
+    end
+    return range
+end
+
+local function requestElementalMapAwareRange()
+    elementalMapAwareRangeEvent = nil
+    if not isElementalProfileActive or not g_game.isOnline() then
+        return
+    end
+
+    local dimension = gameMapPanel:getVisibleDimension()
+    local width = normalizeMapAwareRange(dimension.width + 3, MAP_AWARE_RANGE_ELEMENTAL_MIN_X, MAP_AWARE_RANGE_MAX_X)
+    local height = normalizeMapAwareRange(dimension.height + 3, MAP_AWARE_RANGE_ELEMENTAL_MIN_Y, MAP_AWARE_RANGE_MAX_Y)
+    local rangeKey = width .. 'x' .. height
+    if lastElementalMapAwareRange == rangeKey then
+        return
+    end
+
+    lastElementalMapAwareRange = rangeKey
+    if os.getenv("ELEMENTAL_LOCAL_TEST") == "1" then
+        g_logger.info(string.format(
+            'Elemental QA map range: visible=%dx%d requested=%dx%d',
+            dimension.width, dimension.height, width, height))
+    end
+    g_game.changeMapAwareRange(width, height)
+end
+
+local function scheduleElementalMapAwareRange(delay)
+    if not isElementalProfileActive then
+        return
+    end
+    if elementalMapAwareRangeEvent then
+        removeEvent(elementalMapAwareRangeEvent)
+    end
+    elementalMapAwareRangeEvent = scheduleEvent(requestElementalMapAwareRange, delay or 100)
+end
+
+local function onElementalMapGeometryChange()
+    scheduleElementalMapAwareRange(150)
+end
+
+local function applyElementalProfile()
+    if isElementalProfileActive then
+        return
+    end
+
+    classicViewModeBeforeElemental = currentViewMode
+    elementalTopMenuWasVisible = modules.client_topmenu.getTopMenu():isVisible()
+    setupViewMode(0, true)
+    isElementalProfileActive = true
+    elementalMapAwareRangeFeatureWasEnabled = g_game.getFeature(GameChangeMapAwareRange)
+    g_game.enableFeature(GameChangeMapAwareRange)
+
+    modules.client_topmenu.hide()
+    gameRootPanel:breakAnchors()
+    gameRootPanel:fill('parent')
+    gameMapPanel:breakAnchors()
+    gameMapPanel:fill('parent')
+    gameMapPanel:setMarginLeft(0)
+    gameMapPanel:setMarginRight(0)
+    gameMapPanel:setMarginTop(0)
+    gameMapPanel:setMarginBottom(0)
+    gameMapPanel:setPadding(0)
+    gameMapPanel:setImageSource(nil)
+    gameMapPanel:setImageBorder(0)
+    gameMapPanel:setKeepAspectRatio(false)
+    gameMapPanel:setLimitVisibleDimension(false)
+    gameMapPanel:setLimitVisibleRange(false)
+    gameMapPanel:setDrawViewportEdge(false)
+    gameMapPanel:setZoom(11)
+    scheduleElementalMapAwareRange(250)
+
+    elementalLegacyWidgetVisibility = {}
+    for _, widgetId in ipairs(ELEMENTAL_HIDDEN_WIDGET_IDS) do
+        local widget = gameRootPanel:recursiveGetChildById(widgetId)
+        if widget then
+            elementalLegacyWidgetVisibility[widgetId] = widget:isVisible()
+            widget:hide()
+        end
+    end
+
+    ElementalWindowHost.activate()
+    gameRootPanel:focus()
+end
+
+local function restoreElementalProfile(showTopMenu, restorePreviousViewMode)
+    if not isElementalProfileActive then
+        return
+    end
+
+    ElementalWindowHost.deactivate(restorePreviousViewMode)
+    isElementalProfileActive = false
+    if elementalMapAwareRangeEvent then
+        removeEvent(elementalMapAwareRangeEvent)
+        elementalMapAwareRangeEvent = nil
+    end
+    lastElementalMapAwareRange = nil
+
+    if showTopMenu then
+        if elementalTopMenuWasVisible then
+            modules.client_topmenu.show()
+        else
+            modules.client_topmenu.hide()
+        end
+    end
+    elementalTopMenuWasVisible = nil
+
+    anchorGameRootToClient()
+    anchorMapToClassicPanels()
+    gameMapPanel:setPadding(4)
+    gameMapPanel:setMarginLeft(0)
+    gameMapPanel:setMarginRight(0)
+    gameMapPanel:setImageSource('/images/ui/panel_map')
+    gameMapPanel:setImageBorder(4)
+    gameMapPanel:setImageColor('white')
+    gameMapPanel:setKeepAspectRatio(true)
+    gameMapPanel:setLimitVisibleRange(false)
+    gameMapPanel:setZoom(11)
+
+    if elementalLegacyWidgetVisibility then
+        for widgetId, visible in pairs(elementalLegacyWidgetVisibility) do
+            local widget = gameRootPanel:recursiveGetChildById(widgetId)
+            if widget then
+                widget:setVisible(visible)
+            end
+        end
+    end
+    elementalLegacyWidgetVisibility = nil
+
+    local viewMode = restorePreviousViewMode and classicViewModeBeforeElemental or 0
+    classicViewModeBeforeElemental = nil
+    setupViewMode(0, true)
+    if viewMode ~= 0 then
+        setupViewMode(viewMode, true)
+    end
+    g_game.changeMapAwareRange(MAP_AWARE_RANGE_DEFAULT_X, MAP_AWARE_RANGE_DEFAULT_Y)
+    if elementalMapAwareRangeFeatureWasEnabled ~= nil then
+        g_game.setFeature(GameChangeMapAwareRange, elementalMapAwareRangeFeatureWasEnabled)
+        elementalMapAwareRangeFeatureWasEnabled = nil
+    end
+end
+
+function getInterfaceProfile()
+    local profile = g_settings.getString(ELEMENTAL_PROFILE_KEY, ELEMENTAL_PROFILE_NAME)
+    if profile == CLASSIC_PROFILE_NAME then
+        return CLASSIC_PROFILE_NAME
+    end
+    return ELEMENTAL_PROFILE_NAME
+end
+
+function setInterfaceProfile(profile)
+    if profile ~= CLASSIC_PROFILE_NAME then
+        profile = ELEMENTAL_PROFILE_NAME
+    end
+    g_settings.set(ELEMENTAL_PROFILE_KEY, profile)
+
+    if not g_game.isOnline() then
+        return
+    end
+    if profile == ELEMENTAL_PROFILE_NAME then
+        applyElementalProfile()
+    else
+        restoreElementalProfile(true, true)
+    end
+end
 
 -- Default width of the side panels declared on 'GameSidePanel' (gameinterface.otui).
 local SIDE_PANEL_WIDTH = 176
@@ -152,6 +394,7 @@ function init()
 
     bottomSplitter = gameRootPanel:getChildById('bottomSplitter')
     gameMapPanel = gameRootPanel:getChildById('gameMapPanel')
+    connect(gameMapPanel, { onGeometryChange = onElementalMapGeometryChange })
     gameMainRightPanel = gameRootPanel:getChildById('gameMainRightPanel')
     gameRightPanel = gameRootPanel:getChildById('gameRightPanel')
     gameRightExtraPanel = gameRootPanel:getChildById('gameRightExtraPanel')
@@ -172,6 +415,10 @@ function init()
     gameBottomLockPanel = gameRootPanel:recursiveGetChildById('bottomLock')
     gameRightLockPanel = gameRootPanel:recursiveGetChildById('rightLock')
     gameLeftLockPanel = gameRootPanel:recursiveGetChildById('leftLock')
+    elementalWindowLayer = gameRootPanel:getChildById('elementalWindowLayer')
+    ElementalWindowHost.init(elementalWindowLayer)
+    g_settings.setDefault(ELEMENTAL_PROFILE_KEY, ELEMENTAL_PROFILE_NAME)
+    elementalWindowLayer:hide()
 
     updateSidePanelButtons()
     applyMobileMargins()
@@ -208,11 +455,6 @@ function init()
     gameLeftExtraPanel.onClick = toggleInternalFocus
     gameLeftPanel.onClick = toggleInternalFocus
     gameBottomPanel.onClick = toggleInternalFocus
-
-    showTopMenuButton = gameMapPanel:getChildById('showTopMenuButton')
-    showTopMenuButton.onClick = function()
-        modules.client_topmenu.toggle()
-    end
 
     bindKeys()
 
@@ -268,6 +510,7 @@ function bindKeys()
 end
 
 function terminate()
+    ElementalWindowHost.deactivate(false)
     StatsBar.terminate()
 
     hide()
@@ -291,6 +534,7 @@ function terminate()
         onGameEnd = onGameEnd,
         onLoginAdvice = onLoginAdvice
     })
+    disconnect(gameMapPanel, { onGeometryChange = onElementalMapGeometryChange })
 
     for k, v in pairs(panelsList) do
         disconnect(v.checkbox, {
@@ -340,8 +584,22 @@ function show()
         setupViewMode(2)
     end
 
+    if getInterfaceProfile() == ELEMENTAL_PROFILE_NAME then
+        applyElementalProfile()
+        if os.getenv("ELEMENTAL_LOCAL_TEST") == "1" then
+            g_logger.info(string.format(
+                'Elemental QA layout: mobile=%s profile=%s active=%s root=%dx%d map=%dx%d at=%d,%d bottom=%s left=%s extraLeft=%s layer=%dx%d visible=%s',
+                tostring(g_platform.isMobile()), getInterfaceProfile(), tostring(isElementalProfileActive),
+                gameRootPanel:getWidth(), gameRootPanel:getHeight(), gameMapPanel:getWidth(),
+                gameMapPanel:getHeight(), gameMapPanel:getX(), gameMapPanel:getY(),
+                tostring(gameBottomPanel:isVisible()), tostring(gameLeftPanel:isVisible()),
+                tostring(gameLeftExtraPanel:isVisible()), elementalWindowLayer:getWidth(),
+                elementalWindowLayer:getHeight(), tostring(elementalWindowLayer:isVisible())))
+        end
+    end
+
     addEvent(function()
-        if not limitedZoom or g_game.isGM() then
+        if isElementalProfileActive or not limitedZoom or g_game.isGM() then
             gameMapPanel:setMaxZoomOut(513)
             gameMapPanel:setLimitVisibleRange(false)
         else
@@ -352,6 +610,7 @@ function show()
 end
 
 function hide()
+    restoreElementalProfile(g_game.isOnline(), false)
     setupViewMode(0)
 
     disconnect(g_app, {
@@ -376,6 +635,7 @@ function hide()
 end
 
 function save()
+    saveAllElementalWindowGeometry()
     local settings = {}
     settings.splitterMarginBottom = bottomSplitter:getMarginBottom()
     g_settings.setNode('game_interface', settings)
@@ -500,7 +760,7 @@ function tryLogout(prompt)
 end
 
 function updateStretchShrink()
-    if modules.client_options.getOption('dontStretchShrink') and not alternativeView then
+    if not isElementalProfileActive and modules.client_options.getOption('dontStretchShrink') and not alternativeView then
         gameMapPanel:setVisibleDimension({
             width = 15,
             height = 11
@@ -1731,10 +1991,6 @@ function getBottomPanel()
     return gameBottomPanel
 end
 
-function getShowTopMenuButton()
-    return showTopMenuButton
-end
-
 function getGameTopStatsBar()
     return gameTopPanel
 end
@@ -1790,11 +2046,14 @@ function findContentPanelAvailable(child, minContentHeight)
 end
 
 function nextViewMode()
+    if isElementalProfileActive then
+        return
+    end
     setupViewMode((currentViewMode + 1) % 3)
 end
 
-function setupViewMode(mode)
-    if mode == currentViewMode then
+function setupViewMode(mode, force)
+    if mode == currentViewMode and not force then
         return
     end
 
@@ -2015,6 +2274,11 @@ function applyExtendedViewLayout(extendedView)
     end
 
     addEvent(function()
+        if isElementalProfileActive then
+            modules.game_console.setExtendedView(extendedView)
+            return
+        end
+
         modules.game_console.setExtendedView(extendedView)
         modules.game_minimap.extendedView(extendedView)
         modules.game_healthinfo.extendedView(extendedView)

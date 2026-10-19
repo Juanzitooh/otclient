@@ -1,4 +1,4 @@
-EnterGameWindow < MainWindow
+EnterGameWindow < ElementalWindow
   !text: tr('Enter Game')
   size: 236 316
 
@@ -213,7 +213,7 @@ EnterGameWindow
     anchors.top: prev.bottom
     margin-top: 6
 
-  QtButton
+  ElementalPrimaryButton
     !text: tr('Login')
     anchors.right: parent.right
     anchors.top: prev.bottom
@@ -221,13 +221,13 @@ EnterGameWindow
     size: 86 20
     @onClick: EnterGame.doLogin()
 
-  QtButton
+  ElementalSecondaryButton
     id: btnCreateNewAccount
     !text: tr('Create New Account')
     anchors.left: parent.left
     anchors.top: prev.bottom
     margin-top: -17
-    size: 109 20
+    size: 132 20
     @onClick: |
       self:disable()
       createWidgetAccount()

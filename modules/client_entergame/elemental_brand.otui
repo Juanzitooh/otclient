@@ -1,0 +1,121 @@
+&elementalNight: #080a10
+&elementalSurface: #1b202b
+&elementalRaised: #252d38
+&elementalInput: #10151d
+&elementalText: #f7f1e4
+&elementalMuted: #aeb4c0
+&elementalAmber: #ffbd6b
+&elementalAmberFocus: #ffe2a7
+&elementalFire: #ff9e51
+&elementalWater: #74d7ee
+&elementalEarth: #b3c878
+&elementalAir: #d6e3ec
+&elementalDanger: #e56b6b
+&elementalBorder: #39424e
+&elementalSpaceSmall: 8
+&elementalSpaceMedium: 16
+&elementalSpaceLarge: 24
+
+ElementalWindow < MainWindow
+  background-color: $elementalNight
+  image-color: #ffffff00
+  border-width: 1
+  border-color: $elementalAmber
+  color: $elementalText
+  font: verdana-11px-antialised
+  text-offset: 0 7
+  text-align: top
+  padding-top: 22
+  padding-left: $elementalSpaceMedium
+  padding-right: $elementalSpaceMedium
+  padding-bottom: $elementalSpaceMedium
+
+ElementalModal < ElementalWindow
+
+ElementalBanner < Panel
+  background-color: $elementalNight
+  border-width: 1
+  border-color: $elementalAmber
+  padding: $elementalSpaceMedium
+
+ElementalDesktopIdentityBanner < ElementalBanner
+  width: 420
+  anchors.left: parent.left
+  anchors.top: parent.top
+  anchors.bottom: parent.bottom
+  margin-left: 0
+  background-color: #080a10d8
+  border-width: 0
+  border-width-right: 1
+  border-color-right: $elementalAmber
+  padding: 26
+
+ElementalInput < TextEdit
+  background-color: $elementalInput
+  border-width: 1
+  border-color: $elementalBorder
+  color: $elementalText
+  font: verdana-11px-antialised
+  padding: 4
+  @onClick: EnterGame.playUiClickSound()
+
+  $focus:
+    border-color: $elementalAmberFocus
+
+ElementalPrimaryButton < QtButton
+  background-color: $elementalAmber
+  image-color: #ffffff00
+  border-width: 1
+  border-color: $elementalAmber
+  color: $elementalNight
+  font: Verdana Bold-11px
+
+  $hover !disabled:
+    background-color: $elementalAmberFocus
+    border-color: $elementalAmberFocus
+
+  $pressed:
+    background-color: $elementalFire
+    border-color: $elementalFire
+
+  $disabled:
+    background-color: $elementalRaised
+    border-color: $elementalBorder
+    color: $elementalMuted
+
+ElementalSecondaryButton < QtButton
+  background-color: $elementalSurface
+  image-color: #ffffff00
+  border-width: 1
+  border-color: $elementalBorder
+  color: $elementalText
+  font: verdana-11px-antialised
+
+  $hover !disabled:
+    background-color: $elementalRaised
+    border-color: $elementalAmber
+
+  $pressed:
+    background-color: $elementalNight
+    border-color: $elementalAmberFocus
+
+ElementalModalBlurBackdrop < Panel
+  anchors.fill: parent
+  focusable: false
+  phantom: false
+
+  UIWidget
+    id: blurredBackground
+    anchors.fill: parent
+    image-source: /images/background
+    image-smooth: true
+    image-fixed-ratio: true
+    phantom: true
+    focusable: false
+
+  Panel
+    id: backgroundDimmer
+    anchors.fill: parent
+    background-color: #080a1088
+    phantom: true
+    focusable: false

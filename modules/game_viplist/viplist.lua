@@ -84,7 +84,7 @@ function controllerVip:onInit()
         newWindowButton:setVisible(false)
     end
 
-    if g_game.isOnline() then
+    if g_game.isOnline() and not modules.game_interface.isElementalProfileInWorld() then
         vipWindow:setupOnStart()
     end
 end
@@ -111,7 +111,11 @@ function controllerVip:onGameStart()
     else
         vipInfo = {}
     end
-    vipWindow:setupOnStart() -- load character window configuration
+    if modules.game_interface.isElementalProfileInWorld() then
+        vipWindow:close(true)
+    else
+        vipWindow:setupOnStart() -- load character window configuration
+    end
     refresh()
     vipButton:setOn(vipButton:isOn())
 end
@@ -182,6 +186,9 @@ function clear()
 end
 
 function toggle()
+    if modules.game_interface.isElementalProfileInWorld() then
+        return false
+    end
     if vipButton:isOn() then
         vipWindow:close()
         vipButton:setOn(false)

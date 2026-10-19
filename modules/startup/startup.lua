@@ -1,6 +1,19 @@
+local maximizeAfterWindowShow = false
+local maximizeWindowEvent = nil
+
+local function maximizeOnRun()
+    if not maximizeAfterWindowShow then return end
+
+    maximizeWindowEvent = scheduleEvent(function()
+        maximizeWindowEvent = nil
+        g_window.maximize()
+    end, 500)
+end
+
 function init()
     connect(g_app, {
-        onExit = exit
+        onExit = exit,
+        onRun = maximizeOnRun
     })
 
     local platformType = g_window.getPlatformType()
@@ -58,9 +71,28 @@ function init()
     end
     g_window.move(pos)
 
-    -- window maximized?
-    local maximized = g_settings.getBoolean('window-maximized', false)
-    if maximized then g_window.maximize() end
+    -- Elemental's desktop profile uses the full windowed viewport by default.
+    local hasSavedMaximizedPreference = g_settings.exists('window-maximized')
+    local elementalDesktopProfile = not g_platform.isMobile() and
+        g_settings.getString('gameInterfaceProfile', 'elemental') == 'elemental'
+    local maximized = elementalDesktopProfile
+    if elementalDesktopProfile then
+        g_settings.set('window-maximized', true)
+    elseif hasSavedMaximizedPreference then
+        maximized = g_settings.getBoolean('window-maximized', false)
+    else
+        maximized = not g_platform.isMobile()
+        if maximized then
+            g_settings.set('window-maximized', true)
+        end
+    end
+    if maximized then
+        if isX11 then
+            maximizeAfterWindowShow = true
+        else
+            g_window.maximize()
+        end
+    end
 
     g_window.setTitle(g_app.getName())
     g_window.setIcon('/images/clienticon')
@@ -76,8 +108,14 @@ function init()
 end
 
 function terminate()
+    if maximizeWindowEvent then
+        removeEvent(maximizeWindowEvent)
+        maximizeWindowEvent = nil
+    end
+
     disconnect(g_app, {
-        onExit = exit
+        onExit = exit,
+        onRun = maximizeOnRun
     })
 
     local platformType = g_window.getPlatformType()

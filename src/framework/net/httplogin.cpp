@@ -33,6 +33,7 @@
 #include <framework/core/asyncdispatcher.h>
 #include <framework/core/eventdispatcher.h>
 #include <framework/core/logger.h>
+#include <framework/core/resourcemanager.h>
 #include <nlohmann/json.hpp>
 #include <cctype>
 #include <spdlog/spdlog.h>
@@ -220,21 +221,22 @@ std::string LoginHttp::getSession() { return this->session; }
 void LoginHttp::httpLogin(const std::string& host, const std::string& path,
                           uint16_t port, const std::string& email,
                           const std::string& password, int request_id, bool httpLogin, const std::string& token) {
+    auto self = std::static_pointer_cast<LoginHttp>(shared_from_this());
 #ifndef __EMSCRIPTEN__
     this->errorMessage.clear();
     g_asyncDispatcher->detach_task(
-        [this, host, path, port, email, password, token, request_id, httpLogin] {
+        [this, self, host, path, port, email, password, token, request_id, httpLogin] {
         if (cancelled.load()) return;
-        HttpResponse result = httpLogin
+        HttpResponse result = httpLogin && path != "/beta/v1/login"
             ? this->loginHttpJson(host, path, port, email, password, token)
             : this->loginHttpsJson(host, path, port, email, password, token);
-        if (!httpLogin && (!result || result.status != Success)) {
+        if (path != "/beta/v1/login" && !httpLogin && (!result || result.status != Success)) {
             if (cancelled.load()) return;
             result = loginHttpJson(host, path, port, email, password, token);
         }
 
         if (result && result.status == Success && parseJsonResponse(result.body)) {
-            g_dispatcher.addEvent([this, request_id] {
+            g_dispatcher.addEvent([this, self, request_id] {
                 if (cancelled.load()) return;
                 g_lua.callGlobalField("EnterGame", "loginSuccess", request_id,
                 this->getSession(), this->getWorldList(),
@@ -279,7 +281,7 @@ void LoginHttp::httpLogin(const std::string& host, const std::string& path,
                 }
             }
 
-            g_dispatcher.addEvent([this, request_id, status, msg] {
+            g_dispatcher.addEvent([this, self, request_id, status, msg] {
                 if (cancelled.load()) return;
                 g_lua.callGlobalField("EnterGame", "loginFailed", request_id, msg,
                 status);
@@ -289,7 +291,7 @@ void LoginHttp::httpLogin(const std::string& host, const std::string& path,
 #else
     this->errorMessage.clear();
     g_asyncDispatcher->detach_task(
-        [this, host, path, port, email, password, token, request_id, httpLogin] {
+        [this, self, host, path, port, email, password, token, request_id, httpLogin] {
         if (cancelled.load()) return;
         const auto doRequest = [&](bool useHttp) -> LoginHttp::HttpResponse {
             emscripten_fetch_attr_t attr;
@@ -302,14 +304,11 @@ void LoginHttp::httpLogin(const std::string& host, const std::string& path,
             attr.requestHeaders = headers;
             attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_SYNCHRONOUS;
 
-            json body = {
-                {"email", email},
-                {"password", password},
-                {"stayloggedin", true},
-                {"type", "login"}
-            };
+            json body = path == "/beta/v1/login"
+                ? json { {"contractVersion", 1}, {"email", email}, {"password", password} }
+                : json { {"email", email}, {"password", password}, {"stayloggedin", true}, {"type", "login"} };
 
-            if (!token.empty()) {
+            if (path != "/beta/v1/login" && !token.empty()) {
                 body["token"] = token;
                 body["authenticatorToken"] = token;
             }
@@ -337,8 +336,8 @@ void LoginHttp::httpLogin(const std::string& host, const std::string& path,
             return response;
         };
 
-        HttpResponse result = httpLogin ? doRequest(true) : doRequest(false);
-        if (!httpLogin && (!result || result.status != Success) && !cancelled.load()) {
+        HttpResponse result = httpLogin && path != "/beta/v1/login" ? doRequest(true) : doRequest(false);
+        if (path != "/beta/v1/login" && !httpLogin && (!result || result.status != Success) && !cancelled.load()) {
             result = doRequest(true);
         }
 
@@ -347,7 +346,7 @@ void LoginHttp::httpLogin(const std::string& host, const std::string& path,
             result.status = -1;
         }
         if (result && result.status == Success) {
-            g_dispatcher.addEvent([this, request_id] {
+            g_dispatcher.addEvent([this, self, request_id] {
                 if (cancelled.load()) return;
                 g_lua.callGlobalField("EnterGame", "loginSuccess", request_id,
                 this->getSession(), this->getWorldList(),
@@ -359,7 +358,7 @@ void LoginHttp::httpLogin(const std::string& host, const std::string& path,
             status = result ? result.status : -1;
             msg = this->errorMessage.length() == 0 ? "Unknown error" : this->errorMessage;
 
-            g_dispatcher.addEvent([this, request_id, status, msg] {
+            g_dispatcher.addEvent([this, self, request_id, status, msg] {
                 if (cancelled.load()) return;
                 g_lua.callGlobalField("EnterGame", "loginFailed", request_id, msg,
                 status);
@@ -377,26 +376,36 @@ LoginHttp::HttpResponse LoginHttp::loginHttpsJson(const std::string& host,
                                                   const std::string& token) {
     httplib::SSLClient client(host, port);
 
-    client.set_logger(
-        [this](const auto& req, const auto& res) { LoginHttp::Logger(req, res); });
-
+    const bool betaLogin = path == "/beta/v1/login";
+    if (!betaLogin) {
+        client.set_logger(
+            [this](const auto& req, const auto& res) { LoginHttp::Logger(req, res); });
+    }
+#ifdef ANDROID
+    client.set_ca_cert_path(g_resources.getRealPath("cacert.pem"));
+#else
     client.set_ca_cert_path("./cacert.pem");
-    client.enable_server_certificate_verification(false);
-    client.enable_server_hostname_verification(false);
+#endif
+    client.enable_server_certificate_verification(betaLogin);
+    client.enable_server_hostname_verification(betaLogin);
+    if (betaLogin) {
+        client.set_connection_timeout(10, 0);
+        client.set_read_timeout(10, 0);
+        client.set_write_timeout(10, 0);
+    }
 
-    json body = {
-        {"email", email},
-        {"password", password},
-        {"stayloggedin", true},
-        {"type", "login"}
-    };
+    json body = betaLogin
+        ? json { {"contractVersion", 1}, {"email", email}, {"password", password} }
+        : json { {"email", email}, {"password", password}, {"stayloggedin", true}, {"type", "login"} };
 
-    if (!token.empty()) {
+    if (!betaLogin && !token.empty()) {
         body["token"] = token;
         body["authenticatorToken"] = token;
     }
 
-    const httplib::Headers headers = { {"User-Agent", "Mozilla/5.0"} };
+    const httplib::Headers headers = betaLogin
+        ? httplib::Headers { {"User-Agent", "Mozilla/5.0"}, {"Connection", "close"} }
+        : httplib::Headers { {"User-Agent", "Mozilla/5.0"} };
 
     httplib::Result response =
         client.Post(path, headers, body.dump(), "application/json");
