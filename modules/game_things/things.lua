@@ -96,6 +96,12 @@ local function load(version)
         return true
     end
 
+    local clientAssets = modules.client_assets
+    if version >= 1281 and clientAssets and clientAssets.shouldCheckClientVersionUpdates and
+       clientAssets.shouldCheckClientVersionUpdates() then
+        return false
+    end
+
     local messageBox = displayErrorBox(tr('Error'), table.concat(errorList, "\n"))
     addEvent(function()
         messageBox:raise()

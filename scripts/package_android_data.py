@@ -16,6 +16,17 @@ CHANNELS = {"test", "beta", "release"}
 DATA_ITEMS = ("data", "mods", "modules", "init.lua", "otclientrc.lua")
 
 
+def is_incrementally_managed_client_asset(relative_path: str) -> bool:
+    path_parts = relative_path.split("/")
+    return (
+        len(path_parts) >= 3
+        and path_parts[0] == "data"
+        and path_parts[1] in {"things", "sounds"}
+        and path_parts[2].isdigit()
+        and int(path_parts[2]) >= 1281
+    )
+
+
 def lua_string(value: str) -> str:
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     escaped = escaped.replace("\r", "\\r").replace("\n", "\\n")
@@ -89,7 +100,10 @@ def package(output: Path, channel: str, android_url: str, assets_url: str) -> No
                     if candidate.is_symlink():
                         raise ValueError(f"Android bundle não aceita symlinks: {candidate}")
                     if candidate.is_file():
-                        bundle.write(candidate, candidate.relative_to(ROOT).as_posix())
+                        relative_path = candidate.relative_to(ROOT).as_posix()
+                        if assets_url and is_incrementally_managed_client_asset(relative_path):
+                            continue
+                        bundle.write(candidate, relative_path)
 
             bundle.writestr(
                 "elemental-distribution.lua",
