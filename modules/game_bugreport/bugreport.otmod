@@ -1,9 +1,12 @@
 Module
   name: game_bugreport
-  description: Bug report interface (Ctrl+Z)
+  description: Restricted beta feedback form
   author: edubart
   website: https://github.com/edubart/otclient
   scripts: [ bugreport ]
   sandboxed: true
+  dependencies:
+    - game_interface
+    - game_mainpanel
   @onLoad: init()
   @onUnload: terminate()
