@@ -26,6 +26,8 @@ local clientAssetsManifestUrl = configuredDistributionValue(
     "clientAssetsManifestUrl"
 )
 local androidManifestUrl = embeddedDistribution.androidManifestUrl
+local testAuthUrl = configuredDistributionValue("ELEMENTAL_TEST_AUTH_URL", "authUrl")
+local feedPlatform = configuredDistributionValue("ELEMENTAL_FEED_PLATFORM", "feedPlatform")
 
 Services = {
     --updater = "http://localhost/api/updater.php", --./updater
@@ -51,7 +53,9 @@ Services = {
     elementalUpdater = {
         enabled = type(androidManifestUrl) == "string" and androidManifestUrl ~= "",
         channel = elementalChannel,
-        androidManifestUrl = androidManifestUrl or ""
+        androidManifestUrl = androidManifestUrl or "",
+        authUrl = testAuthUrl or "",
+        feedPlatform = feedPlatform or ""
     }, -- ./client_launcher_update
 }
 

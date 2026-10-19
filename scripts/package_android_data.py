@@ -57,23 +57,53 @@ def validate_url(value: str, name: str) -> str:
     return value
 
 
-def distribution_config(channel: str, android_url: str, assets_url: str) -> bytes:
+def same_origin(left: str, right: str) -> bool:
+    left_parts = urlsplit(left)
+    right_parts = urlsplit(right)
+    left_port = left_parts.port or (443 if left_parts.scheme == "https" else 80)
+    right_port = right_parts.port or (443 if right_parts.scheme == "https" else 80)
+    return (
+        left_parts.scheme == right_parts.scheme
+        and (left_parts.hostname or "").lower() == (right_parts.hostname or "").lower()
+        and left_port == right_port
+    )
+
+
+def distribution_config(
+    channel: str, android_url: str, assets_url: str, auth_url: str
+) -> bytes:
     return (
         "return {\n"
         f"  channel = {lua_string(channel)},\n"
         f"  androidManifestUrl = {lua_string(android_url)},\n"
         f"  clientAssetsManifestUrl = {lua_string(assets_url)},\n"
+        f"  authUrl = {lua_string(auth_url)},\n"
+        '  feedPlatform = "android-arm64",\n'
         "}\n"
     ).encode("utf-8")
 
 
-def package(output: Path, channel: str, android_url: str, assets_url: str) -> None:
+def package(
+    output: Path, channel: str, android_url: str, assets_url: str, auth_url: str
+) -> None:
     missing = [name for name in DATA_ITEMS if not (ROOT / name).exists()]
     if missing:
         raise FileNotFoundError(f"Conteúdo do OTClient ausente: {', '.join(missing)}")
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    config_content = distribution_config(channel, android_url, assets_url)
+    if auth_url and channel != "test":
+        raise ValueError("A autenticação do feed interno só pode ser configurada no canal test")
+    remote_test_feed = channel == "test" and any(
+        url and urlsplit(url).scheme == "https" for url in (android_url, assets_url)
+    )
+    if remote_test_feed and not auth_url:
+        raise ValueError("Feed test remoto exige --test-auth-url")
+    if auth_url and any(
+        url and not same_origin(auth_url, url) for url in (android_url, assets_url)
+    ):
+        raise ValueError("Manifestos e autenticação do feed test precisam usar a mesma origem")
+
+    config_content = distribution_config(channel, android_url, assets_url, auth_url)
     config_asset = output.parent / "elemental-distribution.lua"
     config_descriptor, config_temporary_name = tempfile.mkstemp(
         prefix=f".{config_asset.name}.", suffix=".tmp", dir=config_asset.parent
@@ -121,6 +151,7 @@ def main() -> int:
     parser.add_argument("--channel", choices=sorted(CHANNELS), required=True)
     parser.add_argument("--android-manifest-url", default="")
     parser.add_argument("--client-assets-manifest-url", default="")
+    parser.add_argument("--test-auth-url", default="")
     parser.add_argument(
         "--output",
         type=Path,
@@ -133,7 +164,8 @@ def main() -> int:
 
     android_url = validate_url(args.android_manifest_url, "Manifesto Android")
     assets_url = validate_url(args.client_assets_manifest_url, "Manifesto de assets")
-    package(args.output, args.channel, android_url, assets_url)
+    auth_url = validate_url(args.test_auth_url, "Endpoint de cadastro do canal test")
+    package(args.output, args.channel, android_url, assets_url, auth_url)
     print(f"Bundle Android preparado em {args.output} para o canal {args.channel}.")
     if not android_url:
         print("Updaters Android e de assets permanecem desativados até configurar os manifestos.")

@@ -27,7 +27,11 @@
 #include <framework/core/resourcemanager.h>
 #include <framework/platform/platform.h>
 #include <framework/sound/soundmanager.h>
+#include <cstdint>
+#include <filesystem>
 #include <fstream>
+#include <limits>
+#include <vector>
 
 AndroidManager g_androidManager;
 
@@ -166,6 +170,15 @@ int AndroidManager::installApk(const std::string& path) {
 
 void AndroidManager::unZipAssetData() {
     std::string destFolder = getAppBaseDir() + "/game_data/";
+    const std::filesystem::path destinationPath { destFolder };
+    const std::filesystem::path initLua = destinationPath / "init.lua";
+    const std::filesystem::path versionMarker = destinationPath / ".elemental-bootstrap-version";
+    const std::string version = std::to_string(getVersionCode());
+    std::string extractedVersion;
+    {
+        std::ifstream markerFile(versionMarker, std::ios::binary);
+        std::getline(markerFile, extractedVersion);
+    }
 
     const auto updateDistributionConfig = [&]() {
         AAsset* configAsset = AAssetManager_open(
@@ -205,8 +218,7 @@ void AndroidManager::unZipAssetData() {
             g_logger.error("Unable to write Android distribution config.");
     };
 
-    const std::filesystem::path initLua { destFolder + "init.lua" };
-    if (std::filesystem::exists(initLua)) {
+    if (std::filesystem::exists(initLua) && extractedVersion == version) {
         updateDistributionConfig();
         return;
     }
@@ -221,15 +233,96 @@ void AndroidManager::unZipAssetData() {
         return;
     }
 
-    auto dataFileLength = AAsset_getLength(dataAsset);
-    char* dataContent = (char *) malloc(dataFileLength + 1);
-    AAsset_read(dataAsset, dataContent, dataFileLength);
-    dataContent[dataFileLength] = '\0';
-
-    unzipper::extract(dataContent, dataFileLength, destFolder);
-
+    const auto dataFileLength = AAsset_getLength(dataAsset);
+    if (dataFileLength <= 0 ||
+            static_cast<uint64_t>(dataFileLength) >
+                    static_cast<uint64_t>(std::numeric_limits<uint>::max())) {
+        g_logger.fatal("Invalid data.zip size in APK assets.");
+        AAsset_close(dataAsset);
+        return;
+    }
+    std::vector<char> dataContent(static_cast<size_t>(dataFileLength));
+    size_t bytesRead = 0;
+    while (bytesRead < dataContent.size()) {
+        const auto count = AAsset_read(
+                dataAsset,
+                dataContent.data() + bytesRead,
+                dataContent.size() - bytesRead);
+        if (count <= 0) {
+            g_logger.fatal("Unable to read data.zip from APK assets.");
+            AAsset_close(dataAsset);
+            return;
+        }
+        bytesRead += static_cast<size_t>(count);
+    }
     AAsset_close(dataAsset);
-    free(dataContent);
+
+    const std::filesystem::path stagingPath { getAppBaseDir() + "/game_data_staging/" };
+    std::error_code filesystemError;
+    std::filesystem::remove_all(stagingPath, filesystemError);
+    filesystemError.clear();
+    std::filesystem::create_directories(stagingPath, filesystemError);
+    if (filesystemError) {
+        g_logger.fatal("Unable to prepare Android data staging directory: {}", filesystemError.message());
+        return;
+    }
+
+    std::string stagingFolder = stagingPath.string();
+    unzipper::extract(
+            dataContent.data(),
+            static_cast<uint>(dataContent.size()),
+            stagingFolder);
+    if (!std::filesystem::exists(stagingPath / "init.lua")) {
+        g_logger.fatal("Android data.zip did not extract a valid init.lua.");
+        std::filesystem::remove_all(stagingPath, filesystemError);
+        return;
+    }
+
+    std::filesystem::create_directories(destinationPath, filesystemError);
+    if (filesystemError) {
+        g_logger.fatal("Unable to prepare Android game data directory: {}", filesystemError.message());
+        std::filesystem::remove_all(stagingPath, filesystemError);
+        return;
+    }
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(stagingPath)) {
+        const auto relativePath = entry.path().lexically_relative(stagingPath);
+        const auto destination = destinationPath / relativePath;
+        if (entry.is_directory()) {
+            std::filesystem::create_directories(destination, filesystemError);
+        } else if (entry.is_regular_file()) {
+            std::filesystem::create_directories(destination.parent_path(), filesystemError);
+            if (!filesystemError) {
+                std::filesystem::copy_file(
+                        entry.path(),
+                        destination,
+                        std::filesystem::copy_options::overwrite_existing,
+                        filesystemError);
+            }
+        }
+        if (filesystemError) {
+            g_logger.fatal("Unable to install Android bootstrap file {}: {}", relativePath.string(), filesystemError.message());
+            std::filesystem::remove_all(stagingPath, filesystemError);
+            return;
+        }
+    }
+
+    const auto temporaryMarker = versionMarker.string() + ".tmp";
+    {
+        std::ofstream markerFile(temporaryMarker, std::ios::binary | std::ios::trunc);
+        markerFile << version << '\n';
+        if (!markerFile) {
+            g_logger.fatal("Unable to write Android bootstrap version marker.");
+            std::filesystem::remove_all(stagingPath, filesystemError);
+            return;
+        }
+    }
+    std::filesystem::rename(temporaryMarker, versionMarker, filesystemError);
+    if (filesystemError) {
+        g_logger.fatal("Unable to activate Android bootstrap version: {}", filesystemError.message());
+        std::filesystem::remove_all(stagingPath, filesystemError);
+        return;
+    }
+    std::filesystem::remove_all(stagingPath, filesystemError);
     updateDistributionConfig();
 }
 

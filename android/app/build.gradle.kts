@@ -17,13 +17,37 @@ val elementalVersionCode = providers.environmentVariable("ELEMENTAL_ANDROID_VERS
 val elementalVersionName = providers.environmentVariable("ELEMENTAL_ANDROID_VERSION_NAME")
     .orElse("1.0")
     .get()
+val elementalChannel = providers.environmentVariable("ELEMENTAL_ANDROID_CHANNEL")
+    .orElse("test")
+    .get()
+val elementalApplicationId = when (elementalChannel) {
+    "test" -> "br.com.elementalmmo.client.test"
+    "beta", "release" -> "br.com.elementalmmo.client"
+    else -> throw GradleException("ELEMENTAL_ANDROID_CHANNEL must be test, beta, or release")
+}
+val releaseKeystore = System.getenv("RELEASE_KEYSTORE")
+val releaseStorePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+val releaseKeyAlias = System.getenv("RELEASE_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+val releaseSigningConfigured = listOf(
+    releaseKeystore, releaseStorePassword, releaseKeyAlias, releaseKeyPassword
+).all { !it.isNullOrBlank() }
+
+gradle.taskGraph.whenReady {
+    if (allTasks.any { it.name.contains("Release") } && !releaseSigningConfigured) {
+        throw GradleException(
+            "Android release requires RELEASE_KEYSTORE, RELEASE_KEYSTORE_PASSWORD, " +
+                "RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD"
+        )
+    }
+}
 
 android {
     namespace = "com.github.otclient"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.github.otclient"
+        applicationId = elementalApplicationId
         minSdk = 21
         targetSdk = 36
         versionCode = elementalVersionCode
@@ -49,13 +73,13 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            // Use env vars for custom release signing; otherwise use Gradle's debug signing config
-            storeFile = file(System.getenv("RELEASE_KEYSTORE")
-                ?: System.getProperty("user.home") + "/.android/debug.keystore")
-            storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "android"
-            keyAlias = System.getenv("RELEASE_KEY_ALIAS") ?: "androiddebugkey"
-            keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: "android"
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(releaseKeystore!!)
+                storePassword = releaseStorePassword!!
+                keyAlias = releaseKeyAlias!!
+                keyPassword = releaseKeyPassword!!
+            }
         }
     }
 
@@ -70,9 +94,9 @@ android {
         getByName("release") {
             isMinifyEnabled = false
             isShrinkResources = false
-            signingConfig = signingConfigs.getByName(
-                if (System.getenv("RELEASE_KEYSTORE") == null) "debug" else "release"
-            )
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 file("proguard-rules.pro")

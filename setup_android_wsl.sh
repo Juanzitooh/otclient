@@ -45,7 +45,8 @@ cd "$PROJECT_DIR/android"
 python3 "$PROJECT_DIR/scripts/package_android_data.py" \
     --channel "${ELEMENTAL_ANDROID_CHANNEL:-test}" \
     --android-manifest-url "${ELEMENTAL_ANDROID_MANIFEST_URL:-}" \
-    --client-assets-manifest-url "${ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL:-}"
+    --client-assets-manifest-url "${ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL:-}" \
+    --test-auth-url "${ELEMENTAL_TEST_AUTH_URL:-}"
 
 cd "$PROJECT_DIR/android"
 chmod +x gradlew

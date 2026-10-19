@@ -26,6 +26,21 @@ function HTTP.getJSON(url, callback)
   return operation
 end
 
+function HTTP.getJSONWithBearer(url, token, callback)
+  if not g_http or not g_http.getWithBearer then
+    return error("HTTP.getJSONWithBearer is not supported")
+  end
+  local operation = g_http.getWithBearer(url, token, HTTP.timeout)
+  if operation < 0 then
+    if callback then
+      callback(nil, "secure_request_unavailable")
+    end
+    return nil
+  end
+  HTTP.operations[operation] = { type = "get", json = true, url = url, callback = callback }
+  return operation
+end
+
 function HTTP.post(url, data, callback, checkContentLength)
   if not g_http or not g_http.post then
     return error("HTTP.post is not supported")
@@ -75,11 +90,50 @@ function HTTP.postJSON(url, data, callback)
   return operation
 end
 
+function HTTP.postSecureJSON(url, data, callback)
+  if not g_http or not g_http.postSecure then
+    return error("HTTP.postSecureJSON is not supported")
+  end
+  if type(data) == "table" then
+    data = json.encode(data)
+  end
+  local operation = g_http.postSecure(url, data, HTTP.timeout)
+  if operation < 0 then
+    if callback then
+      callback(nil, "secure_request_unavailable")
+    end
+    return nil
+  end
+  HTTP.operations[operation] = { type = "post", json = true, url = url, callback = callback }
+  return operation
+end
+
 function HTTP.download(url, file, callback, progressCallback)
   if not g_http or not g_http.download then
     return error("HTTP.download is not supported")
   end
   local operation = g_http.download(url, file, HTTP.timeout)
+  HTTP.operations[operation] = {
+    type = "download",
+    url = url,
+    file = file,
+    callback = callback,
+    progressCallback = progressCallback
+  }
+  return operation
+end
+
+function HTTP.downloadWithBearer(url, file, token, callback, progressCallback)
+  if not g_http or not g_http.downloadWithBearer then
+    return error("HTTP.downloadWithBearer is not supported")
+  end
+  local operation = g_http.downloadWithBearer(url, file, token, HTTP.timeout)
+  if operation < 0 then
+    if callback then
+      callback(nil, nil, "secure_request_unavailable")
+    end
+    return nil
+  end
   HTTP.operations[operation] = {
     type = "download",
     url = url,

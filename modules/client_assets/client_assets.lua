@@ -200,18 +200,102 @@ end
 
 local function httpGet(config, url, callback)
   return withHttpTimeout(config, function()
+    if ClientDistributionAuth and ClientDistributionAuth.requiresToken(config.channel, url) then
+      if not ClientDistributionAuth.isTrustedUrl(url) then
+        callback(nil, 'test_feed_untrusted_origin')
+        return nil
+      end
+      local operationId
+      ClientDistributionAuth.ensureToken(function(token, err)
+        if not activeDownload or activeDownload.canceled then
+          return
+        end
+        if err then
+          return callback(nil, err)
+        end
+        local operation = withHttpTimeout(config, function()
+          return HTTP.getWithBearer(url, token, function(data, err)
+            if ClientDistributionAuth.isUnauthorized(err) then
+              ClientDistributionAuth.forgetToken()
+            end
+            callback(data, err)
+          end)
+        end)
+        if operation and operation >= 0 then
+          operationId = operation
+          activeDownload.operationId = operation
+        end
+      end)
+      return operationId
+    end
     return HTTP.get(url, callback)
   end)
 end
 
 local function httpGetJSON(config, url, callback)
   return withHttpTimeout(config, function()
+    if ClientDistributionAuth and ClientDistributionAuth.requiresToken(config.channel, url) then
+      if not ClientDistributionAuth.isTrustedUrl(url) then
+        callback(nil, 'test_feed_untrusted_origin')
+        return nil
+      end
+      local operationId
+      ClientDistributionAuth.ensureToken(function(token, err)
+        if not activeDownload or activeDownload.canceled then
+          return
+        end
+        if err then
+          return callback(nil, err)
+        end
+        local operation = withHttpTimeout(config, function()
+          return HTTP.getJSONWithBearer(url, token, function(data, err)
+            if ClientDistributionAuth.isUnauthorized(err) then
+              ClientDistributionAuth.forgetToken()
+            end
+            callback(data, err)
+          end)
+        end)
+        if operation and operation >= 0 then
+          operationId = operation
+          activeDownload.operationId = operation
+        end
+      end)
+      return operationId
+    end
     return HTTP.getJSON(url, callback)
   end)
 end
 
 local function httpDownload(config, url, path, callback, progressCallback)
   return withHttpTimeout(config, function()
+    if ClientDistributionAuth and ClientDistributionAuth.requiresToken(config.channel, url) then
+      if not ClientDistributionAuth.isTrustedUrl(url) then
+        callback(nil, nil, 'test_feed_untrusted_origin')
+        return nil
+      end
+      local operationId
+      ClientDistributionAuth.ensureToken(function(token, err)
+        if not activeDownload or activeDownload.canceled then
+          return
+        end
+        if err then
+          return callback(nil, nil, err)
+        end
+        local operation = withHttpTimeout(config, function()
+          return HTTP.downloadWithBearer(url, path, token, function(downloadPath, checksum, err)
+            if ClientDistributionAuth.isUnauthorized(err) then
+              ClientDistributionAuth.forgetToken()
+            end
+            callback(downloadPath, checksum, err)
+          end, progressCallback)
+        end)
+        if operation and operation >= 0 then
+          operationId = operation
+          activeDownload.operationId = operation
+        end
+      end)
+      return operationId
+    end
     return HTTP.download(url, path, callback, progressCallback)
   end)
 end

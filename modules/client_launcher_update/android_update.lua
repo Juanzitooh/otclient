@@ -58,6 +58,80 @@ local function with_http_timeout(callback)
    return result
 end
 
+local function http_get_json(url, callback)
+   local function start(token)
+      return with_http_timeout(function()
+         local request_callback = function(data, err)
+            if token and ClientDistributionAuth.isUnauthorized(err) then
+               ClientDistributionAuth.forgetToken()
+            end
+            callback(data, err)
+         end
+         if token then
+            return HTTP.getJSONWithBearer(url, token, request_callback)
+         end
+         return HTTP.getJSON(url, request_callback)
+      end)
+   end
+
+   if not ClientDistributionAuth.requiresToken(update_config.channel, url) then
+      return start(nil)
+   end
+   if not ClientDistributionAuth.isTrustedUrl(url) then
+      callback(nil, "test_feed_untrusted_origin")
+      return nil
+   end
+   local operation_id
+   ClientDistributionAuth.ensureToken(function(token, err)
+      if err then
+         return callback(nil, err)
+      end
+      local operation = start(token)
+      if operation and operation >= 0 then
+         operation_id = operation
+         check_operation = operation
+      end
+   end)
+   return operation_id or -1
+end
+
+local function http_download(url, path, callback, progress_callback)
+   local function start(token)
+      return with_http_timeout(function()
+         local request_callback = function(download_path, checksum, err)
+            if token and ClientDistributionAuth.isUnauthorized(err) then
+               ClientDistributionAuth.forgetToken()
+            end
+            callback(download_path, checksum, err)
+         end
+         if token then
+            return HTTP.downloadWithBearer(url, path, token, request_callback, progress_callback)
+         end
+         return HTTP.download(url, path, request_callback, progress_callback)
+      end)
+   end
+
+   if not ClientDistributionAuth.requiresToken(update_config.channel, url) then
+      return start(nil)
+   end
+   if not ClientDistributionAuth.isTrustedUrl(url) then
+      callback(nil, nil, "test_feed_untrusted_origin")
+      return nil
+   end
+   local operation_id
+   ClientDistributionAuth.ensureToken(function(token, err)
+      if err then
+         return callback(nil, nil, err)
+      end
+      local operation = start(token)
+      if operation and operation >= 0 then
+         operation_id = operation
+         download_operation = operation
+      end
+   end)
+   return operation_id or -1
+end
+
 local function resolve_asset_url(manifest_url, asset_url)
    if type(asset_url) ~= "string" or asset_url == "" then
       return nil
@@ -244,8 +318,7 @@ local function start_download(manifest)
    last_progress_percent = -1
    set_button_status("Baixando atualização Android: 0%")
    local ok, operation = pcall(function()
-      return with_http_timeout(function()
-         return HTTP.download(apk_url, APK_DOWNLOAD_NAME, function(path, checksum, err)
+      return http_download(apk_url, APK_DOWNLOAD_NAME, function(path, checksum, err)
             handle_download(path, checksum, err, manifest)
          end, function(progress)
             local percent = math.max(0, math.min(100, math.floor(tonumber(progress) or 0)))
@@ -254,7 +327,6 @@ local function start_download(manifest)
                set_button_status("Baixando atualização Android: " .. percent .. "%", "Baixando " .. percent .. "%")
             end
          end)
-      end)
    end)
    if not ok then
       download_operation = nil
@@ -291,8 +363,7 @@ local function check_for_update()
 
    set_button_status("Verificando atualização Android")
    local ok, operation = pcall(function()
-      return with_http_timeout(function()
-         return HTTP.getJSON(update_config.androidManifestUrl, function(manifest, err)
+      return http_get_json(update_config.androidManifestUrl, function(manifest, err)
             check_operation = nil
             if err or type(manifest) ~= "table" then
                log_error("Android manifest check failed: " .. tostring(err))
@@ -311,7 +382,6 @@ local function check_for_update()
 
             start_download(manifest)
          end)
-      end)
    end)
    if not ok then
       check_operation = nil

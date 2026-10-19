@@ -39,6 +39,59 @@
 
 Http g_http;
 
+namespace {
+    bool isValidHttpsEndpoint(const std::string& url)
+    {
+        return url.starts_with("https://") && url.find('@') == std::string::npos;
+    }
+
+    bool isValidBearerRequest(const std::string& url, const std::string& token)
+    {
+        if (!url.starts_with("https://") || url.find('@') != std::string::npos ||
+            token.size() != 46 || !token.starts_with("b1."))
+            return false;
+
+        return std::all_of(token.begin() + 3, token.end(), [](const unsigned char character) {
+            return (character >= 'A' && character <= 'Z') ||
+                   (character >= 'a' && character <= 'z') ||
+                   (character >= '0' && character <= '9') ||
+                   character == '-' || character == '_';
+        });
+    }
+}
+
+int Http::get(const std::string& url, int timeout)
+{
+    return getInternal(url, timeout, "");
+}
+
+int Http::getWithBearer(const std::string& url, const std::string& token, int timeout)
+{
+    if (!isValidBearerRequest(url, token))
+        return -1;
+#ifdef __EMSCRIPTEN__
+    return -1;
+#else
+    return getInternal(url, timeout, token);
+#endif
+}
+
+int Http::download(const std::string& url, const std::string& path, int timeout)
+{
+    return downloadInternal(url, path, timeout, "");
+}
+
+int Http::downloadWithBearer(const std::string& url, const std::string& path, const std::string& token, int timeout)
+{
+    if (!isValidBearerRequest(url, token))
+        return -1;
+#ifdef __EMSCRIPTEN__
+    return -1;
+#else
+    return downloadInternal(url, path, timeout, token);
+#endif
+}
+
 #ifdef __EMSCRIPTEN__
 namespace {
     enum class FetchKind
@@ -275,7 +328,7 @@ void Http::onFetchError(emscripten_fetch_t* fetch)
         context->http->completeFetch(context, fetch, {});
 }
 
-int Http::get(const std::string& url, int timeout)
+int Http::getInternal(const std::string& url, int timeout, const std::string& bearerToken)
 {
     if (!timeout)
         timeout = 2;
@@ -291,9 +344,13 @@ int Http::get(const std::string& url, int timeout)
     context->http = this;
     context->result = result;
     context->kind = FetchKind::Get;
-    context->headerStorage.reserve((m_custom_header.size() * 2) + 2);
+    context->headerStorage.reserve((m_custom_header.size() * 2) + (bearerToken.empty() ? 2 : 4));
     context->headerStorage.emplace_back("Accept");
     context->headerStorage.emplace_back("*/*");
+    if (!bearerToken.empty()) {
+        context->headerStorage.emplace_back("Authorization");
+        context->headerStorage.emplace_back("Bearer " + bearerToken);
+    }
     for (const auto& header : m_custom_header) {
         context->headerStorage.emplace_back(header.first);
         context->headerStorage.emplace_back(header.second);
@@ -330,12 +387,27 @@ int Http::post(const std::string& url, const std::string& data, int timeout, boo
 
 int Http::postWithBearer(const std::string& url, const std::string& data, const std::string& token, int timeout)
 {
-    if (!url.starts_with("https://") || !token.starts_with("b1.") || token.size() != 46)
+    if (!isValidBearerRequest(url, token))
         return -1;
+#ifdef __EMSCRIPTEN__
+    return -1;
+#else
     return postInternal(url, data, timeout, true, token);
+#endif
 }
 
-int Http::postInternal(const std::string& url, const std::string& data, int timeout, bool isJson, const std::string& bearerToken)
+int Http::postSecure(const std::string& url, const std::string& data, int timeout)
+{
+    if (!isValidHttpsEndpoint(url))
+        return -1;
+#ifdef __EMSCRIPTEN__
+    return -1;
+#else
+    return postInternal(url, data, timeout, true, "", true);
+#endif
+}
+
+int Http::postInternal(const std::string& url, const std::string& data, int timeout, bool isJson, const std::string& bearerToken, bool /*disableRedirect*/)
 {
     if (!timeout)
         timeout = 2;
@@ -398,7 +470,7 @@ int Http::postInternal(const std::string& url, const std::string& data, int time
     return operationId;
 }
 
-int Http::download(const std::string& url, const std::string& path, int timeout)
+int Http::downloadInternal(const std::string& url, const std::string& path, int timeout, const std::string& bearerToken)
 {
     if (!timeout)
         timeout = 2;
@@ -415,9 +487,13 @@ int Http::download(const std::string& url, const std::string& path, int timeout)
     context->result = result;
     context->kind = FetchKind::Download;
     context->path = path;
-    context->headerStorage.reserve((m_custom_header.size() * 2) + 2);
+    context->headerStorage.reserve((m_custom_header.size() * 2) + (bearerToken.empty() ? 2 : 4));
     context->headerStorage.emplace_back("Accept");
     context->headerStorage.emplace_back("*/*");
+    if (!bearerToken.empty()) {
+        context->headerStorage.emplace_back("Authorization");
+        context->headerStorage.emplace_back("Bearer " + bearerToken);
+    }
     for (const auto& header : m_custom_header) {
         context->headerStorage.emplace_back(header.first);
         context->headerStorage.emplace_back(header.second);
@@ -690,7 +766,7 @@ void Http::terminate()
     ix::uninitNetSystem();
 }
 
-int Http::get(const std::string& url, int timeout)
+int Http::getInternal(const std::string& url, int timeout, const std::string& bearerToken)
 {
     if (!timeout)
         timeout = 2;
@@ -703,6 +779,10 @@ int Http::get(const std::string& url, int timeout)
     int operationId = 0;
     auto result = registerOperation(url, operationId);
     auto request = buildRequest(url, ix::HttpClient::kGet, timeout);
+    if (!bearerToken.empty()) {
+        request->followRedirects = false;
+        request->extraHeaders["Authorization"] = "Bearer " + bearerToken;
+    }
     result->request = request;
 
     const auto lastProgress = std::make_shared<ticks_t>(0);
@@ -767,12 +847,23 @@ int Http::post(const std::string& url, const std::string& data, int timeout, boo
 
 int Http::postWithBearer(const std::string& url, const std::string& data, const std::string& token, int timeout)
 {
-    if (!url.starts_with("https://") || !token.starts_with("b1.") || token.size() != 46)
+    if (!isValidBearerRequest(url, token))
         return -1;
+#ifdef __EMSCRIPTEN__
+    return -1;
+#else
     return postInternal(url, data, timeout, true, token);
+#endif
 }
 
-int Http::postInternal(const std::string& url, const std::string& data, int timeout, bool isJson, const std::string& bearerToken)
+int Http::postSecure(const std::string& url, const std::string& data, int timeout)
+{
+    if (!isValidHttpsEndpoint(url))
+        return -1;
+    return postInternal(url, data, timeout, true, "", true);
+}
+
+int Http::postInternal(const std::string& url, const std::string& data, int timeout, bool isJson, const std::string& bearerToken, bool disableRedirect)
 {
     if (!timeout)
         timeout = 2;
@@ -791,7 +882,7 @@ int Http::postInternal(const std::string& url, const std::string& data, int time
     result->postData = data;
 
     auto request = buildRequest(url, ix::HttpClient::kPost, timeout);
-    if (!bearerToken.empty())
+    if (!bearerToken.empty() || disableRedirect)
         request->followRedirects = false;
     request->body = data;
     request->extraHeaders["Accept"] = "*/*";
@@ -858,7 +949,7 @@ int Http::postInternal(const std::string& url, const std::string& data, int time
     return operationId;
 }
 
-int Http::download(const std::string& url, const std::string& path, int timeout)
+int Http::downloadInternal(const std::string& url, const std::string& path, int timeout, const std::string& bearerToken)
 {
     if (!timeout)
         timeout = 2;
@@ -871,6 +962,10 @@ int Http::download(const std::string& url, const std::string& path, int timeout)
     int operationId = 0;
     auto result = registerOperation(url, operationId);
     auto request = buildRequest(url, ix::HttpClient::kGet, timeout);
+    if (!bearerToken.empty()) {
+        request->followRedirects = false;
+        request->extraHeaders["Authorization"] = "Bearer " + bearerToken;
+    }
     result->request = request;
 
     const auto lastSpeedSample = std::make_shared<ticks_t>(stdext::millis());
