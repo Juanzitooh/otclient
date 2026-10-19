@@ -25,6 +25,7 @@
 #ifdef ANDROID
 
 #include <game-activity/native_app_glue/android_native_app_glue.h>
+#include <cstdint>
 #include <string>
 
 class AndroidManager {
@@ -49,6 +50,11 @@ public:
 
     std::string getStringFromJString(jstring);
     std::string getAppBaseDir();
+    std::string getPackageName();
+    int getVersionCode();
+    std::int64_t getFileSize(const std::string& path);
+    std::string sha256File(const std::string& path);
+    int installApk(const std::string& path);
 
     float getScreenDensity();
 
@@ -66,6 +72,11 @@ private:
     jmethodID m_midHideInputPreview;
     jmethodID m_midGetClipboardText;
     jmethodID m_midSetClipboardText;
+    jmethodID m_midGetPackageName;
+    jmethodID m_midGetVersionCode;
+    jmethodID m_midGetFileSize;
+    jmethodID m_midSha256File;
+    jmethodID m_midInstallApk;
 };
 
 extern AndroidManager g_androidManager;

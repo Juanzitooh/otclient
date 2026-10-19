@@ -29,6 +29,9 @@
 #include <framework/core/resourcemanager.h>
 #include <framework/luaengine/luainterface.h>
 #include <framework/platform/platform.h>
+#ifdef ANDROID
+#include <framework/platform/androidmanager.h>
+#endif
 #include <framework/proxy/proxy.h>
 #include <framework/stdext/net.h>
 #include <framework/util/crypt.h>
@@ -137,6 +140,15 @@ void Application::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_platform", "isConsole", &Platform::isConsole, &g_platform);
     g_lua.bindSingletonFunction("g_platform", "getSoftKeyboardHeight", &Platform::getSoftKeyboardHeight, &g_platform);
     g_lua.bindSingletonFunction("g_platform", "openDir", &Platform::openDir, &g_platform);
+
+#ifdef ANDROID
+    g_lua.registerSingletonClass("g_android");
+    g_lua.bindSingletonFunction("g_android", "getPackageName", &AndroidManager::getPackageName, &g_androidManager);
+    g_lua.bindSingletonFunction("g_android", "getVersionCode", &AndroidManager::getVersionCode, &g_androidManager);
+    g_lua.bindSingletonFunction("g_android", "getFileSize", &AndroidManager::getFileSize, &g_androidManager);
+    g_lua.bindSingletonFunction("g_android", "sha256File", &AndroidManager::sha256File, &g_androidManager);
+    g_lua.bindSingletonFunction("g_android", "installApk", &AndroidManager::installApk, &g_androidManager);
+#endif
 
     // Application
     g_lua.registerSingletonClass("g_app");

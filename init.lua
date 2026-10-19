@@ -21,6 +21,11 @@ Services = {
         archiveExtraPrefixes = { "bin" },
         installPackagedFiles = true
     }, -- ./client_assets
+    elementalUpdater = {
+        enabled = false,
+        channel = "test",
+        androidManifestUrl = ""
+    }, -- ./client_launcher_update
 }
 
 --- Enables or disables the entire server configuration block.

@@ -10,6 +10,13 @@ val ciAbiFilters = providers.gradleProperty("otclient.android.abis")
     ?.map { it.trim() }
     ?.filter { it.isNotEmpty() }
     ?: listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+val elementalVersionCode = providers.environmentVariable("ELEMENTAL_ANDROID_VERSION_CODE")
+    .orElse("1")
+    .get()
+    .toInt()
+val elementalVersionName = providers.environmentVariable("ELEMENTAL_ANDROID_VERSION_NAME")
+    .orElse("1.0")
+    .get()
 
 android {
     namespace = "com.github.otclient"
@@ -19,8 +26,8 @@ android {
         applicationId = "com.github.otclient"
         minSdk = 21
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = elementalVersionCode
+        versionName = elementalVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {

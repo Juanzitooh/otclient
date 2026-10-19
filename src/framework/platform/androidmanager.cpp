@@ -56,6 +56,11 @@ void AndroidManager::setAndroidManager(JNIEnv* env, jobject androidManager) {
     m_midHideInputPreview = jniEnv->GetMethodID(androidManagerJClass, "hideInputPreview", "()V");
     m_midGetClipboardText = jniEnv->GetMethodID(androidManagerJClass, "getClipboardText", "()Ljava/lang/String;");
     m_midSetClipboardText = jniEnv->GetMethodID(androidManagerJClass, "setClipboardText", "(Ljava/lang/String;)V");
+    m_midGetPackageName = jniEnv->GetMethodID(androidManagerJClass, "getPackageName", "()Ljava/lang/String;");
+    m_midGetVersionCode = jniEnv->GetMethodID(androidManagerJClass, "getVersionCode", "()I");
+    m_midGetFileSize = jniEnv->GetMethodID(androidManagerJClass, "getFileSize", "(Ljava/lang/String;)J");
+    m_midSha256File = jniEnv->GetMethodID(androidManagerJClass, "sha256File", "(Ljava/lang/String;)Ljava/lang/String;");
+    m_midInstallApk = jniEnv->GetMethodID(androidManagerJClass, "installApk", "(Ljava/lang/String;)I");
     jniEnv->DeleteLocalRef(androidManagerJClass);
 }
 
@@ -113,6 +118,49 @@ void AndroidManager::setClipboardText(const std::string& text) {
     jstring jText = latin1ToJString(env, text);
     env->CallVoidMethod(m_androidManagerJObject, m_midSetClipboardText, jText);
     env->DeleteLocalRef(jText);
+}
+
+std::string AndroidManager::getPackageName() {
+    JNIEnv* env = getJNIEnv();
+    auto packageName = static_cast<jstring>(env->CallObjectMethod(m_androidManagerJObject, m_midGetPackageName));
+    if (!packageName)
+        return {};
+    std::string result = getStringFromJString(packageName);
+    env->DeleteLocalRef(packageName);
+    return result;
+}
+
+int AndroidManager::getVersionCode() {
+    JNIEnv* env = getJNIEnv();
+    return env->CallIntMethod(m_androidManagerJObject, m_midGetVersionCode);
+}
+
+std::int64_t AndroidManager::getFileSize(const std::string& path) {
+    JNIEnv* env = getJNIEnv();
+    jstring jPath = latin1ToJString(env, path);
+    const auto fileSize = env->CallLongMethod(m_androidManagerJObject, m_midGetFileSize, jPath);
+    env->DeleteLocalRef(jPath);
+    return fileSize;
+}
+
+std::string AndroidManager::sha256File(const std::string& path) {
+    JNIEnv* env = getJNIEnv();
+    jstring jPath = latin1ToJString(env, path);
+    auto hash = static_cast<jstring>(env->CallObjectMethod(m_androidManagerJObject, m_midSha256File, jPath));
+    env->DeleteLocalRef(jPath);
+    if (!hash)
+        return {};
+    std::string result = getStringFromJString(hash);
+    env->DeleteLocalRef(hash);
+    return result;
+}
+
+int AndroidManager::installApk(const std::string& path) {
+    JNIEnv* env = getJNIEnv();
+    jstring jPath = latin1ToJString(env, path);
+    const int result = env->CallIntMethod(m_androidManagerJObject, m_midInstallApk, jPath);
+    env->DeleteLocalRef(jPath);
+    return result;
 }
 
 void AndroidManager::unZipAssetData() {
