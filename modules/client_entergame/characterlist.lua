@@ -456,6 +456,38 @@ local function findAppearance(lookType, sex)
     return nil
 end
 
+local function isAppearanceColorSelected(color, colorRange)
+    return isInteger(color) and type(colorRange) == 'table' and
+        isInteger(colorRange.min) and isInteger(colorRange.max) and
+        color >= colorRange.min and color <= colorRange.max
+end
+
+local function isAppearanceAddonSelected(appearance, addons)
+    if not appearance or not isInteger(addons) or type(appearance.addons) ~= 'table' then
+        return false
+    end
+
+    for _, availableAddon in ipairs(appearance.addons) do
+        if availableAddon == addons then
+            return true
+        end
+    end
+    return false
+end
+
+local function areAppearanceChoicesSelected(appearance, headColor, bodyColor, legsColor, feetColor, addons)
+    if not appearance then
+        return false
+    end
+
+    local colorRange = appearance.colorRange
+    return isAppearanceColorSelected(headColor, colorRange) and
+        isAppearanceColorSelected(bodyColor, colorRange) and
+        isAppearanceColorSelected(legsColor, colorRange) and
+        isAppearanceColorSelected(feetColor, colorRange) and
+        isAppearanceAddonSelected(appearance, addons)
+end
+
 local function updateAssemblyPreview()
     if not characterAssemblyWindow then
         return
@@ -471,8 +503,7 @@ local function updateAssemblyPreview()
     local feetColor = getComboData(getAssemblyWidget('feetColorCombo'))
     local addons = getComboData(getAssemblyWidget('addonsCombo'))
 
-    if not appearance or not isInteger(headColor) or not isInteger(bodyColor) or
-        not isInteger(legsColor) or not isInteger(feetColor) or not isInteger(addons) then
+    if not areAppearanceChoicesSelected(appearance, headColor, bodyColor, legsColor, feetColor, addons) then
         preview:hide()
         getAssemblyWidget('previewHint'):show()
         return
@@ -515,22 +546,41 @@ local function canSubmitCharacter()
     local legsColor = getComboData(getAssemblyWidget('legsColorCombo'))
     local feetColor = getComboData(getAssemblyWidget('feetColorCombo'))
     local addons = getComboData(getAssemblyWidget('addonsCombo'))
+    local appearance = isInteger(lookType) and findAppearance(lookType, sex) or nil
 
     return type(name) == 'string' and #name >= 3 and #name <= 18 and name:match("^[a-zA-Z' ]+$") ~= nil and
         isInteger(raceId) and raceId >= 0 and raceId < ELEMENTAL_RACE_COUNT and
         isInteger(vocationId) and vocationId >= ELEMENTAL_VOCATION_FIRST and vocationId <= ELEMENTAL_VOCATION_LAST and
-        isInteger(sex) and (sex == 0 or sex == 1) and isInteger(lookType) and
-        isInteger(headColor) and isInteger(bodyColor) and isInteger(legsColor) and
-        isInteger(feetColor) and isInteger(addons)
+        isInteger(sex) and (sex == 0 or sex == 1) and appearance ~= nil and
+        areAppearanceChoicesSelected(appearance, headColor, bodyColor, legsColor, feetColor, addons)
 end
 
 local function updateAssemblySubmitButton()
     if characterAssemblyWindow then
         local ready = canSubmitCharacter()
         getAssemblyWidget('createCharacterButton'):setEnabled(ready)
-        if ready and getAssemblyWidget('assemblyStatus'):getText() ==
-            localizeAssemblyText('Select all four colors and addons.') then
+        local statusWidget = getAssemblyWidget('assemblyStatus')
+        local currentStatus = statusWidget:getText()
+        local readyStatus = localizeAssemblyText('Character details are ready.')
+        local colorStatus = localizeAssemblyText('Select all four colors and addons.')
+        local completeStatus = localizeAssemblyText('Complete every field before creating the character.')
+
+        if ready then
             setAssemblyStatus('Character details are ready.', false)
+        elseif currentStatus == readyStatus or currentStatus == colorStatus or currentStatus == completeStatus then
+            local sex = getComboData(getAssemblyWidget('sexCombo'))
+            local lookType = getComboData(getAssemblyWidget('appearanceCombo'))
+            local appearance = isInteger(lookType) and findAppearance(lookType, sex) or nil
+            if appearance and not areAppearanceChoicesSelected(appearance,
+                getComboData(getAssemblyWidget('headColorCombo')),
+                getComboData(getAssemblyWidget('bodyColorCombo')),
+                getComboData(getAssemblyWidget('legsColorCombo')),
+                getComboData(getAssemblyWidget('feetColorCombo')),
+                getComboData(getAssemblyWidget('addonsCombo'))) then
+                setAssemblyStatus('Select all four colors and addons.', false)
+            else
+                setAssemblyStatus('Complete every field before creating the character.', false)
+            end
         end
     end
 end
