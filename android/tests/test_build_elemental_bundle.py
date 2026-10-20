@@ -8,6 +8,7 @@ ANDROID_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ANDROID_DIR))
 
 import build_elemental_bundle
+import package_android_data
 
 
 class ConfigureServerInitTests(unittest.TestCase):
@@ -58,6 +59,58 @@ class ConfigureServerInitTests(unittest.TestCase):
         ):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 build_elemental_bundle.parse_beta_login_url(url)
+
+
+class DistributionConfigTests(unittest.TestCase):
+    def test_beta_config_disables_unconfigured_updaters(self):
+        result = build_elemental_bundle.distribution_config_for_beta(
+            "beta", "", "", ""
+        ).decode("utf-8")
+
+        self.assertIn('channel = "beta",', result)
+        self.assertIn('feedPlatform = "android-arm64",', result)
+        self.assertIn('androidManifestUrl = "",', result)
+        self.assertIn('clientAssetsManifestUrl = "",', result)
+        self.assertIn('authUrl = "",', result)
+
+    def test_beta_config_rejects_partial_manifests_and_test_auth(self):
+        with self.assertRaises(ValueError):
+            build_elemental_bundle.distribution_config_for_beta(
+                "beta", "https://feed.example/android.json", "", ""
+            )
+
+        with self.assertRaises(ValueError):
+            build_elemental_bundle.distribution_config_for_beta(
+                "beta", "", "", "https://feed.example/enroll"
+            )
+
+    def test_beta_config_rejects_remote_http_manifest(self):
+        with self.assertRaises(ValueError):
+            build_elemental_bundle.distribution_config_for_beta(
+                "beta",
+                "http://feed.example/android.json",
+                "http://feed.example/assets.json",
+                "",
+            )
+
+
+class GenericPackageAssetTests(unittest.TestCase):
+    def test_local_community_pack_requires_beta_opt_in(self):
+        self.assertTrue(
+            package_android_data.is_local_community_asset(
+                "data/things/1525/Tibia.dat"
+            )
+        )
+        self.assertTrue(
+            package_android_data.is_local_community_asset(
+                "data/sounds/1525/sound.ogg"
+            )
+        )
+        self.assertFalse(
+            package_android_data.is_local_community_asset(
+                "data/things/1524/Tibia.dat"
+            )
+        )
 
 
 if __name__ == "__main__":

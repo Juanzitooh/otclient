@@ -4,7 +4,7 @@ set -euo pipefail
 project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 android_ndk=${ANDROID_NDK_HOME:?Set ANDROID_NDK_HOME to the local Android NDK}
 vcpkg_root=${VCPKG_ROOT:?Set VCPKG_ROOT to the local vcpkg checkout}
-login_url=${ELEMENTAL_BETA_LOGIN_URL:?Set ELEMENTAL_BETA_LOGIN_URL to an isolated HTTPS /beta/v1/login endpoint}
+channel=${ELEMENTAL_ANDROID_CHANNEL:-beta}
 requested_abis=${OTCLIENT_ANDROID_ABIS:-arm64-v8a}
 
 ANDROID_NDK_HOME="$android_ndk" OTCLIENT_ANDROID_ABIS="$requested_abis" \
@@ -23,8 +23,34 @@ for abi in "${abi_list[@]}"; do
         --triplet "$triplet" --x-manifest-root=. --allow-unsupported)
 done
 
-bundle_args=(--login-url "$login_url")
-if [[ "${ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS:-0}" == 1 ]]; then
-    bundle_args+=(--include-local-development-1525-assets)
-fi
-python3 "$project_root/android/build_elemental_bundle.py" "${bundle_args[@]}"
+case "$channel" in
+    beta)
+        login_url=${ELEMENTAL_BETA_LOGIN_URL:?Set ELEMENTAL_BETA_LOGIN_URL to an isolated HTTPS /beta/v1/login endpoint}
+        bundle_args=(
+            --login-url "$login_url"
+            --channel beta
+            --android-manifest-url "${ELEMENTAL_ANDROID_MANIFEST_URL:-}"
+            --client-assets-manifest-url "${ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL:-}"
+            --test-auth-url "${ELEMENTAL_TEST_AUTH_URL:-}"
+        )
+        if [[ "${ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS:-0}" == 1 ]]; then
+            bundle_args+=(--include-local-development-1525-assets)
+        fi
+        python3 "$project_root/android/build_elemental_bundle.py" "${bundle_args[@]}"
+        ;;
+    test|release)
+        if [[ "${ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS:-0}" == 1 ]]; then
+            echo "Community 15.25 assets are limited to the beta development bundle." >&2
+            exit 2
+        fi
+        python3 "$project_root/scripts/package_android_data.py" \
+            --channel "$channel" \
+            --android-manifest-url "${ELEMENTAL_ANDROID_MANIFEST_URL:-}" \
+            --client-assets-manifest-url "${ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL:-}" \
+            --test-auth-url "${ELEMENTAL_TEST_AUTH_URL:-}"
+        ;;
+    *)
+        echo "ELEMENTAL_ANDROID_CHANNEL must be test, beta, or release." >&2
+        exit 2
+        ;;
+esac

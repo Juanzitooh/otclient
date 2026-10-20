@@ -3,8 +3,10 @@
 
 import argparse
 import json
+import os
 import re
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -13,6 +15,10 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "android/app/src/main/assets/data.zip"
 FORBIDDEN_SUFFIXES = {".env", ".jks", ".key", ".keystore", ".p12", ".pem"}
+sys.path.insert(0, str(ROOT / "scripts"))
+from package_android_data import validated_distribution_config
+
+
 DEFAULT_LOCAL_LOGIN_URL = "http://127.0.0.1:8088/login"
 SERVER_INIT_ENTRY = re.compile(
     r'(?P<indent>^[ \t]*)\["http://127\.0\.0\.1:8088/login"\][ \t]*=[ \t]*\{\n'
@@ -97,9 +103,22 @@ def local_development_assets_to_bundle():
                 yield path, relative.as_posix()
 
 
+def distribution_config_for_beta(channel, android_url, assets_url, auth_url):
+    return validated_distribution_config(channel, android_url, assets_url, auth_url)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--login-url", required=True)
+    parser.add_argument("--channel", choices=("beta",), default="beta")
+    parser.add_argument(
+        "--android-manifest-url", default=os.getenv("ELEMENTAL_ANDROID_MANIFEST_URL", "")
+    )
+    parser.add_argument(
+        "--client-assets-manifest-url",
+        default=os.getenv("ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL", ""),
+    )
+    parser.add_argument("--test-auth-url", default=os.getenv("ELEMENTAL_TEST_AUTH_URL", ""))
     parser.add_argument(
         "--include-local-development-1525-assets",
         action="store_true",
@@ -108,6 +127,15 @@ def main():
     args = parser.parse_args()
     try:
         endpoint, port = parse_beta_login_url(args.login_url)
+    except ValueError as error:
+        parser.error(str(error))
+    try:
+        distribution_config = distribution_config_for_beta(
+            args.channel,
+            args.android_manifest_url,
+            args.client_assets_manifest_url,
+            args.test_auth_url,
+        )
     except ValueError as error:
         parser.error(str(error))
 
@@ -129,6 +157,7 @@ def main():
             f"{json.dumps(args.login_url)}, {port}, 1525)\n"
         )
         bundle.writestr("otclientrc.lua", startup)
+        bundle.writestr("elemental-distribution.lua", distribution_config)
 
     with zipfile.ZipFile(OUTPUT) as bundle:
         names = set(bundle.namelist())

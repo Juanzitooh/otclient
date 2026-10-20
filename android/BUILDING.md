@@ -31,8 +31,10 @@ sequence and installs alongside them.
 export ELEMENTAL_ANDROID_CHANNEL=test
 export ELEMENTAL_ANDROID_MANIFEST_URL="https://feed.example/test/android-manifest.json"
 export ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL="https://feed.example/test/client-assets-manifest.json"
+export ELEMENTAL_TEST_AUTH_URL="https://feed.example/test/enroll"
 export ELEMENTAL_ANDROID_VERSION_CODE=42
 export ELEMENTAL_ANDROID_VERSION_NAME=2026.10.19-test.1
+export OTCLIENT_ANDROID_ABIS=arm64-v8a
 
 # 1. Run the setup script (builds LuaJIT, installs vcpkg deps, generates data.zip)
 ./setup_android_deps.sh
@@ -77,6 +79,10 @@ LuaJIT's build is a two-stage process: host tools (`minilua`, `buildvm`) run on 
 
 ### Step 2: Generate data.zip
 
+`setup_android_deps.sh` uses this generic packager for `test` and `release`.
+The `beta` channel uses the beta packager described below so the server login
+is rewritten to the isolated HTTPS endpoint.
+
 ```bash
 # Rebuild data.zip when a channel or endpoint changes.
 python3 scripts/package_android_data.py \
@@ -89,7 +95,8 @@ python3 scripts/package_android_data.py \
 The bundle embeds those values in `elemental-distribution.lua`. Keep URLs on
 the same channel as the APK and use HTTPS for collaborator devices. HTTP is
 accepted only for loopback development fixtures. The output contains the
-complete `data`, `mods`, and `modules` trees; do not reuse a stale `data.zip`
+`data`, `mods`, and `modules` trees; local community 15.25 directories are
+excluded from generic channel packages. Do not reuse a stale `data.zip`
 when changing channels. A remote `test` feed must also provide the shared-
 password enrollment endpoint with `--test-auth-url`; it must have the same
 HTTPS origin as the Android and assets manifests. The shared password is never
@@ -167,7 +174,25 @@ The beta build defaults to channel `beta`, package ID
 `br.com.elementalmmo.client`, version `0.5.0-beta.1`, version code `1`, and
 ABI `arm64-v8a`. The beta-specific bundle builder keeps the server login on an
 HTTPS `/beta/v1/login` endpoint and removes the optional HTTP test override
-from the packaged `init.lua`.
+from the packaged `init.lua`. It also embeds `elemental-distribution.lua` with
+the beta channel and `android-arm64` platform. Leave manifest URLs unset until
+an approved feed exists; both updaters stay disabled in that case.
+
+```bash
+export ELEMENTAL_ANDROID_CHANNEL=beta
+export ELEMENTAL_ANDROID_VERSION_CODE=1
+export ELEMENTAL_ANDROID_VERSION_NAME=0.5.0-beta.1
+export OTCLIENT_ANDROID_ABIS=arm64-v8a
+export ELEMENTAL_BETA_LOGIN_URL=https://localhost:18443/beta/v1/login
+# Set only for the private technical candidate under D047:
+export ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS=1
+bash setup_android_deps.sh
+```
+
+The beta packager accepts optional `ELEMENTAL_ANDROID_MANIFEST_URL` and
+`ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL` values together. Remote URLs must use
+HTTPS; HTTP is limited to loopback development. The test-feed enrollment URL
+is rejected on beta/release channels.
 
 For a local phone test through USB, configure the isolated endpoint and use
 `adb reverse` for its ports; `localhost` on Android otherwise means the phone
