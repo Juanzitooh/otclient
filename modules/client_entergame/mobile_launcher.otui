@@ -9,6 +9,7 @@ ElementalMobileLauncher < UIWidget
     anchors.fill: parent
     image-source: /images/brand/elemental-world.png
     image-fixed-ratio: true
+    image-repeated: false
     image-smooth: true
     phantom: true
     focusable: false
