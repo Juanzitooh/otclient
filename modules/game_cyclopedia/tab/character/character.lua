@@ -97,6 +97,7 @@ function showCharacter()
     end
 
     reset()
+    Cyclopedia.updateEconomicSkills()
     controllerCyclopedia.ui.CharmsBase:setVisible(true)
     controllerCyclopedia.ui.GoldBase:setVisible(true)
     controllerCyclopedia.ui.BestiaryTrackerButton:setVisible(false)
@@ -924,6 +925,45 @@ function Cyclopedia.onSkillChange(localPlayer, id, level, percent)
     Cyclopedia.onBaseCharacterSkillChange(localPlayer, id, localPlayer:getSkillBaseLevel(id))
 end
 
+function Cyclopedia.updateEconomicSkills()
+    if not UI then
+        return
+    end
+
+    local skillModule = modules.game_skills
+    local rowParents = {}
+    if UI.EconomicSkills then
+        table.insert(rowParents, UI.EconomicSkills)
+    end
+    if UI.CharacterStats and UI.CharacterStats.ListSkills then
+        table.insert(rowParents, UI.CharacterStats.ListSkills)
+    end
+
+    for _, skillId in ipairs({ 15, 16, 17, 18, 19, 20, 21 }) do
+        local state = skillModule and skillModule.getEconomicSkillState and
+            skillModule.getEconomicSkillState(skillId)
+        for _, parent in ipairs(rowParents) do
+            local row = parent:getChildById("economicSkill" .. skillId)
+            if row then
+                local value = row:getChildById("value")
+                local percent = row:getChildById("percent")
+                if value then
+                    value:setText(state and tostring(state.level) or "--")
+                end
+                if percent then
+                    percent:setVisible(state ~= nil)
+                    percent:setPercent(state and math.floor(state.percent) or 0)
+                    if state then
+                        percent:setTooltip(string.format("Progress: %s%%", tostring(state.percent)))
+                    else
+                        percent:removeTooltip()
+                    end
+                end
+            end
+        end
+    end
+end
+
 function Cyclopedia.selectCharacterPage()
     local selectedOption = UI.selectedOption
     UI[selectedOption]:setVisible(false)
@@ -975,6 +1015,11 @@ function Cyclopedia.configureCharacterCategories()
                         text = "Character Stats",
                         icon = "/game_cyclopedia/images/character_icons/icon-character-generalstats-overview",
                         open = "CharacterStats"
+                    },
+                    {
+                        text = "Economic Skills",
+                        icon = "/game_cyclopedia/images/character_icons/icon-character-generalstats-overview",
+                        open = "EconomicSkills"
                     }
                 }
                 
@@ -1089,6 +1134,8 @@ function Cyclopedia.configureCharacterCategories()
                     if subWidget.open == "CharacterStats" then
                         g_game.requestCharacterInfo(0, CyclopediaCharacterInfoTypes.GeneralStats)
                         g_game.requestCharacterInfo(0, CyclopediaCharacterInfoTypes.Badges)
+                    elseif subWidget.open == "EconomicSkills" then
+                        Cyclopedia.updateEconomicSkills()
                     elseif subWidget.open == "CombatStats" then
                         g_game.requestCharacterInfo(0, CyclopediaCharacterInfoTypes.CombatStats)
                     elseif subWidget.open == "OffenceStats" then

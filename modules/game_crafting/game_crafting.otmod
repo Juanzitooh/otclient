@@ -1,0 +1,12 @@
+Module
+  name: game_crafting
+  description: Elemental crafting interface
+  sandboxed: true
+  scripts: [ game_crafting ]
+  autoload: true
+  dependencies:
+    - game_mainpanel
+    - gamelib
+    - game_skills
+  @onLoad: GameCrafting:init()
+  @onUnload: GameCrafting:terminate()

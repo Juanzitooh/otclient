@@ -5,6 +5,17 @@ skillsButton = nil
 skillsSettings = nil
 local ExpRating = {}
 local smallSkillsCache = {}
+local ECONOMIC_SKILL_IDS = { 15, 16, 17, 18, 19, 20, 21 }
+local economicSkillSet = {}
+for _, skillId in ipairs(ECONOMIC_SKILL_IDS) do
+    economicSkillSet[skillId] = true
+end
+local economicSkillStates = {}
+
+local function getCraftingController()
+    local craftingModule = modules.game_crafting
+    return craftingModule and craftingModule.GameCrafting
+end
 
 -- Cache for stats data when UI elements are hidden
 local statsCache = {
@@ -42,6 +53,169 @@ local statsCache = {
     amplification = 0
 }
 
+local function split_fields(payload)
+    local fields = {}
+    for field in (payload .. '|'):gmatch('(.-)|') do
+        fields[#fields + 1] = field
+    end
+    return fields
+end
+
+local function parse_integer(value, minimum, maximum)
+    if type(value) ~= 'string' or not value:match('^%d+$') then
+        return nil
+    end
+
+    local number = tonumber(value)
+    if not number or number < minimum or number > maximum or number % 1 ~= 0 or tostring(number) ~= value then
+        return nil
+    end
+    return number
+end
+
+local function parse_percent(value)
+    if type(value) ~= 'string' or not value:match('^%d+%.?%d*$') then
+        return nil
+    end
+
+    local number = tonumber(value)
+    if not number or number < 0 or number > 100 or number ~= number or number == math.huge then
+        return nil
+    end
+    return number
+end
+
+local function updateEconomicSkillsUI()
+    local hasSnapshot = next(economicSkillStates) ~= nil
+    local separator = skillsWindow and skillsWindow:recursiveGetChildById('economicSkillsSeparator')
+    if separator then
+        separator:setVisible(hasSnapshot)
+    end
+
+    for _, skillId in ipairs(ECONOMIC_SKILL_IDS) do
+        local widgetId = 'economicSkill' .. skillId
+        local widget = skillsWindow and skillsWindow:recursiveGetChildById(widgetId)
+        local state = economicSkillStates[skillId]
+        if widget then
+            local value = widget:getChildById('value')
+            local percent = widget:getChildById('percent')
+            if state then
+                widget:setVisible(true)
+                value:setText(state.level)
+                if percent then
+                    percent:setPercent(math.floor(state.percent))
+                    percent:setTooltip(string.format('Progress: %s%%', tostring(state.percent)))
+                end
+            else
+                widget:setVisible(false)
+                value:setText('--')
+                if percent then
+                    percent:setPercent(0)
+                    percent:removeTooltip()
+                end
+            end
+        end
+    end
+
+    if skillsWindow and g_game.isOnline() then
+        updateHeight()
+    end
+
+    local cyclopedia = modules.game_cyclopedia and modules.game_cyclopedia.Cyclopedia
+    if cyclopedia and cyclopedia.updateEconomicSkills then
+        cyclopedia.updateEconomicSkills()
+    end
+end
+
+function getEconomicSkillState(skillId)
+    local state = economicSkillStates[skillId]
+    if not state then
+        return nil
+    end
+    return { level = state.level, percent = state.percent }
+end
+
+local function isEconomicSkill(skillId)
+    return economicSkillSet[skillId] == true
+end
+
+local function acceptEconomicSkillUpdate(skillId, level, percent)
+    economicSkillStates[skillId] = { level = level, percent = percent }
+    updateEconomicSkillsUI()
+
+    local crafting = getCraftingController()
+    if crafting and crafting.onEconomicSkillUpdate then
+        crafting:onEconomicSkillUpdate(skillId, level, percent)
+    end
+end
+
+local function onEconomicSkillsPayload(buffer)
+    local fields = split_fields(buffer)
+    if fields[1] ~= 'v1' or fields[2] ~= 'skills' then
+        return false
+    end
+
+    if fields[3] == 'snapshot' then
+        if #fields ~= 24 then
+            g_logger.warning('[ElementalSkills] Ignoring malformed snapshot.')
+            return true
+        end
+
+        local snapshot = {}
+        for index, expectedSkillId in ipairs(ECONOMIC_SKILL_IDS) do
+            local offset = 4 + (index - 1) * 3
+            local skillId = parse_integer(fields[offset], 15, 21)
+            local level = parse_integer(fields[offset + 1], 0, 65535)
+            local percent = parse_percent(fields[offset + 2])
+            if skillId ~= expectedSkillId or not level or percent == nil then
+                g_logger.warning('[ElementalSkills] Ignoring invalid snapshot values.')
+                return true
+            end
+            snapshot[skillId] = { level = level, percent = percent }
+        end
+
+        economicSkillStates = snapshot
+        updateEconomicSkillsUI()
+        for skillId, state in pairs(snapshot) do
+            local crafting = getCraftingController()
+            if crafting and crafting.onEconomicSkillUpdate then
+                crafting:onEconomicSkillUpdate(skillId, state.level, state.percent)
+            end
+        end
+        return true
+    end
+
+    if fields[3] == 'update' then
+        local skillId = parse_integer(fields[4], 15, 21)
+        local level = parse_integer(fields[5], 0, 65535)
+        local percent = parse_percent(fields[6])
+        if #fields ~= 6 or not skillId or not isEconomicSkill(skillId) or not level or percent == nil then
+            g_logger.warning('[ElementalSkills] Ignoring malformed skill update.')
+            return true
+        end
+        acceptEconomicSkillUpdate(skillId, level, percent)
+        return true
+    end
+
+    g_logger.warning('[ElementalSkills] Ignoring unknown skills action.')
+    return true
+end
+
+function skillController:onExtendedOpcode(opcode, buffer)
+    if opcode ~= ExtendedIds.Elemental or type(buffer) ~= 'string' then
+        return
+    end
+
+    if onEconomicSkillsPayload(buffer) then
+        return
+    end
+
+    local crafting = getCraftingController()
+    if crafting and crafting.onExtendedOpcode then
+        crafting:onExtendedOpcode(opcode, buffer)
+    end
+end
+
 local function setupUIButtons()
     local toggleFilterButton = skillsWindow:recursiveGetChildById('toggleFilterButton')
     if toggleFilterButton then
@@ -71,6 +245,10 @@ local function setupUIButtons()
 end
 
 function skillController:onInit()
+    self:registerExtendedOpcode(ExtendedIds.Elemental, function(protocol, opcode, buffer)
+        self:onExtendedOpcode(opcode, buffer)
+    end)
+
     skillController:registerEvents(LocalPlayer, {
         onExperienceChange = onExperienceChange,
         onLevelChange = onLevelChange,
@@ -777,6 +955,7 @@ function update()
 end
 
 function skillController:onGameStart()
+    economicSkillStates = {}
     skillsWindow:setupOnStart()
     refresh()
 
@@ -809,6 +988,8 @@ function skillController:onGameStart()
     end, 100)
     hideOldClientStats()
     updateHeight()
+    updateEconomicSkillsUI()
+    self:sendExtendedOpcode(ExtendedIds.Elemental, 'v1|skills|snapshot')
 end
 
 function refresh()
@@ -944,6 +1125,8 @@ end
 
 function skillController:onGameEnd()
     skillsWindow:setParent(nil, true)
+    economicSkillStates = {}
+    updateEconomicSkillsUI()
     if expSpeedEvent then
         expSpeedEvent:cancel()
         expSpeedEvent = nil
