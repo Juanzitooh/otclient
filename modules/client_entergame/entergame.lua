@@ -469,6 +469,13 @@ function EnterGame.hidePanels()
     local gameInterface = g_modules.getModule('game_interface')
     if gameInterface and gameInterface:isLoaded() then
         modules.client_topmenu.hide()
+    elseif g_platform.isMobile() then
+        local topMenuModule = modules.client_topmenu
+        local topMenu = topMenuModule and topMenuModule.getTopMenu and
+            topMenuModule.getTopMenu()
+        if topMenu and not topMenu:isDestroyed() then
+            topMenu:hide()
+        end
     end
 
     local backgroundModule = g_modules.getModule("client_background")
