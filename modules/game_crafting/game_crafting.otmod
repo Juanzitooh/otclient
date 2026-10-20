@@ -4,7 +4,6 @@ Module
   sandboxed: true
   scripts: [ game_crafting ]
   autoload: true
-  minClientVersion: 1525
   dependencies:
     - game_mainpanel
     - gamelib
