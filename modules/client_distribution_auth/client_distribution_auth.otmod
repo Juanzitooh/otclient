@@ -1,0 +1,9 @@
+Module
+  name: client_distribution_auth
+  description: Enrolls and authorizes devices for the internal test feed
+  author: Elemental
+  dependencies: [ corelib ]
+  autoload: true
+  scripts: [ client_distribution_auth ]
+  @onLoad: ClientDistributionAuth.init()
+  @onUnload: ClientDistributionAuth.terminate()

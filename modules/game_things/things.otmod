@@ -3,6 +3,7 @@ Module
   description: Contains things spr and dat
   reloadable: false
   sandboxed: true
+  dependencies: [ client_assets ]
   scripts: [things]
   @onLoad: ThingsLoaderController:init()
   @onUnload: ThingsLoaderController:terminate()

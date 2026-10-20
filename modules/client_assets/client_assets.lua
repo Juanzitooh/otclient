@@ -5,6 +5,7 @@ local DEFAULT_CONFIG = {
   repository = 'dudantas/tibia-client',
   rawBaseUrl = 'https://raw.githubusercontent.com/%s/%s/',
   installSounds = true,
+  updateCheckEnabled = false,
   timeout = 30,
   retries = 2,
   preferPackedManifestUrls = true,
@@ -56,7 +57,7 @@ local function endsWith(value, suffix)
 end
 
 local function isArchivePath(path)
-  path = tostring(path or ''):lower()
+  path = tostring(path or ''):lower():match('^[^?#]*') or ''
   for _, extension in ipairs(ARCHIVE_EXTENSIONS) do
     if endsWith(path, extension) then
       return true
@@ -66,7 +67,8 @@ local function isArchivePath(path)
 end
 
 local function isLzmaPath(path)
-  return endsWith(tostring(path or ''):lower(), '.lzma')
+  path = tostring(path or ''):lower():match('^[^?#]*') or ''
+  return endsWith(path, '.lzma')
 end
 
 local function isMacArchivePath(path)
@@ -173,6 +175,11 @@ local function cloneConfig()
     end
   end
 
+  if config.updateCheckEnabled == true and not config.channel and
+     type(Services) == 'table' and type(Services.elementalUpdater) == 'table' then
+    config.channel = Services.elementalUpdater.channel
+  end
+
   if not config.releasesUrl and config.repository then
     config.releasesUrl = string.format('https://api.github.com/repos/%s/releases?per_page=100', config.repository)
   end
@@ -193,18 +200,102 @@ end
 
 local function httpGet(config, url, callback)
   return withHttpTimeout(config, function()
+    if ClientDistributionAuth and ClientDistributionAuth.requiresToken(config.channel, url) then
+      if not ClientDistributionAuth.isTrustedUrl(url) then
+        callback(nil, 'test_feed_untrusted_origin')
+        return nil
+      end
+      local operationId
+      ClientDistributionAuth.ensureToken(function(token, err)
+        if not activeDownload or activeDownload.canceled then
+          return
+        end
+        if err then
+          return callback(nil, err)
+        end
+        local operation = withHttpTimeout(config, function()
+          return HTTP.getWithBearer(url, token, function(data, err)
+            if ClientDistributionAuth.isUnauthorized(err) then
+              ClientDistributionAuth.forgetToken()
+            end
+            callback(data, err)
+          end)
+        end)
+        if operation and operation >= 0 then
+          operationId = operation
+          activeDownload.operationId = operation
+        end
+      end)
+      return operationId
+    end
     return HTTP.get(url, callback)
   end)
 end
 
 local function httpGetJSON(config, url, callback)
   return withHttpTimeout(config, function()
+    if ClientDistributionAuth and ClientDistributionAuth.requiresToken(config.channel, url) then
+      if not ClientDistributionAuth.isTrustedUrl(url) then
+        callback(nil, 'test_feed_untrusted_origin')
+        return nil
+      end
+      local operationId
+      ClientDistributionAuth.ensureToken(function(token, err)
+        if not activeDownload or activeDownload.canceled then
+          return
+        end
+        if err then
+          return callback(nil, err)
+        end
+        local operation = withHttpTimeout(config, function()
+          return HTTP.getJSONWithBearer(url, token, function(data, err)
+            if ClientDistributionAuth.isUnauthorized(err) then
+              ClientDistributionAuth.forgetToken()
+            end
+            callback(data, err)
+          end)
+        end)
+        if operation and operation >= 0 then
+          operationId = operation
+          activeDownload.operationId = operation
+        end
+      end)
+      return operationId
+    end
     return HTTP.getJSON(url, callback)
   end)
 end
 
 local function httpDownload(config, url, path, callback, progressCallback)
   return withHttpTimeout(config, function()
+    if ClientDistributionAuth and ClientDistributionAuth.requiresToken(config.channel, url) then
+      if not ClientDistributionAuth.isTrustedUrl(url) then
+        callback(nil, nil, 'test_feed_untrusted_origin')
+        return nil
+      end
+      local operationId
+      ClientDistributionAuth.ensureToken(function(token, err)
+        if not activeDownload or activeDownload.canceled then
+          return
+        end
+        if err then
+          return callback(nil, nil, err)
+        end
+        local operation = withHttpTimeout(config, function()
+          return HTTP.downloadWithBearer(url, path, token, function(downloadPath, checksum, err)
+            if ClientDistributionAuth.isUnauthorized(err) then
+              ClientDistributionAuth.forgetToken()
+            end
+            callback(downloadPath, checksum, err)
+          end, progressCallback)
+        end)
+        if operation and operation >= 0 then
+          operationId = operation
+          activeDownload.operationId = operation
+        end
+      end)
+      return operationId
+    end
     return HTTP.download(url, path, callback, progressCallback)
   end)
 end
@@ -440,9 +531,55 @@ end
 
 local hasInstalledModernClientFiles = hasModernClientFiles
 
-local function markClientVersionInstalled(config, version)
+local function isValidAssetRevision(revision)
+  return type(revision) == 'string' and #revision > 0 and #revision <= 64 and
+         revision:match('^[A-Za-z0-9][A-Za-z0-9._+-]*$') ~= nil
+end
+
+local function isSha256(value)
+  return type(value) == 'string' and #value == 64 and value:match('^%x+$') ~= nil
+end
+
+local function isAllowedAssetUrl(url)
+  if type(url) ~= 'string' or url:find('%s') or url:find('#', 1, true) then
+    return false
+  end
+
+  local httpsAuthority = url:match('^https://([^/%?#]+)')
+  if httpsAuthority then
+    return not httpsAuthority:find('@', 1, true)
+  end
+
+  local httpAuthority = url:match('^http://([^/%?#]+)')
+  if not httpAuthority or httpAuthority:find('@', 1, true) then
+    return false
+  end
+
+  return httpAuthority == 'localhost' or httpAuthority:match('^localhost:%d+$') ~= nil or
+         httpAuthority == '127.0.0.1' or httpAuthority:match('^127%.0%.0%.1:%d+$') ~= nil or
+         httpAuthority == '[::1]' or httpAuthority:match('^%[::1%]:%d+$') ~= nil
+end
+
+local function readInstalledAssetRevision(version)
+  local markerPath = completeMarkerPath(version)
+  if not installFileExists(markerPath) then
+    return nil
+  end
+
+  local ok, contents = pcall(readInstallFile, markerPath)
+  if not ok or type(contents) ~= 'string' then
+    return nil
+  end
+
+  return contents:match('[\r\n]asset%-revision=([^\r\n]+)')
+end
+
+local function markClientVersionInstalled(config, version, assetRevision)
   local markerPath = completeMarkerPath(version)
   local contents = string.format('client=%d\n', version)
+  if isValidAssetRevision(assetRevision) then
+    contents = contents .. 'asset-revision=' .. assetRevision .. '\n'
+  end
   if shouldInstallInWorkDir(config) and g_resources.writeFileContentsToWorkDir then
     return g_resources.writeFileContentsToWorkDir(markerPath, contents)
   end
@@ -605,6 +742,26 @@ local function overallProgress(index, total, fileProgress)
   return clampPercent(((index - 1) + (fileProgress / 100)) * 100 / total)
 end
 
+local function assetEntryProgress(index, total, fileProgress, entry)
+  if activeDownload and activeDownload.totalBytes and activeDownload.totalBytes > 0 then
+    local completedBytes = activeDownload.completedBytes or 0
+    local entryBytes = tonumber(entry.size) or 0
+    local currentProgress = math.max(0, math.min(100, tonumber(fileProgress) or 0))
+    return clampPercent((completedBytes + entryBytes * currentProgress / 100) * 100 / activeDownload.totalBytes)
+  end
+
+  return overallProgress(index, total, fileProgress)
+end
+
+local function completeAssetEntryProgress(index, total, entry)
+  if activeDownload and activeDownload.totalBytes and activeDownload.totalBytes > 0 then
+    activeDownload.completedBytes = (activeDownload.completedBytes or 0) + (tonumber(entry.size) or 0)
+    return clampPercent(activeDownload.completedBytes * 100 / activeDownload.totalBytes)
+  end
+
+  return overallProgress(index, total, 100)
+end
+
 local function stopDownloadBusy()
   if activeDownload and activeDownload.busyEvent then
     removeEvent(activeDownload.busyEvent)
@@ -658,6 +815,12 @@ end
 
 local function setDownloadProgress(status, percent, detail)
   stopDownloadBusy()
+  if activeDownload and activeDownload.progressCallback then
+    local ok, err = pcall(activeDownload.progressCallback, status, percent, detail)
+    if not ok then
+      logWarning('Progress callback failed: ' .. tostring(err))
+    end
+  end
   renderDownloadStatus(status, percent, detail)
 end
 
@@ -695,6 +858,16 @@ local function setDownloadBusy(status, detail)
 
   activeDownload.busyStatus = status
   activeDownload.busyDetail = detail
+  if activeDownload.progressCallback then
+    local ok, err = pcall(activeDownload.progressCallback, status, nil, detail)
+    if not ok then
+      logWarning('Progress callback failed: ' .. tostring(err))
+    end
+  end
+  if not activeDownload.window then
+    return
+  end
+
   startBusyIndicatorSpin()
   if activeDownload.busyEvent then
     return
@@ -734,7 +907,7 @@ local function logArchiveHeartbeat(message)
   logInfo(message)
 end
 
-local function finishDownload(ok, message)
+local function finishDownload(ok, message, assetsChanged)
   local callback = activeDownload and activeDownload.callback
   if ok then
     logInfo(message or 'Asset download finished.')
@@ -747,7 +920,7 @@ local function finishDownload(ok, message)
   end
   activeDownload = nil
   if callback then
-    callback(ok, ok and message or userFacingError(message))
+    callback(ok, ok and message or userFacingError(message), assetsChanged == true)
   end
 end
 
@@ -762,7 +935,7 @@ local function cancelDownload()
   finishDownload(false, tr('Download canceled.'))
 end
 
-local function verifyDownloadedSha256(downloadPath, expectedSha256)
+local function verifyDownloadedSha256(downloadPath, expectedSha256, expectedSize)
   if not expectedSha256 or expectedSha256 == '' then
     return true
   end
@@ -772,6 +945,11 @@ local function verifyDownloadedSha256(downloadPath, expectedSha256)
   end)
   if not ok then
     return false, contents
+  end
+
+  if expectedSize and #contents ~= expectedSize then
+    return false, string.format('Invalid download size for %s. Expected %d bytes, got %d.',
+      downloadPath, expectedSize, #contents)
   end
 
   local actualSha256 = g_crypt.sha256(contents)
@@ -991,13 +1169,18 @@ local function installManifestEntries(config, descriptor, files, index, installe
       fallbackDownload.allowHashMismatchReason = 'allowRawFallbackHashMismatch is enabled'
     end
   end
-  if directDownload.expectedFileSha256 and g_resources.fileSha256('/' .. directDownload.destinationPath) == directDownload.expectedFileSha256 then
+  local installedFileMatches = directDownload.expectedFileSha256 and
+    verifyInstalledSha256(directDownload.destinationPath, directDownload.expectedFileSha256, false)
+  if installedFileMatches then
+    setDownloadProgress(string.format('Checking assets for client %s', versionLabel(descriptor.version)),
+      completeAssetEntryProgress(index, total, entry))
     return installManifestEntries(config, descriptor, files, index + 1, installed, total, callback)
   end
 
   local function downloadEntry(downloadInfo, nextFallback, retriesLeft)
     local fileName = string.format('asset-downloads/%d/%04d-%s', descriptor.version, index, g_resources.getFileName(downloadInfo.sourcePath))
-    setDownloadProgress(string.format('Downloading assets for client %s', versionLabel(descriptor.version)), overallProgress(index, total, 0))
+    setDownloadProgress(string.format('Downloading assets for client %s', versionLabel(descriptor.version)),
+      assetEntryProgress(index, total, 0, entry))
 
     activeDownload.operationId = httpDownload(config, downloadInfo.url, fileName, function(path, checksum, err)
       if not activeDownload then
@@ -1025,7 +1208,8 @@ local function installManifestEntries(config, descriptor, files, index, installe
         return callback(false, err)
       end
 
-      local ok, hashError = verifyDownloadedSha256(path, downloadInfo.expectedDownloadSha256)
+      local expectedSize = config.updateCheckEnabled == true and tonumber(entry.size) or nil
+      local ok, hashError = verifyDownloadedSha256(path, downloadInfo.expectedDownloadSha256, expectedSize)
       if not ok then
         if nextFallback then
           if config.allowMissingPackedRawFallback ~= false and isMissingPackedHashError(hashError) and isPackedToRawFallback(downloadInfo, nextFallback) then
@@ -1068,9 +1252,12 @@ local function installManifestEntries(config, descriptor, files, index, installe
         return callback(false, hashError)
       end
 
+      setDownloadProgress(string.format('Downloading assets for client %s', versionLabel(descriptor.version)),
+        completeAssetEntryProgress(index, total, entry))
       return installManifestEntries(config, descriptor, files, index + 1, installed + 1, total, callback)
     end, function(progress, speed)
-      setDownloadProgress(string.format('Downloading assets for client %s', versionLabel(descriptor.version)), overallProgress(index, total, progress))
+      setDownloadProgress(string.format('Downloading assets for client %s', versionLabel(descriptor.version)),
+        assetEntryProgress(index, total, progress, entry))
     end)
   end
 
@@ -1093,6 +1280,67 @@ local function fetchManifestSha256(config, descriptor, callback)
     data = tostring(data or ''):match('^%s*(.-)%s*$')
     callback(data ~= '' and data or nil)
   end)
+end
+
+local function validateIncrementalAssetManifest(manifest)
+  if type(manifest.files) ~= 'table' or #manifest.files == 0 then
+    return false, 'Incremental asset manifest must contain files.'
+  end
+
+  local seenPaths = {}
+  for index, entry in ipairs(manifest.files) do
+    if type(entry) ~= 'table' then
+      return false, string.format('Invalid incremental asset entry %d.', index)
+    end
+
+    local localfile = entry.localfile or entry.file or entry.path
+    local namespace, relativePath
+    if type(localfile) == 'string' then
+      namespace, relativePath = localfile:match('^(assets)/(.+)$')
+      if not namespace then
+        namespace, relativePath = localfile:match('^(sounds)/(.+)$')
+      end
+    end
+    if not namespace or localfile:find('\\', 1, true) or localfile:find('//', 1, true) or
+       localfile:find('[<>:"|%?%*#]') or localfile:find('[%c]') or relativePath:find('/$') then
+      return false, string.format('Unsupported incremental asset path at entry %d.', index)
+    end
+    for segment in relativePath:gmatch('[^/]+') do
+      local windowsDeviceName = segment:match('^([^%.]+)')
+      windowsDeviceName = windowsDeviceName and windowsDeviceName:upper()
+      if segment == '.' or segment == '..' or segment:match('[%. ]$') or
+         windowsDeviceName == 'CON' or windowsDeviceName == 'PRN' or
+         windowsDeviceName == 'AUX' or windowsDeviceName == 'NUL' or
+         (windowsDeviceName and windowsDeviceName:match('^COM[1-9]$')) or
+         (windowsDeviceName and windowsDeviceName:match('^LPT[1-9]$')) then
+        return false, string.format('Unsupported incremental asset path at entry %d.', index)
+      end
+    end
+    if isArchivePath(localfile) then
+      return false, string.format('Incremental asset entry %d cannot be an archive.', index)
+    end
+    local normalizedPath = localfile:lower()
+    if seenPaths[normalizedPath] then
+      return false, string.format('Duplicate incremental asset path at entry %d.', index)
+    end
+    seenPaths[normalizedPath] = true
+
+    if not isAllowedAssetUrl(entry.url) or
+       isArchivePath(entry.url) or isLzmaPath(entry.url) then
+      return false, string.format('Incremental asset entry %d must point to a raw file.', index)
+    end
+
+    if not isSha256(entry.packedhash) then
+      return false, string.format('Incremental asset entry %d has no valid packed SHA-256.', index)
+    end
+
+    local size = tonumber(entry.size)
+    if not size or size < 1 or size == math.huge or size % 1 ~= 0 then
+      return false, string.format('Incremental asset entry %d has no valid file size.', index)
+    end
+  end
+
+  return true
 end
 
 local function installFromManifest(config, descriptor, callback)
@@ -1129,12 +1377,33 @@ local function installFromManifest(config, descriptor, callback)
         return callback(false, 'Invalid assets manifest.')
       end
 
-      local wroteHashIdentifier, writeHashError = writeManifestHashIdentifier(config, descriptor.version, actualSha256)
-      if not wroteHashIdentifier then
-        return callback(false, writeHashError)
+      if config.updateCheckEnabled == true then
+        local validManifest, manifestError = validateIncrementalAssetManifest(manifest)
+        if not validManifest then
+          return callback(false, manifestError)
+        end
+
+        activeDownload.totalBytes = 0
+        activeDownload.completedBytes = 0
+        for _, entry in ipairs(manifest.files) do
+          if shouldInstallManifestEntry(entry, descriptor.version, config) then
+            activeDownload.totalBytes = activeDownload.totalBytes + tonumber(entry.size)
+          end
+        end
       end
 
-      installManifestEntries(config, descriptor, manifest.files, 1, 0, #manifest.files, callback)
+      installManifestEntries(config, descriptor, manifest.files, 1, 0, #manifest.files, function(installed, installError)
+        if not installed then
+          return callback(false, installError)
+        end
+
+        local wroteHashIdentifier, writeHashError = writeManifestHashIdentifier(config, descriptor.version, actualSha256)
+        if not wroteHashIdentifier then
+          return callback(false, writeHashError)
+        end
+
+        callback(true, installError)
+      end)
     end)
   end)
 end
@@ -1424,7 +1693,33 @@ local function resolveFromCustomManifest(config, version, callback)
       return callback(nil, err)
     end
 
+    if config.updateCheckEnabled == true then
+      if type(data) ~= 'table' or tonumber(data.schemaVersion) ~= 1 then
+        return callback(nil, 'Unsupported client assets manifest schema.')
+      end
+      if type(config.channel) ~= 'string' or data.channel ~= config.channel then
+        return callback(nil, 'Client assets manifest channel does not match this build.')
+      end
+    end
+
     local descriptor = normalizeDescriptor(config, version, readVersionEntry(data, version))
+    if config.updateCheckEnabled == true then
+      if not descriptor then
+        return callback(nil, string.format('No assets source found for client %s.', versionLabel(version)))
+      end
+      if not isValidAssetRevision(descriptor.assetRevision) then
+        return callback(nil, 'Client assets manifest has no valid asset revision.')
+      end
+      if not isAllowedAssetUrl(descriptor.baseUrl) or
+         not isAllowedAssetUrl(descriptor.manifestUrl) or
+         not isSha256(descriptor.manifestSha256) then
+        return callback(nil, 'Client assets update requires a verified file manifest.')
+      end
+
+      descriptor.preferArchive = false
+      descriptor.installPackagedFiles = false
+    end
+
     callback(descriptor)
   end)
 end
@@ -1456,6 +1751,13 @@ local function resolveFromGitHubReleases(config, version, callback)
 end
 
 local function resolveDescriptor(config, version, callback)
+  if config.updateCheckEnabled == true then
+    if not isAllowedAssetUrl(config.manifestUrl) then
+      return callback(nil, 'No channel client assets manifest URL configured.')
+    end
+    return resolveFromCustomManifest(config, version, callback)
+  end
+
   resolveFromCustomManifest(config, version, function(descriptor)
     if descriptor then
       return callback(descriptor)
@@ -1466,6 +1768,11 @@ end
 
 function isEnabled()
   return cloneConfig().enabled ~= false
+end
+
+function shouldCheckClientVersionUpdates()
+  local config = cloneConfig()
+  return config.enabled ~= false and config.updateCheckEnabled == true
 end
 
 function isClientVersionInstalled(version)
@@ -1495,14 +1802,19 @@ function getInstalledClientVersions()
   return installed
 end
 
-function ensureClientVersion(version, callback)
+function ensureClientVersion(version, callback, progressCallback)
   version = tonumber(version)
   if not version then
     return callback(false, 'Invalid client version.')
   end
+  if type(progressCallback) ~= 'function' then
+    progressCallback = nil
+  end
 
   local config = cloneConfig()
-  if config.enabled == false or isClientVersionInstalled(version) then
+  local wasInstalled = isClientVersionInstalled(version)
+  local updateCheckEnabled = config.updateCheckEnabled == true
+  if config.enabled == false or (wasInstalled and not updateCheckEnabled) then
     return callback(true)
   end
 
@@ -1526,18 +1838,30 @@ function ensureClientVersion(version, callback)
     activeDownload = {
       version = version,
       callback = callback,
+      progressCallback = progressCallback,
       canceled = false
     }
 
     logInfo(string.format('Starting asset download for client %s.', versionLabel(version)))
-    activeDownload.window = createDownloadWindow()
-    connect(activeDownload.window, {
-      onCancel = cancelDownload
-    })
+    if not progressCallback then
+      activeDownload.window = createDownloadWindow()
+      connect(activeDownload.window, {
+        onCancel = cancelDownload
+      })
+    end
+
+    if updateCheckEnabled then
+      setDownloadProgress(string.format('Checking assets for client %s', versionLabel(version)), 0)
+    end
 
     resolveDescriptor(config, version, function(descriptor, err)
       if not descriptor then
         return finishDownload(false, err or string.format('No assets source found for client %s.', versionLabel(version)))
+      end
+
+      if updateCheckEnabled and wasInstalled and
+         readInstalledAssetRevision(version) == descriptor.assetRevision then
+        return finishDownload(true, string.format('Client %s assets are already current.', versionLabel(version)))
       end
 
       installDescriptor(config, descriptor, function(ok, installError)
@@ -1549,12 +1873,8 @@ function ensureClientVersion(version, callback)
           return finishDownload(false, 'Assets were downloaded but the client files are still incomplete. Missing catalog-content.json, assets.json.sha256, or required catalog files.')
         end
 
-        local markerPath = completeMarkerPath(version)
-        if not installFileExists(markerPath) then
-          markClientVersionInstalled(config, version)
-          if not installFileExists(markerPath) then
-            logWarning('Assets were downloaded but the install marker could not be written.')
-          end
+        if not markClientVersionInstalled(config, version, descriptor.assetRevision) then
+          logWarning('Assets were downloaded but the install marker could not be written.')
         end
 
         logInfo(string.format('Client %s installed at: %s.', versionLabel(version), physicalInstallPath(string.format('data/things/%d', version))))
@@ -1565,7 +1885,7 @@ function ensureClientVersion(version, callback)
           logInfo(string.format('Client %s extra files installed at: %s.', versionLabel(version), physicalInstallPath('bin')))
         end
 
-        finishDownload(true)
+        finishDownload(true, nil, true)
       end)
     end)
   end
@@ -1577,6 +1897,11 @@ function ensureClientVersion(version, callback)
       box:cancel()
     end
     callback(false, tr('Assets are required for this client version.'))
+  end
+
+  if updateCheckEnabled then
+    startDownload()
+    return
   end
 
   promptBox = displayGeneralBox(tr('Missing Assets'), message, {

@@ -26,6 +26,7 @@ class MainActivity : GameActivity() {
             pasteButton = binding.pasteButton,
             copyButton = binding.copyButton,
         ).apply {
+            showStartupSplash(findViewById(contentViewId))
             nativeInit()
             nativeSetAudioEnabled(true)
         }

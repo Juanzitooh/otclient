@@ -40,13 +40,13 @@ export VCPKG_ROOT="$VCPKG_ROOT"
 echo "=== Starting Gradle build ==="
 cd "$PROJECT_DIR/android"
 
-# Ensure data.zip exists
-mkdir -p "$PROJECT_DIR/android/app/src/main/assets"
-if [ ! -f "$PROJECT_DIR/android/app/src/main/assets/data.zip" ]; then
-    echo "Generating data.zip..."
-    cd "$PROJECT_DIR"
-    zip -r android/app/src/main/assets/data.zip data mods modules init.lua otclientrc.lua
-fi
+# Package channel-specific updater URLs every time so the APK cannot retain a
+# stale channel configuration from an older data.zip.
+python3 "$PROJECT_DIR/scripts/package_android_data.py" \
+    --channel "${ELEMENTAL_ANDROID_CHANNEL:-test}" \
+    --android-manifest-url "${ELEMENTAL_ANDROID_MANIFEST_URL:-}" \
+    --client-assets-manifest-url "${ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL:-}" \
+    --test-auth-url "${ELEMENTAL_TEST_AUTH_URL:-}"
 
 cd "$PROJECT_DIR/android"
 chmod +x gradlew

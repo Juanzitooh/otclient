@@ -25,6 +25,7 @@
 #ifdef ANDROID
 
 #include <game-activity/native_app_glue/android_native_app_glue.h>
+#include <cstdint>
 #include <string>
 
 class AndroidManager {
@@ -36,6 +37,7 @@ public:
 
     void showKeyboardSoft();
     void hideKeyboard();
+    void hideStartupSplash();
 
     // Input preview toolbar: positioned near the focused widget
     void showInputPreview(const std::string& text, int widgetX = -1, int widgetY = -1, int widgetW = -1, int widgetH = -1);
@@ -49,6 +51,11 @@ public:
 
     std::string getStringFromJString(jstring);
     std::string getAppBaseDir();
+    std::string getPackageName();
+    int getVersionCode();
+    std::int64_t getFileSize(const std::string& path);
+    std::string sha256File(const std::string& path);
+    int installApk(const std::string& path);
 
     float getScreenDensity();
 
@@ -60,12 +67,18 @@ private:
     jobject m_androidManagerJObject;
     jmethodID m_midShowSoftKeyboard;
     jmethodID m_midHideSoftKeyboard;
+    jmethodID m_midHideStartupSplash;
     jmethodID m_midGetDisplayDensity;
     jmethodID m_midShowInputPreview;
     jmethodID m_midUpdateInputPreview;
     jmethodID m_midHideInputPreview;
     jmethodID m_midGetClipboardText;
     jmethodID m_midSetClipboardText;
+    jmethodID m_midGetPackageName;
+    jmethodID m_midGetVersionCode;
+    jmethodID m_midGetFileSize;
+    jmethodID m_midSha256File;
+    jmethodID m_midInstallApk;
 };
 
 extern AndroidManager g_androidManager;

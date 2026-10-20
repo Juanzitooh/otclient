@@ -24,6 +24,8 @@ local ELEMENTAL_UI_CLICK_SOUND = '/modules/client_entergame/sounds/digital-click
 local ELEMENTAL_UI_CONFIRM_SOUND = '/modules/client_entergame/sounds/digital-confirm.ogg'
 local ELEMENTAL_LOGIN_TRANSITION_MS = 270
 local loginPending = false
+local clientAssetsCheckInProgress = false
+local clientAssetsCheckCompleteVersion
 local loginTransitionEvent
 local loginPanelsHideEvent
 local elementalClientLayout = false
@@ -467,6 +469,13 @@ function EnterGame.hidePanels()
     local gameInterface = g_modules.getModule('game_interface')
     if gameInterface and gameInterface:isLoaded() then
         modules.client_topmenu.hide()
+    elseif g_platform.isMobile() then
+        local topMenuModule = modules.client_topmenu
+        local topMenu = topMenuModule and topMenuModule.getTopMenu and
+            topMenuModule.getTopMenu()
+        if topMenu and not topMenu:isDestroyed() then
+            topMenu:hide()
+        end
     end
 
     local backgroundModule = g_modules.getModule("client_background")
@@ -497,7 +506,7 @@ function EnterGame.showServerList()
     end
 end
 
-function EnterGame.firstShow()
+local function continueFirstShow()
     EnterGame.show()
 
     local host = g_settings.get('host')
@@ -525,6 +534,27 @@ function EnterGame.firstShow()
     end
 end
 
+function EnterGame.getSelectedClientVersion()
+    if clientBox then
+        return tonumber(clientBox:getText())
+    end
+    return tonumber(g_settings.getInteger('client-version'))
+end
+
+function EnterGame.markClientAssetsReady(version)
+    clientAssetsCheckCompleteVersion = tonumber(version)
+end
+
+function EnterGame.firstShow()
+    if MobileLauncher and MobileLauncher.show and MobileLauncher.show(continueFirstShow) then
+        return
+    end
+    if g_android and g_android.hideStartupSplash then
+        g_android.hideStartupSplash()
+    end
+    continueFirstShow()
+end
+
 function EnterGame.terminate()
     Keybind.delete("Misc.", "Change Character")
     cancelLoginPanelsHide()
@@ -544,6 +574,8 @@ function EnterGame.terminate()
 
     cancelLoginTransition()
     loginPending = false
+    clientAssetsCheckInProgress = false
+    clientAssetsCheckCompleteVersion = nil
 
     if enterGame then
         enterGame:destroy()
@@ -1132,14 +1164,51 @@ function EnterGame.doLogin()
     g_settings.set('port', G.port)
     g_settings.set('client-version', clientVersion)
 
-    if clientVersion >= 1281 and modules.client_assets and modules.client_assets.ensureClientVersion and
-        (not modules.client_assets.isEnabled or modules.client_assets.isEnabled()) and
-        not modules.client_assets.isClientVersionInstalled(clientVersion) then
-        modules.client_assets.ensureClientVersion(clientVersion, function(success, message)
+    local clientAssetsEnabled = clientVersion >= 1281 and modules.client_assets and
+        modules.client_assets.ensureClientVersion and
+        (not modules.client_assets.isEnabled or modules.client_assets.isEnabled())
+    local shouldSyncClientAssets = false
+    if clientAssetsEnabled then
+        shouldSyncClientAssets = not modules.client_assets.isClientVersionInstalled(clientVersion) or
+            (modules.client_assets.shouldCheckClientVersionUpdates and
+             modules.client_assets.shouldCheckClientVersionUpdates())
+    end
+
+    if shouldSyncClientAssets and clientAssetsCheckCompleteVersion ~= clientVersion then
+        if clientAssetsCheckInProgress then
+            return
+        end
+
+        clientAssetsCheckInProgress = true
+        local checkedVersion = clientVersion
+        modules.client_assets.ensureClientVersion(checkedVersion, function(success, message, assetsChanged)
+            clientAssetsCheckInProgress = false
             if success then
+                local gameThings = modules.game_things
+                local needsAssetReload = assetsChanged or not gameThings or
+                    not gameThings.isLoaded or not gameThings.isLoaded()
+                if needsAssetReload and
+                   (not gameThings or not gameThings.reloadClientVersion or
+                    not gameThings.reloadClientVersion(checkedVersion)) then
+                    clientAssetsCheckCompleteVersion = nil
+                    local reloadError = tr('Client assets were updated, but could not be loaded. Close and reopen the client before logging in.')
+                    if elementalClientLayout then
+                        EnterGame.setLoginStatus(reloadError, true)
+                    else
+                        local errorBox = displayErrorBox(tr('Login Error'), reloadError)
+                        connect(errorBox, {
+                            onOk = EnterGame.show
+                        })
+                    end
+                    return
+                end
+
+                clientAssetsCheckCompleteVersion = checkedVersion
                 EnterGame.doLogin()
                 return
             end
+
+            clientAssetsCheckCompleteVersion = nil
 
             local errorMessage = message or tr('Unable to download client assets.')
             if elementalClientLayout then
@@ -1152,6 +1221,10 @@ function EnterGame.doLogin()
             end
         end)
         return
+    end
+
+    if clientAssetsCheckCompleteVersion == clientVersion or not shouldSyncClientAssets then
+        clientAssetsCheckCompleteVersion = nil
     end
 
     if g_platform.isMobile() and not elementalClientLayout then

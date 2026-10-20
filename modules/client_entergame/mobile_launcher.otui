@@ -1,0 +1,180 @@
+ElementalMobileLauncher < UIWidget
+  anchors.fill: parent
+  focusable: true
+  background-color: $elementalNight
+  clipping: true
+
+  UIWidget
+    id: mobileLauncherArtwork
+    anchors.fill: parent
+    image-source: /images/brand/elemental-world.png
+    image-fixed-ratio: true
+    image-repeated: false
+    image-smooth: true
+    phantom: true
+    focusable: false
+
+  Panel
+    id: mobileLauncherDimmer
+    anchors.fill: parent
+    background-color: #080a1066
+    phantom: true
+    focusable: false
+
+  UIWidget
+    id: mobileLauncherLogoMask
+    anchors.left: parent.left
+    anchors.top: parent.top
+    margin-left: 36
+    margin-top: 8
+    size: 0 206
+    clipping: true
+    phantom: true
+    focusable: false
+
+    UIWidget
+      id: mobileLauncherLogo
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      size: 680 206
+      image-source: /images/brand/elemental-signature-dark.png
+      image-size: 680 206
+      image-smooth: true
+      phantom: true
+      focusable: false
+
+    Label
+      id: mobileLauncherSlogan
+      anchors.left: parent.left
+      anchors.top: parent.top
+      margin-left: 250
+      margin-top: 167
+      width: 430
+      height: 20
+      text: COLETE, CONSTRUA, LUTE E VIVA ESSA AVENTURA
+      text-align: left
+      color: $elementalText
+      font: Verdana Bold-13px
+      phantom: true
+      focusable: false
+
+  Label
+    id: mobileLauncherChannel
+    anchors.top: parent.top
+    anchors.right: parent.right
+    margin-top: 18
+    margin-right: 22
+    width: 105
+    height: 28
+    text: TESTE FECHADO
+    text-align: center
+    color: $elementalAmber
+    font: Verdana Bold-9px
+    background-color: #080a10cc
+    border-width: 1
+    border-color: $elementalAmber
+    phantom: true
+
+  Label
+    id: mobileLauncherVersion
+    anchors.top: mobileLauncherChannel.bottom
+    anchors.right: parent.right
+    margin-top: 7
+    margin-right: 22
+    width: 105
+    text-align: right
+    color: $elementalAir
+    font: verdana-10px-antialised
+    text-auto-resize: true
+    phantom: true
+
+  Panel
+    id: mobileLauncherFooter
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    height: 118
+    background-color: #080a10e8
+    border-width-top: 1
+    border-color: $elementalAmber
+    padding: 20
+
+    Label
+      id: mobileLauncherStatus
+      anchors.left: parent.left
+      anchors.top: parent.top
+      anchors.right: mobileLauncherAction.left
+      margin-right: 22
+      text: Preparando o Elemental
+      text-align: left
+      color: $elementalText
+      font: Verdana Bold-11px
+      text-auto-resize: true
+
+    Label
+      id: mobileLauncherDetail
+      anchors.left: mobileLauncherStatus.left
+      anchors.right: mobileLauncherStatus.right
+      anchors.top: mobileLauncherStatus.bottom
+      margin-top: 4
+      text: Verificando sprites e audio para esta versao.
+      text-align: left
+      color: $elementalMuted
+      font: verdana-10px-antialised
+      text-wrap: true
+      height: 28
+
+    ProgressBar
+      id: mobileLauncherProgress
+      anchors.left: mobileLauncherStatus.left
+      anchors.right: mobileLauncherStatus.right
+      anchors.top: mobileLauncherDetail.bottom
+      margin-top: 7
+      height: 12
+      background-color: $elementalRaised
+
+    ElementalPrimaryButton
+      id: mobileLauncherAction
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      width: 205
+      height: 48
+      text: PREPARANDO
+      enabled: false
+      @onClick: MobileLauncher.onAction()
+
+  Panel
+    id: mobileLauncherCarouselDots
+    anchors.horizontalCenter: parent.horizontalCenter
+    anchors.bottom: mobileLauncherFooter.top
+    margin-bottom: 12
+    size: 56 10
+    background-color: #ffffff00
+    phantom: false
+
+    UIWidget
+      id: mobileLauncherDotOne
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      size: 10 10
+      background-color: $elementalAmber
+      @onClick: MobileLauncher.setSlide(1)
+
+    UIWidget
+      id: mobileLauncherDotTwo
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.verticalCenter: parent.verticalCenter
+      size: 10 10
+      background-color: #f7f1e466
+      @onClick: MobileLauncher.setSlide(2)
+
+    UIWidget
+      id: mobileLauncherDotThree
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      size: 10 10
+      background-color: #f7f1e466
+      @onClick: MobileLauncher.setSlide(3)
+
+ElementalMobileLauncher
+  id: mobileLauncher

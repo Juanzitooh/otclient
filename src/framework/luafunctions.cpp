@@ -29,6 +29,9 @@
 #include <framework/core/resourcemanager.h>
 #include <framework/luaengine/luainterface.h>
 #include <framework/platform/platform.h>
+#ifdef ANDROID
+#include <framework/platform/androidmanager.h>
+#endif
 #include <framework/proxy/proxy.h>
 #include <framework/stdext/net.h>
 #include <framework/util/crypt.h>
@@ -138,6 +141,16 @@ void Application::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_platform", "getSoftKeyboardHeight", &Platform::getSoftKeyboardHeight, &g_platform);
     g_lua.bindSingletonFunction("g_platform", "openDir", &Platform::openDir, &g_platform);
 
+#ifdef ANDROID
+    g_lua.registerSingletonClass("g_android");
+    g_lua.bindSingletonFunction("g_android", "hideStartupSplash", &AndroidManager::hideStartupSplash, &g_androidManager);
+    g_lua.bindSingletonFunction("g_android", "getPackageName", &AndroidManager::getPackageName, &g_androidManager);
+    g_lua.bindSingletonFunction("g_android", "getVersionCode", &AndroidManager::getVersionCode, &g_androidManager);
+    g_lua.bindSingletonFunction("g_android", "getFileSize", &AndroidManager::getFileSize, &g_androidManager);
+    g_lua.bindSingletonFunction("g_android", "sha256File", &AndroidManager::sha256File, &g_androidManager);
+    g_lua.bindSingletonFunction("g_android", "installApk", &AndroidManager::installApk, &g_androidManager);
+#endif
+
     // Application
     g_lua.registerSingletonClass("g_app");
     g_lua.bindSingletonFunction("g_app", "setName", &Application::setName, static_cast<Application*>(&g_app));
@@ -215,9 +228,12 @@ void Application::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_http", "setEnableTimeOutOnReadWrite", &Http::setEnableTimeOutOnReadWrite, &g_http);
     g_lua.bindSingletonFunction("g_http", "addCustomHeader", &Http::addCustomHeader, &g_http);
     g_lua.bindSingletonFunction("g_http", "get", &Http::get, &g_http);
+    g_lua.bindSingletonFunction("g_http", "getWithBearer", &Http::getWithBearer, &g_http);
     g_lua.bindSingletonFunction("g_http", "post", &Http::post, &g_http);
+    g_lua.bindSingletonFunction("g_http", "postSecure", &Http::postSecure, &g_http);
     g_lua.bindSingletonFunction("g_http", "postWithBearer", &Http::postWithBearer, &g_http);
     g_lua.bindSingletonFunction("g_http", "download", &Http::download, &g_http);
+    g_lua.bindSingletonFunction("g_http", "downloadWithBearer", &Http::downloadWithBearer, &g_http);
     g_lua.bindSingletonFunction("g_http", "ws", &Http::ws, &g_http);
     g_lua.bindSingletonFunction("g_http", "wsSend", &Http::wsSend, &g_http);
     g_lua.bindSingletonFunction("g_http", "wsClose", &Http::wsClose, &g_http);

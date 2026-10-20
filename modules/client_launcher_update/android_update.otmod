@@ -1,0 +1,9 @@
+Module
+  name: client_launcher_android_update
+  description: Checks and safely installs Elemental Android APK updates
+  author: Elemental
+  dependencies: [ client_topmenu, client_distribution_auth ]
+  autoload: true
+  scripts: [ android_update ]
+  @onLoad: init()
+  @onUnload: terminate()

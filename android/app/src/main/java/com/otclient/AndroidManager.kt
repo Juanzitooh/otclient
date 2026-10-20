@@ -1,16 +1,26 @@
 package com.otclient
 
+import android.app.PendingIntent
+import android.content.Intent
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.pm.PackageInstaller
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.view.isVisible
+import androidx.core.content.pm.PackageInfoCompat
+import java.io.File
+import java.security.MessageDigest
 
 class AndroidManager(
     private val context: Context,
@@ -25,6 +35,7 @@ class AndroidManager(
     private var shouldShowPreview = false
     private var pendingPreviewText: String = ""
     private var imeHeight: Int = 0
+    private var startupSplash: ElementalStartupSplash? = null
 
     // Widget position from C++ (in game pixels, maps 1:1 to screen pixels)
     private var widgetX: Int = -1
@@ -57,6 +68,36 @@ class AndroidManager(
     /*
      * Methods called from JNI
      */
+
+    fun showStartupSplash(container: ViewGroup) {
+        if (startupSplash != null) return
+
+        val splash = ElementalStartupSplash(context)
+        startupSplash = splash
+        container.addView(
+            splash,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        splash.bringToFront()
+    }
+
+    fun hideStartupSplash() {
+        handler.postDelayed({
+            val splash = startupSplash ?: return@postDelayed
+            splash.animate()
+                .alpha(0f)
+                .setDuration(220)
+                .withEndAction {
+                    splash.release()
+                    (splash.parent as? ViewGroup)?.removeView(splash)
+                    if (startupSplash === splash) startupSplash = null
+                }
+                .start()
+        }, 160)
+    }
 
     fun showSoftKeyboard() {
         handler.post {
@@ -121,6 +162,119 @@ class AndroidManager(
     }
 
     fun getDisplayDensity(): Float = context.resources.displayMetrics.density
+
+    fun getPackageName(): String = context.packageName
+
+    fun getVersionCode(): Int = PackageInfoCompat.getLongVersionCode(
+        context.packageManager.getPackageInfo(context.packageName, 0),
+    ).toInt()
+
+    fun getFileSize(path: String): Long = validatedUpdateFile(path)?.length() ?: -1
+
+    fun sha256File(path: String): String {
+        val file = validatedUpdateFile(path) ?: return ""
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+    }
+
+    fun installApk(path: String): Int {
+        val apk = validatedUpdateFile(path) ?: return 0
+        val requiresSourcePermission = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O &&
+            !context.packageManager.canRequestPackageInstalls()
+
+        if (requiresSourcePermission) {
+            handler.post {
+                try {
+                    val settingsIntent = Intent(
+                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:${context.packageName}"),
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(settingsIntent)
+                } catch (_: Exception) {
+                    showInstallError("Não foi possível abrir as configurações de instalação.")
+                }
+            }
+            return 1
+        }
+
+        Thread({
+            try {
+                val installer = context.packageManager.packageInstaller
+                val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+                    setAppPackageName(context.packageName)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                        setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
+                    }
+                }
+                val sessionId = installer.createSession(params)
+                try {
+                    installer.openSession(sessionId).use { session ->
+                        apk.inputStream().buffered().use { input ->
+                            session.openWrite(apk.name, 0, apk.length()).use { output ->
+                                input.copyTo(output)
+                                session.fsync(output)
+                            }
+                        }
+
+                        val callbackIntent = Intent(context, AndroidInstallReceiver::class.java)
+                            .setAction("${context.packageName}.INSTALL_STATUS.$sessionId")
+                        val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                PendingIntent.FLAG_MUTABLE
+                            } else {
+                                0
+                            }
+                        val statusCallback = PendingIntent.getBroadcast(
+                            context,
+                            sessionId,
+                            callbackIntent,
+                            pendingFlags,
+                        )
+                        session.commit(statusCallback.intentSender)
+                    }
+                } catch (error: Exception) {
+                    installer.abandonSession(sessionId)
+                    throw error
+                }
+            } catch (error: Exception) {
+                showInstallError("Não foi possível preparar a instalação: ${error.message ?: "erro desconhecido"}")
+            }
+        }, "otclient-apk-installer").apply {
+            isDaemon = true
+            start()
+        }
+        return 2
+    }
+
+    private fun showInstallError(message: String) {
+        handler.post {
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun validatedUpdateFile(path: String): File? {
+        val apk = try {
+            File(path).canonicalFile
+        } catch (_: Exception) {
+            return null
+        }
+        val updatesDirectory = try {
+            File(context.filesDir, "game_data/updates").canonicalFile
+        } catch (_: Exception) {
+            return null
+        }
+        return apk.takeIf {
+            it.isFile && it.path.startsWith(updatesDirectory.path + File.separator)
+        }
+    }
 
     fun getClipboardText(): String {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
