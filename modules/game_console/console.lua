@@ -824,6 +824,13 @@ setElementalChatMinimized = function(minimized)
     end
 
     if minimized then
+        if not g_platform.isMobile() then
+            local windowLayer = modules.game_interface.getElementalWindowLayer()
+            if windowLayer and not windowLayer:isDestroyed() then
+                windowLayer:show()
+            end
+            consolePanel:show()
+        end
         elementalChatExpandedVisibility = {}
         for _, widgetId in ipairs(ELEMENTAL_CHAT_COLLAPSED_WIDGETS) do
             local widget = consolePanel:getChildById(widgetId)
@@ -867,8 +874,13 @@ setElementalChatMinimized = function(minimized)
             if elementalMobileChatButton then
                 elementalMobileChatButton:hide()
             end
-            consolePanel:show()
         end
+        local windowLayer = modules.game_interface.getElementalWindowLayer()
+        if windowLayer and not windowLayer:isDestroyed() then
+            windowLayer:show()
+            windowLayer:raise()
+        end
+        consolePanel:show()
         for widgetId, visible in pairs(elementalChatExpandedVisibility or {}) do
             local widget = consolePanel:getChildById(widgetId)
             if widget then
