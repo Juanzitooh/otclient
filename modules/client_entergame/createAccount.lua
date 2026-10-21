@@ -63,14 +63,11 @@ function toggleCreateAccount(showLogin)
         return
     end
 
-    if g_platform.isMobile() then
-        EnterGame.hide()
-    end
     createWidgetAccount()
 end
 
 local function createModalBackdrop()
-    if g_platform.isMobile() or modalBackdrop then
+    if modalBackdrop then
         return
     end
 
@@ -107,8 +104,16 @@ function createWidgetAccount()
     end
 
     createModalBackdrop()
-    local accountLayout = g_platform.isMobile() and 'createAccount' or 'createAccount_elemental_desktop'
+    local accountLayout = g_platform.isMobile() and
+        'createAccount_elemental_mobile' or 'createAccount_elemental_desktop'
     accountWindow = g_ui.displayUI(accountLayout)
+    if g_platform.isMobile() then
+        local width = math.max(320, math.min(520, rootWidget:getWidth() - 40))
+        accountWindow:setSize({width = width, height = 520})
+        local buttonWidth = math.max(130, math.min(190, math.floor((width - 64) / 2)))
+        getAccountWidget('buttonBackToLogin'):setWidth(buttonWidth)
+        getAccountWidget('buttonStartPlaying'):setWidth(buttonWidth)
+    end
     accountWindow:show()
     accountWindow:raise()
     accountWindow:focus()
