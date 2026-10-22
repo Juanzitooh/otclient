@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import sys
 
@@ -68,10 +69,28 @@ class DistributionConfigTests(unittest.TestCase):
         ).decode("utf-8")
 
         self.assertIn('channel = "beta",', result)
+        self.assertIn('releaseVersion = "0.5.0-beta.1",', result)
         self.assertIn('feedPlatform = "android-arm64",', result)
         self.assertIn('androidManifestUrl = "",', result)
         self.assertIn('clientAssetsManifestUrl = "",', result)
         self.assertIn('authUrl = "",', result)
+
+    def test_beta_config_uses_explicit_build_version(self):
+        result = build_elemental_bundle.distribution_config_for_beta(
+            "beta", "", "", "", "0.5.0-beta.2"
+        ).decode("utf-8")
+
+        self.assertIn('releaseVersion = "0.5.0-beta.2",', result)
+
+    def test_distribution_config_uses_selected_android_version_name(self):
+        with patch.dict(
+            "os.environ", {"ELEMENTAL_ANDROID_VERSION_NAME": "2026.10.21-test.1"}
+        ):
+            result = package_android_data.validated_distribution_config(
+                "test", "", "", ""
+            ).decode("utf-8")
+
+        self.assertIn('releaseVersion = "2026.10.21-test.1",', result)
 
     def test_beta_config_rejects_partial_manifests_and_test_auth(self):
         with self.assertRaises(ValueError):

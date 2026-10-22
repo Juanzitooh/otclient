@@ -103,8 +103,12 @@ def local_development_assets_to_bundle():
                 yield path, relative.as_posix()
 
 
-def distribution_config_for_beta(channel, android_url, assets_url, auth_url):
-    return validated_distribution_config(channel, android_url, assets_url, auth_url)
+def distribution_config_for_beta(
+    channel, android_url, assets_url, auth_url, release_version=None
+):
+    return validated_distribution_config(
+        channel, android_url, assets_url, auth_url, release_version
+    )
 
 
 def main():
@@ -135,6 +139,7 @@ def main():
             args.android_manifest_url,
             args.client_assets_manifest_url,
             args.test_auth_url,
+            os.getenv("ELEMENTAL_ANDROID_VERSION_NAME"),
         )
     except ValueError as error:
         parser.error(str(error))

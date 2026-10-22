@@ -25,6 +25,12 @@ val elementalApplicationId = when (elementalChannel) {
     "beta", "release" -> "br.com.elementalmmo.client"
     else -> throw GradleException("ELEMENTAL_ANDROID_CHANNEL must be test, beta, or release")
 }
+val elementalAppName = when (elementalChannel) {
+    "test" -> "Elemental Test"
+    "beta" -> "Elemental Beta"
+    "release" -> "Elemental"
+    else -> throw GradleException("ELEMENTAL_ANDROID_CHANNEL must be test, beta, or release")
+}
 val releaseKeystore = System.getenv("RELEASE_KEYSTORE")
 val releaseStorePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
 val releaseKeyAlias = System.getenv("RELEASE_KEY_ALIAS")
@@ -47,6 +53,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
+        manifestPlaceholders["elementalAppName"] = elementalAppName
         applicationId = elementalApplicationId
         minSdk = 21
         targetSdk = 36

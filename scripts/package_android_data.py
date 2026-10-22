@@ -76,11 +76,16 @@ def same_origin(left: str, right: str) -> bool:
 
 
 def distribution_config(
-    channel: str, android_url: str, assets_url: str, auth_url: str
+    channel: str,
+    android_url: str,
+    assets_url: str,
+    auth_url: str,
+    release_version: str,
 ) -> bytes:
     return (
         "return {\n"
         f"  channel = {lua_string(channel)},\n"
+        f"  releaseVersion = {lua_string(release_version)},\n"
         f"  androidManifestUrl = {lua_string(android_url)},\n"
         f"  clientAssetsManifestUrl = {lua_string(assets_url)},\n"
         f"  authUrl = {lua_string(auth_url)},\n"
@@ -90,7 +95,11 @@ def distribution_config(
 
 
 def validated_distribution_config(
-    channel: str, android_url: str, assets_url: str, auth_url: str
+    channel: str,
+    android_url: str,
+    assets_url: str,
+    auth_url: str,
+    release_version: str | None = None,
 ) -> bytes:
     if channel not in CHANNELS:
         raise ValueError(f"Canal Android inválido: {channel}")
@@ -113,7 +122,14 @@ def validated_distribution_config(
     ):
         raise ValueError("Manifestos e autenticação do feed test precisam usar a mesma origem")
 
-    return distribution_config(channel, android_url, assets_url, auth_url)
+    release_version = (
+        release_version
+        or os.environ.get("ELEMENTAL_ANDROID_VERSION_NAME")
+        or ("0.5.0-beta.1" if channel == "beta" else "1.0")
+    )
+    return distribution_config(
+        channel, android_url, assets_url, auth_url, release_version
+    )
 
 
 def package(

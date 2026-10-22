@@ -7,7 +7,8 @@ local FEEDBACK_CATEGORIES = {
 
 local FEEDBACK_ICON = '/images/icons/icon_help'
 local FEEDBACK_BUTTON_ID = 'elementalBetaFeedbackButton'
-local FEEDBACK_RELEASE_VERSION = '0.5.0-beta.1'
+local FEEDBACK_DESCRIPTION_MAX_LENGTH = 2000
+local FEEDBACK_DESCRIPTION_MAX_BYTES = FEEDBACK_DESCRIPTION_MAX_LENGTH * 4
 local FEEDBACK_TIMEOUT_SECONDS = 10
 
 local feedbackWindow
@@ -27,6 +28,20 @@ local function getBetaFeedbackEndpoint()
         return nil
     end
     return G.host:gsub('/login$', '/feedback')
+end
+
+local function getFeedbackReleaseVersion()
+    local updater = Services and Services.elementalUpdater
+    local releaseVersion = updater and updater.releaseVersion
+    if type(releaseVersion) ~= 'string' or releaseVersion == '' then
+        return 'unknown'
+    end
+    return releaseVersion
+end
+
+local function getUtf8CharacterCount(value)
+    local _, continuationBytes = value:gsub('[\128-\191]', '')
+    return #value - continuationBytes
 end
 
 local function setFeedbackStatus(message, isError)
@@ -68,6 +83,7 @@ function init()
     feedbackDescriptionEdit = feedbackWindow:getChildById('feedbackDescriptionEdit')
     feedbackStatusLabel = feedbackWindow:getChildById('feedbackStatusLabel')
     feedbackSendButton = feedbackWindow:getChildById('feedbackSendButton')
+    feedbackDescriptionEdit:setMaxLength(FEEDBACK_DESCRIPTION_MAX_BYTES)
 
     for _, category in ipairs(FEEDBACK_CATEGORIES) do
         feedbackCategoryBox:addOption(category.label, category.id)
@@ -134,7 +150,7 @@ function show()
         return
     end
 
-    feedbackWindow:getChildById('feedbackReleaseVersion'):setText(FEEDBACK_RELEASE_VERSION)
+    feedbackWindow:getChildById('feedbackReleaseVersion'):setText(getFeedbackReleaseVersion())
     feedbackCategoryBox:setCurrentOptionByData('bug')
     feedbackDescriptionEdit:setText('')
     setFeedbackStatus('', false)
@@ -171,9 +187,13 @@ function sendFeedback()
         setFeedbackStatus(tr('Write a short description before sending.'), true)
         return
     end
+    if getUtf8CharacterCount(description) > FEEDBACK_DESCRIPTION_MAX_LENGTH then
+        setFeedbackStatus(tr('Description must be 2,000 characters or fewer.'), true)
+        return
+    end
 
     local payload = {
-        releaseVersion = FEEDBACK_RELEASE_VERSION,
+        releaseVersion = getFeedbackReleaseVersion(),
         category = categoryOption.data,
         description = description,
     }
