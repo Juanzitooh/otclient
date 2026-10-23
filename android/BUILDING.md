@@ -29,11 +29,12 @@ sequence and installs alongside them.
 
 ```bash
 export ELEMENTAL_ANDROID_CHANNEL=test
-export ELEMENTAL_ANDROID_MANIFEST_URL="https://feed.example/test/android-manifest.json"
-export ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL="https://feed.example/test/client-assets-manifest.json"
-export ELEMENTAL_TEST_AUTH_URL="https://feed.example/test/enroll"
-export ELEMENTAL_ANDROID_VERSION_CODE=42
-export ELEMENTAL_ANDROID_VERSION_NAME=2026.10.19-test.1
+export ELEMENTAL_TEST_LOGIN_URL="https://test-game.elementalmmo.com.br/beta/v1/login"
+export ELEMENTAL_ANDROID_MANIFEST_URL="https://test-feed.elementalmmo.com.br/updates/test/android-manifest.json"
+export ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL="https://test-feed.elementalmmo.com.br/updates/test/client-assets-manifest.json"
+export ELEMENTAL_TEST_AUTH_URL="https://test-feed.elementalmmo.com.br/distribution/v1/enroll"
+export ELEMENTAL_ANDROID_VERSION_CODE=44
+export ELEMENTAL_ANDROID_VERSION_NAME=2026.10.23-test.1
 export OTCLIENT_ANDROID_ABIS=arm64-v8a
 
 # 1. Run the setup script (builds LuaJIT, installs vcpkg deps, generates data.zip)
@@ -79,17 +80,19 @@ LuaJIT's build is a two-stage process: host tools (`minilua`, `buildvm`) run on 
 
 ### Step 2: Generate data.zip
 
-`setup_android_deps.sh` uses this generic packager for `test` and `release`.
-The `beta` channel uses the beta packager described below so the server login
-is rewritten to the isolated HTTPS endpoint.
+`setup_android_deps.sh` uses the channel-aware packager for `test` and `beta`.
+For `test`, set `ELEMENTAL_TEST_LOGIN_URL`; the builder rewrites the packaged
+default server to that HTTPS endpoint and removes the local HTTP test override.
+The `release` channel uses the generic packager.
 
 ```bash
-# Rebuild data.zip when a channel or endpoint changes.
+# This generic packager is for release. Test and beta use build_elemental_bundle.py
+# so the packaged OTClient login points at the selected HTTPS server.
 python3 scripts/package_android_data.py \
-  --channel "$ELEMENTAL_ANDROID_CHANNEL" \
+  --channel release \
   --android-manifest-url "$ELEMENTAL_ANDROID_MANIFEST_URL" \
   --client-assets-manifest-url "$ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL" \
-  --test-auth-url "${ELEMENTAL_TEST_AUTH_URL:-}"
+  --test-auth-url ""
 ```
 
 The bundle embeds those values in `elemental-distribution.lua`. Keep URLs on
@@ -168,15 +171,39 @@ docker rm otc-build
 ### 32-bit build fails with `gcc -m32`
 - Install `gcc-multilib`: `sudo apt install gcc-multilib g++-multilib`
 
+## Elemental test channel
+
+Build the test client with its own package ID and a release signature. Use a
+new immutable version name and an increasing test `versionCode` for every APK:
+
+```bash
+export ELEMENTAL_ANDROID_CHANNEL=test
+export ELEMENTAL_TEST_LOGIN_URL="https://test-game.elementalmmo.com.br/beta/v1/login"
+export ELEMENTAL_ANDROID_MANIFEST_URL="https://test-feed.elementalmmo.com.br/updates/test/android-manifest.json"
+export ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL="https://test-feed.elementalmmo.com.br/updates/test/client-assets-manifest.json"
+export ELEMENTAL_TEST_AUTH_URL="https://test-feed.elementalmmo.com.br/distribution/v1/enroll"
+export ELEMENTAL_ANDROID_VERSION_CODE=44
+export ELEMENTAL_ANDROID_VERSION_NAME=2026.10.23-test.1
+export OTCLIENT_ANDROID_ABIS=arm64-v8a
+bash setup_android_deps.sh
+cd android && ./gradlew :app:assembleRelease
+```
+
+The result uses `br.com.elementalmmo.client.test`. It downloads the APK and
+incremental client assets only after the tester enrolls this installation with
+the protected feed; the shared enrollment password is never embedded in the
+APK. Test sign-in credentials are typed in the client by each tester.
+
 ## Elemental closed beta
 
 The beta build defaults to channel `beta`, package ID
 `br.com.elementalmmo.client`, version `0.5.0-beta.1`, version code `1`, and
-ABI `arm64-v8a`. The beta-specific bundle builder keeps the server login on an
-HTTPS `/beta/v1/login` endpoint and removes the optional HTTP test override
-from the packaged `init.lua`. It also embeds `elemental-distribution.lua` with
-the beta channel and `android-arm64` platform. Leave manifest URLs unset until
-an approved feed exists; both updaters stay disabled in that case.
+ABI `arm64-v8a`. The channel-aware bundle builder keeps `test` and `beta`
+logins on an HTTPS `/beta/v1/login` endpoint and removes the optional HTTP test
+override from the packaged `init.lua`. For test, the defaults use protected
+manifests and enrollment from `test-feed.elementalmmo.com.br`, while the
+selected game server remains `test-game.elementalmmo.com.br`. The enrollment
+password is entered by the tester and never embedded in the APK.
 
 ```bash
 export ELEMENTAL_ANDROID_CHANNEL=beta
@@ -202,8 +229,8 @@ Elemental app is not installed. Do not replace the project owner's app/profile.
 The community 15.25 pack is included only when
 `ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS=1` is explicitly set. D047
 allows that pack only for invited collaborators during closed development; it
-does not approve a public beta. D033/T5.7 remains a separate no-go gate for
-external release, deployment, access, account creation, or invitations.
+does not approve a public beta. D080 authorizes the closed test cohort only;
+it does not approve open beta or release and does not mark T5.7/T5.19 complete.
 
 Keep the signing keystore outside Git, load its passwords from protected local
 storage, and use alias `elemental-beta`. Do not add APKs to Git. Prepare and
