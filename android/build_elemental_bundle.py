@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "android/app/src/main/assets/data.zip"
 FORBIDDEN_SUFFIXES = {".env", ".jks", ".key", ".keystore", ".p12", ".pem"}
 sys.path.insert(0, str(ROOT / "scripts"))
-from package_android_data import validated_distribution_config
+from package_android_data import CHANNELS, validated_distribution_config
 
 
 DEFAULT_LOCAL_LOGIN_URL = "http://127.0.0.1:8088/login"
@@ -103,7 +103,7 @@ def local_development_assets_to_bundle():
                 yield path, relative.as_posix()
 
 
-def distribution_config_for_beta(
+def distribution_config_for_channel(
     channel, android_url, assets_url, auth_url, release_version=None
 ):
     return validated_distribution_config(
@@ -114,7 +114,11 @@ def distribution_config_for_beta(
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--login-url", required=True)
-    parser.add_argument("--channel", choices=("beta",), default="beta")
+    parser.add_argument(
+        "--channel",
+        choices=sorted(CHANNELS),
+        default=os.getenv("ELEMENTAL_ANDROID_CHANNEL", "beta"),
+    )
     parser.add_argument(
         "--android-manifest-url", default=os.getenv("ELEMENTAL_ANDROID_MANIFEST_URL", "")
     )
@@ -134,7 +138,7 @@ def main():
     except ValueError as error:
         parser.error(str(error))
     try:
-        distribution_config = distribution_config_for_beta(
+        distribution_config = distribution_config_for_channel(
             args.channel,
             args.android_manifest_url,
             args.client_assets_manifest_url,
@@ -157,7 +161,7 @@ def main():
             for source, relative in local_development_assets_to_bundle():
                 bundle.write(source, relative)
         startup = (
-            "-- Isolated Android beta endpoint; publication requires D033/T5.7.\n"
+            f"-- Isolated Android {args.channel} endpoint.\n"
             "modules.client_entergame.EnterGame.setDefaultServer("
             f"{json.dumps(args.login_url)}, {port}, 1525)\n"
         )

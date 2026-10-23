@@ -7,6 +7,13 @@ vcpkg_root=${VCPKG_ROOT:?Set VCPKG_ROOT to the local vcpkg checkout}
 channel=${ELEMENTAL_ANDROID_CHANNEL:-beta}
 requested_abis=${OTCLIENT_ANDROID_ABIS:-arm64-v8a}
 
+case "$channel" in
+    test) : "${ELEMENTAL_TEST_LOGIN_URL:?Set ELEMENTAL_TEST_LOGIN_URL to an HTTPS /beta/v1/login endpoint}" ;;
+    beta) : "${ELEMENTAL_BETA_LOGIN_URL:?Set ELEMENTAL_BETA_LOGIN_URL to an isolated HTTPS /beta/v1/login endpoint}" ;;
+    release) ;;
+    *) echo "ELEMENTAL_ANDROID_CHANNEL must be test, beta, or release." >&2; exit 2 ;;
+esac
+
 ANDROID_NDK_HOME="$android_ndk" OTCLIENT_ANDROID_ABIS="$requested_abis" \
     bash "$project_root/build_luajit_android.sh"
 
@@ -24,21 +31,29 @@ for abi in "${abi_list[@]}"; do
 done
 
 case "$channel" in
-    beta)
-        login_url=${ELEMENTAL_BETA_LOGIN_URL:?Set ELEMENTAL_BETA_LOGIN_URL to an isolated HTTPS /beta/v1/login endpoint}
+    test|beta)
+        if [[ "$channel" == "test" ]]; then
+            login_url=${ELEMENTAL_TEST_LOGIN_URL:?Set ELEMENTAL_TEST_LOGIN_URL to an HTTPS /beta/v1/login endpoint}
+            if [[ "${ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS:-0}" == 1 ]]; then
+                echo "Community 15.25 assets are limited to the beta development bundle." >&2
+                exit 2
+            fi
+        else
+            login_url=${ELEMENTAL_BETA_LOGIN_URL:?Set ELEMENTAL_BETA_LOGIN_URL to an isolated HTTPS /beta/v1/login endpoint}
+        fi
         bundle_args=(
             --login-url "$login_url"
-            --channel beta
+            --channel "$channel"
             --android-manifest-url "${ELEMENTAL_ANDROID_MANIFEST_URL:-}"
             --client-assets-manifest-url "${ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL:-}"
             --test-auth-url "${ELEMENTAL_TEST_AUTH_URL:-}"
         )
-        if [[ "${ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS:-0}" == 1 ]]; then
+        if [[ "$channel" == "beta" && "${ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS:-0}" == 1 ]]; then
             bundle_args+=(--include-local-development-1525-assets)
         fi
         python3 "$project_root/android/build_elemental_bundle.py" "${bundle_args[@]}"
         ;;
-    test|release)
+    release)
         if [[ "${ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS:-0}" == 1 ]]; then
             echo "Community 15.25 assets are limited to the beta development bundle." >&2
             exit 2

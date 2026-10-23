@@ -64,7 +64,7 @@ class ConfigureServerInitTests(unittest.TestCase):
 
 class DistributionConfigTests(unittest.TestCase):
     def test_beta_config_disables_unconfigured_updaters(self):
-        result = build_elemental_bundle.distribution_config_for_beta(
+        result = build_elemental_bundle.distribution_config_for_channel(
             "beta", "", "", ""
         ).decode("utf-8")
 
@@ -76,7 +76,7 @@ class DistributionConfigTests(unittest.TestCase):
         self.assertIn('authUrl = "",', result)
 
     def test_beta_config_uses_explicit_build_version(self):
-        result = build_elemental_bundle.distribution_config_for_beta(
+        result = build_elemental_bundle.distribution_config_for_channel(
             "beta", "", "", "", "0.5.0-beta.2"
         ).decode("utf-8")
 
@@ -94,23 +94,38 @@ class DistributionConfigTests(unittest.TestCase):
 
     def test_beta_config_rejects_partial_manifests_and_test_auth(self):
         with self.assertRaises(ValueError):
-            build_elemental_bundle.distribution_config_for_beta(
+            build_elemental_bundle.distribution_config_for_channel(
                 "beta", "https://feed.example/android.json", "", ""
             )
 
         with self.assertRaises(ValueError):
-            build_elemental_bundle.distribution_config_for_beta(
+            build_elemental_bundle.distribution_config_for_channel(
                 "beta", "", "", "https://feed.example/enroll"
             )
 
     def test_beta_config_rejects_remote_http_manifest(self):
         with self.assertRaises(ValueError):
-            build_elemental_bundle.distribution_config_for_beta(
+            build_elemental_bundle.distribution_config_for_channel(
                 "beta",
                 "http://feed.example/android.json",
                 "http://feed.example/assets.json",
                 "",
             )
+
+    def test_test_channel_uses_remote_test_feed_urls_and_build_version(self):
+        version = "2026.10.23-test.1"
+        feed = "https://test-feed.elementalmmo.com.br"
+        with patch.dict("os.environ", {"ELEMENTAL_ANDROID_VERSION_NAME": version}):
+            result = build_elemental_bundle.distribution_config_for_channel(
+                "test",
+                f"{feed}/updates/test/android-manifest.json",
+                f"{feed}/updates/test/client-assets-manifest.json",
+                f"{feed}/distribution/v1/enroll",
+            ).decode("utf-8")
+
+        self.assertIn('channel = "test",', result)
+        self.assertIn(f'releaseVersion = "{version}",', result)
+        self.assertIn(f'authUrl = "{feed}/distribution/v1/enroll",', result)
 
 
 class GenericPackageAssetTests(unittest.TestCase):
