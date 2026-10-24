@@ -12,6 +12,7 @@ Window < UIWindow
   padding-left: 16
   padding-right: 16
   padding-bottom: 16
+  display-sound: 2785
 
   $disabled:
     color: #dfdfdf88
@@ -25,6 +26,13 @@ HeadlessWindow < UIWindow
   padding: 5
 
 MainWindow < Window
+  anchors.centerIn: parent
+
+WindowHigh < Window
+  image-source: /images/ui/window-high
+  image-border: 5
+
+MainWindowHigh < WindowHigh
   anchors.centerIn: parent
   
 StaticWindow < Window
