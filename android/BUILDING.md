@@ -33,7 +33,7 @@ export ELEMENTAL_TEST_LOGIN_URL="https://test-game.elementalmmo.com.br/beta/v1/l
 export ELEMENTAL_ANDROID_MANIFEST_URL="https://test-feed.elementalmmo.com.br/updates/test/android-manifest.json"
 export ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL="https://test-feed.elementalmmo.com.br/updates/test/client-assets-manifest.json"
 export ELEMENTAL_TEST_AUTH_URL="https://test-feed.elementalmmo.com.br/distribution/v1/enroll"
-export ELEMENTAL_ANDROID_VERSION_CODE=44
+export ELEMENTAL_ANDROID_VERSION_CODE=20261032
 export ELEMENTAL_ANDROID_VERSION_NAME=2026.10.23-test.1
 export OTCLIENT_ANDROID_ABIS=arm64-v8a
 
@@ -182,7 +182,7 @@ export ELEMENTAL_TEST_LOGIN_URL="https://test-game.elementalmmo.com.br/beta/v1/l
 export ELEMENTAL_ANDROID_MANIFEST_URL="https://test-feed.elementalmmo.com.br/updates/test/android-manifest.json"
 export ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL="https://test-feed.elementalmmo.com.br/updates/test/client-assets-manifest.json"
 export ELEMENTAL_TEST_AUTH_URL="https://test-feed.elementalmmo.com.br/distribution/v1/enroll"
-export ELEMENTAL_ANDROID_VERSION_CODE=44
+export ELEMENTAL_ANDROID_VERSION_CODE=20261032
 export ELEMENTAL_ANDROID_VERSION_NAME=2026.10.23-test.1
 export OTCLIENT_ANDROID_ABIS=arm64-v8a
 bash setup_android_deps.sh
