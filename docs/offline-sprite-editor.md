@@ -38,7 +38,16 @@ Undo and Redo revert edits in the active working copy. The editor also records p
 
 ## Manual validation for contributors
 
-The editor is built behind the CMake option `TOGGLE_FRAMEWORK_EDITOR=ON`. Build and launch the client using the normal instructions for the target platform, then open the editor while offline. Use a dedicated client write directory and a disposable work directory with a separate `data/things` tree; do not use a production package for destructive checks. The version selector only offers 15.x versions listed in `modules/gamelib/game.lua` (`g_game.getSupportedClients()`).
+The editor is built behind the CMake option `TOGGLE_FRAMEWORK_EDITOR`. Enable it when configuring the build; changing the default in `src/CMakeLists.txt` alone may not override an existing CMake cache:
+
+```bash
+cmake -S . -B build -DTOGGLE_FRAMEWORK_EDITOR=ON
+cmake --build build --target otclient
+```
+
+Launch that build while disconnected from the game world. The **Offline Assets Editor** button appears at the right side of the top menu while offline (including the login/character-list screens); it is deliberately hidden after entering a world. Disconnect or return to the character list to make it visible again. If it is still missing, confirm that `TOGGLE_FRAMEWORK_EDITOR:BOOL=ON` appears in the build directory's `CMakeCache.txt`, rebuild the `otclient` target, and launch the client from the PR checkout so it can discover `mods/game_sprite_editor`.
+
+Use a dedicated client write directory and a disposable work directory with a separate `data/things` tree; do not use a production package for destructive checks. The version selector only offers 15.x versions listed in `modules/gamelib/game.lua` (`g_game.getSupportedClients()`).
 
 Run these checks on each desktop platform being validated:
 
