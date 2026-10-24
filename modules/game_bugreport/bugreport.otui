@@ -1,39 +1,91 @@
-BugReportWindow < MainWindow
-  !text: tr('Report Bug')
-  size: 280 250
-  @onEscape: self:hide()
+BetaFeedbackWindow < MainWindow
+  !text: tr('Beta feedback')
+  size: 380 430
+  @onEscape: modules.game_bugreport.hideFeedback()
+  @onClose: modules.game_bugreport.hideFeedback()
 
   Label
-    id: bugLabel
-    !text: tr('Please use this dialog to only report bugs. Do not report rule violations here!')
-    text-wrap: true
-    text-auto-resize: true
+    id: feedbackPrivacyNote
     anchors.top: parent.top
     anchors.left: parent.left
     anchors.right: parent.right
+    height: 54
+    text-wrap: true
+    !text: tr('Send only the release version, category, and description (up to 2,000 characters). The report is linked to your account and UTC time. No logs, chat, or inventory are attached. Deleted within 90 days.')
 
-  MultilineTextEdit
-    id: bugTextEdit
-    anchors.top: bugLabel.bottom
+  Label
+    id: feedbackReleaseCaption
+    anchors.top: feedbackPrivacyNote.bottom
+    anchors.left: parent.left
+    margin-top: 8
+    height: 18
+    !text: tr('Release version')
+
+  Label
+    id: feedbackReleaseVersion
+    anchors.top: feedbackReleaseCaption.top
+    anchors.right: parent.right
+    height: 18
+    text-align: right
+
+  Label
+    id: feedbackCategoryCaption
+    anchors.top: feedbackReleaseCaption.bottom
+    anchors.left: parent.left
+    margin-top: 8
+    height: 20
+    !text: tr('Category')
+
+  ComboBox
+    id: feedbackCategoryBox
+    anchors.top: feedbackCategoryCaption.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    anchors.bottom: sendButton.top
-    margin-top: 4
+    margin-top: 2
+    height: 32
+
+  Label
+    id: feedbackDescriptionCaption
+    anchors.top: feedbackCategoryBox.bottom
+    anchors.left: parent.left
+    margin-top: 8
+    height: 20
+    !text: tr('Description (up to 2,000 characters)')
+
+  MultilineTextEdit
+    id: feedbackDescriptionEdit
+    anchors.top: feedbackDescriptionCaption.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: feedbackStatusLabel.top
+    margin-top: 3
     margin-bottom: 8
+    focusable: true
+
+  Label
+    id: feedbackStatusLabel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: feedbackSendButton.top
+    margin-bottom: 8
+    height: 32
+    text-wrap: true
 
   Button
-    id: sendButton
-    !text: tr('Send')
-    anchors.bottom: cancelButton.bottom
-    anchors.right: cancelButton.left
+    id: feedbackSendButton
+    anchors.bottom: parent.bottom
+    anchors.right: feedbackCancelButton.left
     margin-right: 10
-    width: 80
-    &onClick: doReport
+    width: 110
+    height: 34
+    !text: tr('Send')
+    @onClick: modules.game_bugreport.sendFeedback()
 
   Button
-    id: cancelButton
-    !text: tr('Cancel')
+    id: feedbackCancelButton
     anchors.bottom: parent.bottom
     anchors.right: parent.right
-    width: 80
-    @onClick: self:getParent():hide()
+    width: 110
+    height: 34
+    !text: tr('Cancel')
+    @onClick: modules.game_bugreport.hideFeedback()

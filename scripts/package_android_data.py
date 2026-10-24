@@ -27,6 +27,12 @@ def is_incrementally_managed_client_asset(relative_path: str) -> bool:
     )
 
 
+def is_local_community_asset(relative_path: str) -> bool:
+    return relative_path.startswith(
+        ("data/things/1525/", "data/sounds/1525/")
+    )
+
+
 def lua_string(value: str) -> str:
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     escaped = escaped.replace("\r", "\\r").replace("\n", "\\n")
@@ -70,11 +76,16 @@ def same_origin(left: str, right: str) -> bool:
 
 
 def distribution_config(
-    channel: str, android_url: str, assets_url: str, auth_url: str
+    channel: str,
+    android_url: str,
+    assets_url: str,
+    auth_url: str,
+    release_version: str,
 ) -> bytes:
     return (
         "return {\n"
         f"  channel = {lua_string(channel)},\n"
+        f"  releaseVersion = {lua_string(release_version)},\n"
         f"  androidManifestUrl = {lua_string(android_url)},\n"
         f"  clientAssetsManifestUrl = {lua_string(assets_url)},\n"
         f"  authUrl = {lua_string(auth_url)},\n"
@@ -83,14 +94,22 @@ def distribution_config(
     ).encode("utf-8")
 
 
-def package(
-    output: Path, channel: str, android_url: str, assets_url: str, auth_url: str
-) -> None:
-    missing = [name for name in DATA_ITEMS if not (ROOT / name).exists()]
-    if missing:
-        raise FileNotFoundError(f"Conteúdo do OTClient ausente: {', '.join(missing)}")
+def validated_distribution_config(
+    channel: str,
+    android_url: str,
+    assets_url: str,
+    auth_url: str,
+    release_version: str | None = None,
+) -> bytes:
+    if channel not in CHANNELS:
+        raise ValueError(f"Canal Android inválido: {channel}")
+    if bool(android_url) != bool(assets_url):
+        raise ValueError("Configure os manifestos Android e de assets juntos")
 
-    output.parent.mkdir(parents=True, exist_ok=True)
+    android_url = validate_url(android_url, "Manifesto Android")
+    assets_url = validate_url(assets_url, "Manifesto de assets")
+    auth_url = validate_url(auth_url, "Endpoint de cadastro do canal test")
+
     if auth_url and channel != "test":
         raise ValueError("A autenticação do feed interno só pode ser configurada no canal test")
     remote_test_feed = channel == "test" and any(
@@ -103,7 +122,27 @@ def package(
     ):
         raise ValueError("Manifestos e autenticação do feed test precisam usar a mesma origem")
 
-    config_content = distribution_config(channel, android_url, assets_url, auth_url)
+    release_version = (
+        release_version
+        or os.environ.get("ELEMENTAL_ANDROID_VERSION_NAME")
+        or ("0.5.0-beta.1" if channel == "beta" else "1.0")
+    )
+    return distribution_config(
+        channel, android_url, assets_url, auth_url, release_version
+    )
+
+
+def package(
+    output: Path, channel: str, android_url: str, assets_url: str, auth_url: str
+) -> None:
+    missing = [name for name in DATA_ITEMS if not (ROOT / name).exists()]
+    if missing:
+        raise FileNotFoundError(f"Conteúdo do OTClient ausente: {', '.join(missing)}")
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    config_content = validated_distribution_config(
+        channel, android_url, assets_url, auth_url
+    )
     config_asset = output.parent / "elemental-distribution.lua"
     config_descriptor, config_temporary_name = tempfile.mkstemp(
         prefix=f".{config_asset.name}.", suffix=".tmp", dir=config_asset.parent
@@ -131,6 +170,8 @@ def package(
                         raise ValueError(f"Android bundle não aceita symlinks: {candidate}")
                     if candidate.is_file():
                         relative_path = candidate.relative_to(ROOT).as_posix()
+                        if is_local_community_asset(relative_path):
+                            continue
                         if assets_url and is_incrementally_managed_client_asset(relative_path):
                             continue
                         bundle.write(candidate, relative_path)
@@ -159,15 +200,15 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if bool(args.android_manifest_url) != bool(args.client_assets_manifest_url):
-        raise ValueError("Configure os manifestos Android e de assets juntos")
-
-    android_url = validate_url(args.android_manifest_url, "Manifesto Android")
-    assets_url = validate_url(args.client_assets_manifest_url, "Manifesto de assets")
-    auth_url = validate_url(args.test_auth_url, "Endpoint de cadastro do canal test")
-    package(args.output, args.channel, android_url, assets_url, auth_url)
+    package(
+        args.output,
+        args.channel,
+        args.android_manifest_url,
+        args.client_assets_manifest_url,
+        args.test_auth_url,
+    )
     print(f"Bundle Android preparado em {args.output} para o canal {args.channel}.")
-    if not android_url:
+    if not args.android_manifest_url:
         print("Updaters Android e de assets permanecem desativados até configurar os manifestos.")
     return 0
 

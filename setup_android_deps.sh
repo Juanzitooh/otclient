@@ -1,150 +1,71 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
-# Pre-build script: installs all vcpkg dependencies for all Android ABIs
-# Run this ONCE before building with Gradle
-# Usage: ./setup_android_deps.sh
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-NDK="${ANDROID_NDK_HOME:-/home/dev/android-sdk/ndk/29.0.13599879}"
-NDKBIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-VCPKG="${VCPKG_ROOT:-/home/dev/vcpkg}"
-LUAJIT_SRC="$SCRIPT_DIR/luajit-src"
+project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+android_ndk=${ANDROID_NDK_HOME:?Set ANDROID_NDK_HOME to the local Android NDK}
+vcpkg_root=${VCPKG_ROOT:?Set VCPKG_ROOT to the local vcpkg checkout}
+channel=${ELEMENTAL_ANDROID_CHANNEL:-beta}
+requested_abis=${OTCLIENT_ANDROID_ABIS:-arm64-v8a}
 
-# ABI -> vcpkg triplet mapping
-declare -A ABI_MAP=(
-    ["arm64-v8a"]="arm64-android"
-    ["armeabi-v7a"]="arm-neon-android"
-    ["x86_64"]="x64-android"
-    ["x86"]="x86-android"
-)
+case "$channel" in
+    test) : "${ELEMENTAL_TEST_LOGIN_URL:?Set ELEMENTAL_TEST_LOGIN_URL to an HTTPS /beta/v1/login endpoint}" ;;
+    beta) : "${ELEMENTAL_BETA_LOGIN_URL:?Set ELEMENTAL_BETA_LOGIN_URL to an isolated HTTPS /beta/v1/login endpoint}" ;;
+    release) ;;
+    *) echo "ELEMENTAL_ANDROID_CHANNEL must be test, beta, or release." >&2; exit 2 ;;
+esac
 
-# ABI -> NDK cross-compile prefix (CROSS= prefix, without API level)
-declare -A CROSS_MAP=(
-    ["arm64-v8a"]="aarch64-linux-android-"
-    ["armeabi-v7a"]="arm-linux-androideabi-"
-    ["x86_64"]="x86_64-linux-android-"
-    ["x86"]="i686-linux-android-"
-)
+ANDROID_NDK_HOME="$android_ndk" OTCLIENT_ANDROID_ABIS="$requested_abis" \
+    bash "$project_root/build_luajit_android.sh"
 
-# ABI -> NDK clang prefix (with API level, for STATIC_CC/DYNAMIC_CC/TARGET_LD)
-declare -A CC_MAP=(
-    ["arm64-v8a"]="aarch64-linux-android21-"
-    ["armeabi-v7a"]="armv7a-linux-androideabi21-"
-    ["x86_64"]="x86_64-linux-android21-"
-    ["x86"]="i686-linux-android21-"
-)
-
-# ABI -> HOST_CC (32-bit ABIs need -m32)
-declare -A HOSTCC_MAP=(
-    ["arm64-v8a"]="gcc"
-    ["armeabi-v7a"]="gcc -m32"
-    ["x86_64"]="gcc"
-    ["x86"]="gcc -m32"
-)
-
-build_luajit_for_abi() {
-    local ABI=$1
-    local TRIPLET=${ABI_MAP[$ABI]}
-    local CROSS=${CROSS_MAP[$ABI]}
-    local CC=${CC_MAP[$ABI]}
-    local HOST_CC="${HOSTCC_MAP[$ABI]}"
-    local INSTALL_DIR="$SCRIPT_DIR/android/app/libs"
-
-    echo "=== Building LuaJIT for $ABI ($TRIPLET) ==="
-
-    if [ ! -d "$LUAJIT_SRC/src" ]; then
-        echo "ERROR: LuaJIT source not found at $LUAJIT_SRC"
-        echo "Clone it: git clone https://github.com/LuaJIT/LuaJIT.git $LUAJIT_SRC"
-        exit 1
-    fi
-
-    cd "$LUAJIT_SRC"
-    make clean 2>/dev/null || true
-
-    make -j"$(nproc)" amalg \
-        HOST_CC="$HOST_CC" \
-        CROSS="${NDKBIN}/${CROSS}" \
-        STATIC_CC="${NDKBIN}/${CC}clang" \
-        DYNAMIC_CC="${NDKBIN}/${CC}clang -fPIC" \
-        TARGET_LD="${NDKBIN}/${CC}clang" \
-        TARGET_AR="$NDKBIN/llvm-ar rcus" \
-        TARGET_STRIP="$NDKBIN/llvm-strip" \
-        TARGET_CFLAGS="-fPIC -DLUAJIT_UNWIND_EXTERNAL -fno-stack-protector" \
-        BUILDMODE=static
-
-    # Install lib per-ABI
-    mkdir -p "$INSTALL_DIR/lib/$ABI"
-    cp src/libluajit.a "$INSTALL_DIR/lib/$ABI/libluajit-5.1.a"
-
-    # Install headers (shared across ABIs)
-    mkdir -p "$INSTALL_DIR/include/luajit"
-    cp src/lua.h src/lualib.h src/lauxlib.h src/luaconf.h \
-       src/luajit.h src/luajit_rolling.h "$INSTALL_DIR/include/luajit/"
-
-    # Create lua.hpp C++ wrapper if missing
-    if [ ! -f "$INSTALL_DIR/include/luajit/lua.hpp" ]; then
-        cat > "$INSTALL_DIR/include/luajit/lua.hpp" << 'LUAHPP'
-extern "C" {
-#include "lua.h"
-#include "lualib.h"
-#include "lauxlib.h"
-}
-LUAHPP
-    fi
-
-    echo "  -> $ABI OK ($(du -h "$INSTALL_DIR/lib/$ABI/libluajit-5.1.a" | cut -f1))"
-}
-
-install_vcpkg_deps() {
-    local TRIPLET=$1
-    echo "=== Installing vcpkg deps for $TRIPLET ==="
-    cd "$SCRIPT_DIR"
-    "$VCPKG/vcpkg" install --triplet "$TRIPLET" --x-manifest-root=. --allow-unsupported 2>&1 | tail -3
-}
-
-# Step 1: Build LuaJIT for all ABIs
-echo "============================="
-echo "Step 1: Building LuaJIT"
-echo "============================="
-
-# Check gcc-multilib for 32-bit builds
-if ! gcc -m32 -x c -c /dev/null -o /dev/null 2>/dev/null; then
-    echo "Installing gcc-multilib for 32-bit cross-compilation..."
-    sudo apt-get install -y gcc-multilib g++-multilib
-fi
-
-for ABI in "${!ABI_MAP[@]}"; do
-    build_luajit_for_abi "$ABI"
+IFS=',' read -r -a abi_list <<< "$requested_abis"
+for abi in "${abi_list[@]}"; do
+    case "$abi" in
+        arm64-v8a) triplet=arm64-android ;;
+        armeabi-v7a) triplet=arm-neon-android ;;
+        x86_64) triplet=x64-android ;;
+        x86) triplet=x86-android ;;
+        *) echo "Unsupported Android ABI: $abi" >&2; exit 2 ;;
+    esac
+    (cd "$project_root" && "$vcpkg_root/vcpkg" install \
+        --triplet "$triplet" --x-manifest-root=. --allow-unsupported)
 done
 
-# Step 2: Install vcpkg deps (LuaJIT excluded from vcpkg, everything else)
-echo ""
-echo "============================="
-echo "Step 2: Installing vcpkg deps"
-echo "============================="
-for ABI in "${!ABI_MAP[@]}"; do
-    TRIPLET=${ABI_MAP[$ABI]}
-    install_vcpkg_deps "$TRIPLET"
-done
-
-# Step 3: Generate data.zip asset bundle
-echo ""
-echo "============================="
-echo "Step 3: Generating data.zip"
-echo "============================="
-mkdir -p "$SCRIPT_DIR/android/app/src/main/assets"
-python3 "$SCRIPT_DIR/scripts/package_android_data.py" \
-    --channel "${ELEMENTAL_ANDROID_CHANNEL:-test}" \
-    --android-manifest-url "${ELEMENTAL_ANDROID_MANIFEST_URL:-}" \
-    --client-assets-manifest-url "${ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL:-}" \
-    --test-auth-url "${ELEMENTAL_TEST_AUTH_URL:-}"
-echo "data.zip created: $(du -h android/app/src/main/assets/data.zip | cut -f1)"
-
-echo ""
-echo "============================="
-echo "All dependencies installed!"
-echo "============================="
-echo "LuaJIT libs:"
-ls -la "$SCRIPT_DIR/android/app/libs/lib/"*/libluajit-5.1.a
-echo ""
-echo "Now run: cd android && ./gradlew assembleRelease"
+case "$channel" in
+    test|beta)
+        if [[ "$channel" == "test" ]]; then
+            login_url=${ELEMENTAL_TEST_LOGIN_URL:?Set ELEMENTAL_TEST_LOGIN_URL to an HTTPS /beta/v1/login endpoint}
+            if [[ "${ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS:-0}" == 1 ]]; then
+                echo "Community 15.25 assets are limited to the beta development bundle." >&2
+                exit 2
+            fi
+        else
+            login_url=${ELEMENTAL_BETA_LOGIN_URL:?Set ELEMENTAL_BETA_LOGIN_URL to an isolated HTTPS /beta/v1/login endpoint}
+        fi
+        bundle_args=(
+            --login-url "$login_url"
+            --channel "$channel"
+            --android-manifest-url "${ELEMENTAL_ANDROID_MANIFEST_URL:-}"
+            --client-assets-manifest-url "${ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL:-}"
+            --test-auth-url "${ELEMENTAL_TEST_AUTH_URL:-}"
+        )
+        if [[ "$channel" == "beta" && "${ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS:-0}" == 1 ]]; then
+            bundle_args+=(--include-local-development-1525-assets)
+        fi
+        python3 "$project_root/android/build_elemental_bundle.py" "${bundle_args[@]}"
+        ;;
+    release)
+        if [[ "${ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS:-0}" == 1 ]]; then
+            echo "Community 15.25 assets are limited to the beta development bundle." >&2
+            exit 2
+        fi
+        python3 "$project_root/scripts/package_android_data.py" \
+            --channel "$channel" \
+            --android-manifest-url "${ELEMENTAL_ANDROID_MANIFEST_URL:-}" \
+            --client-assets-manifest-url "${ELEMENTAL_CLIENT_ASSETS_MANIFEST_URL:-}" \
+            --test-auth-url "${ELEMENTAL_TEST_AUTH_URL:-}"
+        ;;
+    *)
+        echo "ELEMENTAL_ANDROID_CHANNEL must be test, beta, or release." >&2
+        exit 2
+        ;;
+esac

@@ -14,15 +14,21 @@ val elementalVersionCode = providers.environmentVariable("ELEMENTAL_ANDROID_VERS
     .orElse("1")
     .get()
     .toInt()
-val elementalVersionName = providers.environmentVariable("ELEMENTAL_ANDROID_VERSION_NAME")
-    .orElse("1.0")
-    .get()
 val elementalChannel = providers.environmentVariable("ELEMENTAL_ANDROID_CHANNEL")
-    .orElse("test")
+    .orElse("beta")
+    .get()
+val elementalVersionName = providers.environmentVariable("ELEMENTAL_ANDROID_VERSION_NAME")
+    .orElse(if (elementalChannel == "beta") "0.5.0-beta.1" else "1.0")
     .get()
 val elementalApplicationId = when (elementalChannel) {
     "test" -> "br.com.elementalmmo.client.test"
     "beta", "release" -> "br.com.elementalmmo.client"
+    else -> throw GradleException("ELEMENTAL_ANDROID_CHANNEL must be test, beta, or release")
+}
+val elementalAppName = when (elementalChannel) {
+    "test" -> "Elemental Test"
+    "beta" -> "Elemental Beta"
+    "release" -> "Elemental"
     else -> throw GradleException("ELEMENTAL_ANDROID_CHANNEL must be test, beta, or release")
 }
 val releaseKeystore = System.getenv("RELEASE_KEYSTORE")
@@ -47,6 +53,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
+        manifestPlaceholders["elementalAppName"] = elementalAppName
         applicationId = elementalApplicationId
         minSdk = 21
         targetSdk = 36

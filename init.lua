@@ -53,6 +53,7 @@ Services = {
     elementalUpdater = {
         enabled = type(androidManifestUrl) == "string" and androidManifestUrl ~= "",
         channel = elementalChannel,
+        releaseVersion = embeddedDistribution.releaseVersion or "",
         androidManifestUrl = androidManifestUrl or "",
         authUrl = testAuthUrl or "",
         feedPlatform = feedPlatform or ""
