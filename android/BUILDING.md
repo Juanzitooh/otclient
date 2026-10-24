@@ -38,12 +38,11 @@ export ELEMENTAL_ANDROID_VERSION_NAME=2026.10.23-test.1
 export OTCLIENT_ANDROID_ABIS=arm64-v8a
 
 # 1. Run the setup script (builds LuaJIT, installs vcpkg deps, generates data.zip)
-./setup_android_deps.sh
+bash setup_android_deps.sh
 
 # 2. Build the APK
 cd android
-chmod +x gradlew
-./gradlew assembleRelease
+bash gradlew assembleRelease
 ```
 
 The APK will be at `android/app/build/outputs/apk/release/app-release.apk`.
@@ -109,22 +108,22 @@ only its individual revocable token in the client settings.
 ### Step 3: Build with Gradle
 
 Every `assembleRelease` requires all four signing variables below and fails
-without them; release builds never fall back to Android's debug key. Use the
-same protected keystore, alias and passwords for test, beta and release. Keep
-the keystore outside Git and use a protected backup. Beta/release must preserve
-their shared `applicationId` and use increasing `versionCode` values.
+without them; release builds never fall back to Android's debug key. Keep each
+keystore outside Git and use a protected backup. The `test` package uses the
+stable `elemental-test` signing identity. Beta and release share an
+`applicationId`, so they must keep the same stable signing identity with alias
+`elemental-beta` and an increasing `versionCode` sequence.
 
 ```bash
-export RELEASE_KEYSTORE=/private/path/elemental-signing.jks
+export RELEASE_KEYSTORE=/private/path/elemental-test.jks
 export RELEASE_KEYSTORE_PASSWORD=...
-export RELEASE_KEY_ALIAS=elemental
+export RELEASE_KEY_ALIAS=elemental-test
 export RELEASE_KEY_PASSWORD=...
 ```
 
 ```bash
 cd android
-chmod +x gradlew
-./gradlew assembleRelease    # or assembleDebug
+bash gradlew assembleRelease    # or bash gradlew assembleDebug
 ```
 
 ### Step 4: Install on device
@@ -160,7 +159,7 @@ docker rm otc-build
 ## Troubleshooting
 
 ### Black screen on launch
-- Ensure `data.zip` is in `android/app/src/main/assets/`. Run `setup_android_deps.sh` or generate it manually.
+- Ensure `data.zip` is in `android/app/src/main/assets/`. Run `bash setup_android_deps.sh` or generate it manually.
 
 ### `assertion "hasIndex(-n)" failed` crash
 - LuaJIT was compiled without `-DLUAJIT_UNWIND_EXTERNAL` or with wrong pointer size. Re-run `build_luajit_android.sh`.
@@ -186,7 +185,7 @@ export ELEMENTAL_ANDROID_VERSION_CODE=20261032
 export ELEMENTAL_ANDROID_VERSION_NAME=2026.10.23-test.1
 export OTCLIENT_ANDROID_ABIS=arm64-v8a
 bash setup_android_deps.sh
-cd android && ./gradlew :app:assembleRelease
+cd android && bash gradlew :app:assembleRelease
 ```
 
 The result uses `br.com.elementalmmo.client.test`. It downloads the APK and
@@ -232,8 +231,10 @@ allows that pack only for invited collaborators during closed development; it
 does not approve a public beta. D080 authorizes the closed test cohort only;
 it does not approve open beta or release and does not mark T5.7/T5.19 complete.
 
-Keep the signing keystore outside Git, load its passwords from protected local
-storage, and use alias `elemental-beta`. Do not add APKs to Git. Prepare and
-verify the local source-bound manifest through T5.14 before treating an APK as
-a candidate. A successful local build does not pass the device or gameplay
-checks in T5.7.4/T5.18.
+Keep signing keystores outside Git and load passwords from protected local
+storage. Use alias `elemental-test` for the test package and preserve its key
+for all test updates; use alias `elemental-beta` for the shared beta/release
+package identity. Do not add APKs to Git. Prepare and verify the local
+source-bound manifest through T5.14 before treating an APK as a candidate. A
+successful local build does not pass the device or gameplay checks in
+T5.7.4/T5.18.
