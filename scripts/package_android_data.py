@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 CHANNELS = {"test", "beta", "release"}
-DATA_ITEMS = ("data", "mods", "modules", "init.lua", "otclientrc.lua")
+DATA_ITEMS = ("data", "mods", "modules", "init.lua", "otclientrc.lua", "cacert.pem")
 
 
 def is_incrementally_managed_client_asset(relative_path: str) -> bool:

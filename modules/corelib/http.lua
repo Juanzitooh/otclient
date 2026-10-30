@@ -41,6 +41,21 @@ function HTTP.getJSONWithBearer(url, token, callback)
   return operation
 end
 
+function HTTP.getWithBearer(url, token, callback)
+  if not g_http or not g_http.getWithBearer then
+    return error("HTTP.getWithBearer is not supported")
+  end
+  local operation = g_http.getWithBearer(url, token, HTTP.timeout)
+  if operation < 0 then
+    if callback then
+      callback(nil, "secure_request_unavailable")
+    end
+    return nil
+  end
+  HTTP.operations[operation] = { type = "get", url = url, callback = callback }
+  return operation
+end
+
 function HTTP.post(url, data, callback, checkContentLength)
   if not g_http or not g_http.post then
     return error("HTTP.post is not supported")

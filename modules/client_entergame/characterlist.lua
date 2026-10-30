@@ -1304,7 +1304,7 @@ function onGameConnectionError(message, code)
             status = 'O mundo está offline ou reiniciando. Tente novamente mais tarde.'
         elseif code == 110 then
             status = 'O mundo não respondeu. Tente novamente em instantes.'
-        elseif code == 1 then
+        elseif isNetworkAddressResolutionError(code, message) then
             status = 'O endereço do mundo não está disponível.'
         end
         setWorldLoginPending(false)

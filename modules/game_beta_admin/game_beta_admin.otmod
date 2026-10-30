@@ -1,0 +1,13 @@
+Module
+  name: game_beta_admin
+  description: Closed beta administration and moderation
+  sandboxed: true
+  scripts: [ talk_action_schemas, game_beta_admin_feedback, game_beta_admin_operations, game_beta_admin ]
+  autoload: true
+  dependencies:
+    - client_entergame
+    - game_interface
+    - game_mainpanel
+    - gamelib
+  @onLoad: GameBetaAdmin:init()
+  @onUnload: GameBetaAdmin:terminate()

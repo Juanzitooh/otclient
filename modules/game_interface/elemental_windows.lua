@@ -54,7 +54,15 @@ local function getDefaultRect(id)
     local parentWidth, parentHeight = getLayerSize()
     local rect = { x = 24, y = 72, width = 300, height = 320 }
 
-    if id == 'inventory' then
+    if id == 'beta-admin' then
+        local width, height = 940, 620
+        rect = {
+            x = math.floor((parentWidth - width) / 2),
+            y = 24,
+            width = width,
+            height = height
+        }
+    elseif id == 'inventory' then
         rect = { x = 24, y = 72, width = 250, height = 280 }
     elseif id == 'battle' then
         rect = { x = parentWidth - 242, y = 72, width = 218, height = 360 }

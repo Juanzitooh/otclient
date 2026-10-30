@@ -45,6 +45,12 @@
 
 Game g_game;
 
+namespace {
+
+constexpr uint16_t DEFAULT_TARGET_FPS = 60;
+
+}
+
 void Game::init()
 {
     resetGameStates();
@@ -171,7 +177,11 @@ void Game::processEnterGame()
 void Game::processGameStart()
 {
     m_online = true;
-    g_app.resetTargetFps();
+    // Avoid an unbounded render loop when VSync is unavailable.
+    if (g_app.getMaxFps() == 0)
+        g_app.setTargetFps(DEFAULT_TARGET_FPS);
+    else
+        g_app.resetTargetFps();
 
     // synchronize fight modes with the server
     m_protocolGame->sendChangeFightModes(m_fightMode, m_chaseMode, m_safeFight, m_pvpMode);
@@ -195,8 +205,9 @@ void Game::processGameStart()
 
 void Game::processGameEnd()
 {
-    // FPS fixed at 60 for when UI is rendering alone.
-    g_app.setTargetFps(60u);
+    // Keep the UI at 60 FPS by default while respecting a lower configured maximum.
+    const auto maxFps = g_app.getMaxFps();
+    g_app.setTargetFps(maxFps > 0 && maxFps < DEFAULT_TARGET_FPS ? maxFps : DEFAULT_TARGET_FPS);
 
     #ifdef FRAMEWORK_SOUND
     g_sounds.stopAllChannelsExcept(SoundManager::CHANNEL_MUSIC);

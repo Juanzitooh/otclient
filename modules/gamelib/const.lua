@@ -366,7 +366,8 @@ ExtendedIds = {
     Particles = 5,
     MapShader = 6,
     NeedsUpdate = 7,
-    Elemental = 8
+    Elemental = 8,
+    BetaAdmin = 9
 }
 
 PreviewState = {

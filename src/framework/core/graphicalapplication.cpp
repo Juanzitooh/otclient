@@ -46,6 +46,28 @@
 #endif
 #include <framework/html/htmlmanager.h>
 #include <framework/platform/platformwindow.h>
+#include <algorithm>
+
+namespace {
+
+constexpr uint16_t MAX_MAP_PROCESS_FPS = 120;
+constexpr uint16_t DEFAULT_VSYNCED_MAP_PROCESS_FPS = 60;
+
+uint16_t getMapProcessTargetFps(const AdaptativeFrameCounter& graphicFrameCounter, const bool vsyncEnabled)
+{
+    const auto requestedFps = graphicFrameCounter.getTargetFps() != 0
+        ? graphicFrameCounter.getTargetFps()
+        : graphicFrameCounter.getMaxFps();
+    const auto displayFps = graphicFrameCounter.getFps() != 0
+        ? graphicFrameCounter.getFps()
+        : DEFAULT_VSYNCED_MAP_PROCESS_FPS;
+    const auto targetFps = requestedFps != 0
+        ? requestedFps
+        : (vsyncEnabled ? displayFps : MAX_MAP_PROCESS_FPS);
+    return std::min<uint16_t>(targetFps, MAX_MAP_PROCESS_FPS);
+}
+
+}
 
 GraphicalApplication g_app;
 
@@ -146,7 +168,7 @@ void GraphicalApplication::mainLoop() {
     }
 
     const auto FPS = [this] {
-        m_mapProcessFrameCounter.setTargetFps(g_window.vsyncEnabled() || getMaxFps() || getTargetFps() ? 500u : 0u);
+        m_mapProcessFrameCounter.setTargetFps(getMapProcessTargetFps(m_graphicFrameCounter, g_window.vsyncEnabled()));
         return m_graphicFrameCounter.getFps();
     };
 
@@ -196,7 +218,7 @@ void GraphicalApplication::run()
 
 #ifndef __EMSCRIPTEN__
     const auto FPS = [this] {
-        m_mapProcessFrameCounter.setTargetFps(g_window.vsyncEnabled() || getMaxFps() || getTargetFps() ? 500u : 0u);
+        m_mapProcessFrameCounter.setTargetFps(getMapProcessTargetFps(m_graphicFrameCounter, g_window.vsyncEnabled()));
         return m_graphicFrameCounter.getFps();
     };
 #endif

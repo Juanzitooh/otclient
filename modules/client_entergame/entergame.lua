@@ -23,11 +23,14 @@ local ELEMENTAL_MODAL_BLUR_SHADER = 'Elemental Modal Blur'
 local ELEMENTAL_UI_CLICK_SOUND = '/modules/client_entergame/sounds/digital-click.ogg'
 local ELEMENTAL_UI_CONFIRM_SOUND = '/modules/client_entergame/sounds/digital-confirm.ogg'
 local ELEMENTAL_LOGIN_TRANSITION_MS = 270
+local ELEMENTAL_MOBILE_LOGIN_KEYBOARD_POLL_MS = 120
 local loginPending = false
 local clientAssetsCheckInProgress = false
 local clientAssetsCheckCompleteVersion
 local loginTransitionEvent
 local loginPanelsHideEvent
+local mobileLoginKeyboardEvent
+local mobileLoginKeyboardActive = false
 local elementalClientLayout = false
 
 local function cancelLoginPanelsHide()
@@ -72,6 +75,162 @@ local function cancelLoginTransition()
         g_effects.cancelFade(enterGame)
         enterGame:setOpacity(1)
     end
+end
+
+local function setLoginWidgetLayout(widgetId, anchors, margins)
+    local widget = enterGame and enterGame:getChildById(widgetId)
+    if not widget or widget:isDestroyed() then
+        return
+    end
+
+    widget:breakAnchors()
+    for _, anchor in ipairs(anchors) do
+        widget:addAnchor(anchor[1], anchor[2], anchor[3])
+    end
+
+    widget:setMarginLeft(margins.left or 0)
+    widget:setMarginTop(margins.top or 0)
+    widget:setMarginRight(margins.right or 0)
+    widget:setMarginBottom(margins.bottom or 0)
+end
+
+local function setMobileLoginKeyboardLayout(active)
+    if not elementalClientLayout or not g_platform.isMobile() or not enterGame then
+        return
+    end
+    if mobileLoginKeyboardActive == active then
+        return
+    end
+
+    mobileLoginKeyboardActive = active
+    local brandSignature = enterGame:getChildById('brandSignature')
+    if brandSignature then
+        brandSignature:breakAnchors()
+        if active then
+            brandSignature:setSize('300 91')
+            brandSignature:setImageSize('300 91')
+            brandSignature:addAnchor(AnchorTop, 'parent', AnchorTop)
+            brandSignature:addAnchor(AnchorLeft, 'parent', AnchorLeft)
+            brandSignature:setMarginTop(8)
+            brandSignature:setMarginLeft(0)
+        else
+            brandSignature:setSize('380 115')
+            brandSignature:setImageSize('380 115')
+            brandSignature:addAnchor(AnchorTop, 'parent', AnchorTop)
+            brandSignature:addAnchor(AnchorHorizontalCenter, 'parent', AnchorHorizontalCenter)
+            brandSignature:setMarginTop(3)
+            brandSignature:setMarginLeft(0)
+        end
+    end
+
+    local brandTagline = enterGame:getChildById('brandTagline')
+    if brandTagline then
+        brandTagline:setVisible(not active)
+    end
+
+    if active then
+        setLoginWidgetLayout('emailLabel', {
+            { AnchorTop, 'parent', AnchorTop },
+            { AnchorLeft, 'parent', AnchorLeft },
+        }, { top = 105 })
+        setLoginWidgetLayout('passwordLabel', {
+            { AnchorTop, 'accountNameTextEdit', AnchorBottom },
+            { AnchorLeft, 'parent', AnchorLeft },
+        }, { top = 10 })
+        setLoginWidgetLayout('loginStatus', {
+            { AnchorTop, 'accountPasswordTextEdit', AnchorBottom },
+            { AnchorLeft, 'parent', AnchorLeft },
+            { AnchorRight, 'parent', AnchorRight },
+        }, { top = 8 })
+        setLoginWidgetLayout('btnLogin', {
+            { AnchorTop, 'loginStatus', AnchorBottom },
+            { AnchorLeft, 'parent', AnchorLeft },
+            { AnchorRight, 'parent', AnchorRight },
+        }, { top = 8 })
+        setLoginWidgetLayout('btnCreateNewAccount', {
+            { AnchorTop, 'btnLogin', AnchorBottom },
+            { AnchorLeft, 'parent', AnchorLeft },
+            { AnchorRight, 'parent', AnchorRight },
+        }, { top = 8 })
+
+        local rememberEmailBox = enterGame:getChildById('rememberEmailBox')
+        if rememberEmailBox then
+            rememberEmailBox:hide()
+        end
+        local rememberEmailTip = enterGame:getChildById('rememberEmailTip')
+        if rememberEmailTip then
+            rememberEmailTip:hide()
+        end
+        local forgotPassword = enterGame:getChildById('Forgot_password_email')
+        if forgotPassword then
+            forgotPassword:hide()
+        end
+    else
+        setLoginWidgetLayout('emailLabel', {
+            { AnchorTop, 'parent', AnchorVerticalCenter },
+            { AnchorLeft, 'parent', AnchorLeft },
+        }, { top = -87 })
+        setLoginWidgetLayout('passwordLabel', {
+            { AnchorTop, 'accountNameTextEdit', AnchorBottom },
+            { AnchorLeft, 'parent', AnchorLeft },
+        }, { top = 16 })
+        setLoginWidgetLayout('loginStatus', {
+            { AnchorTop, 'Forgot_password_email', AnchorBottom },
+            { AnchorLeft, 'parent', AnchorLeft },
+            { AnchorRight, 'parent', AnchorRight },
+        }, { top = 10 })
+        setLoginWidgetLayout('btnLogin', {
+            { AnchorBottom, 'parent', AnchorBottom },
+            { AnchorLeft, 'parent', AnchorLeft },
+            { AnchorRight, 'parent', AnchorRight },
+        }, { bottom = 54 })
+        setLoginWidgetLayout('btnCreateNewAccount', {
+            { AnchorBottom, 'parent', AnchorBottom },
+            { AnchorLeft, 'parent', AnchorLeft },
+            { AnchorRight, 'parent', AnchorRight },
+        }, {})
+
+        local rememberEmailBox = enterGame:getChildById('rememberEmailBox')
+        if rememberEmailBox then
+            rememberEmailBox:show()
+        end
+        local rememberEmailTip = enterGame:getChildById('rememberEmailTip')
+        if rememberEmailTip and rememberEmailBox then
+            rememberEmailTip:setVisible(rememberEmailBox:isChecked())
+        end
+        local forgotPassword = enterGame:getChildById('Forgot_password_email')
+        if forgotPassword then
+            forgotPassword:show()
+        end
+    end
+end
+
+local function cancelMobileLoginKeyboardMonitor()
+    if mobileLoginKeyboardEvent then
+        removeEvent(mobileLoginKeyboardEvent)
+        mobileLoginKeyboardEvent = nil
+    end
+end
+
+local function pollMobileLoginKeyboard()
+    mobileLoginKeyboardEvent = nil
+    if not enterGame or enterGame:isDestroyed() or not enterGame:isVisible() or not g_platform.isMobile() then
+        setMobileLoginKeyboardLayout(false)
+        return
+    end
+
+    local keyboardHeight = g_platform.getSoftKeyboardHeight and g_platform.getSoftKeyboardHeight() or 0
+    setMobileLoginKeyboardLayout(keyboardHeight > 0)
+    mobileLoginKeyboardEvent = scheduleEvent(pollMobileLoginKeyboard, ELEMENTAL_MOBILE_LOGIN_KEYBOARD_POLL_MS)
+end
+
+local function startMobileLoginKeyboardMonitor()
+    if not elementalClientLayout or not g_platform.isMobile() then
+        return
+    end
+
+    cancelMobileLoginKeyboardMonitor()
+    pollMobileLoginKeyboard()
 end
 
 -- private functions
@@ -558,6 +717,8 @@ end
 function EnterGame.terminate()
     Keybind.delete("Misc.", "Change Character")
     cancelLoginPanelsHide()
+    cancelMobileLoginKeyboardMonitor()
+    setMobileLoginKeyboardLayout(false)
     if destroyCreateAccount then
         destroyCreateAccount()
     end
@@ -772,6 +933,7 @@ function EnterGame.show()
     enterGame:show()
     enterGame:raise()
     enterGame:focus()
+    startMobileLoginKeyboardMonitor()
     cancelLoginPanelsHide()
     loginPanelsHideEvent = scheduleEvent(function()
         loginPanelsHideEvent = nil
@@ -784,6 +946,8 @@ end
 
 function EnterGame.hide()
     cancelLoginPanelsHide()
+    cancelMobileLoginKeyboardMonitor()
+    setMobileLoginKeyboardLayout(false)
     enterGame:hide()
 end
 

@@ -1,0 +1,291 @@
+BetaAdminFeedbackRow < UIButton
+  height: 50
+  focusable: false
+  text-align: left
+  background-color: #292929
+
+  $hover:
+    background-color: #373737
+
+  $on:
+    background-color: #454545
+
+  Label
+    id: feedbackCategory
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin: 4 6 0 7
+    height: 17
+    color: #f0f0f0
+    text-auto-resize: false
+
+  Label
+    id: feedbackSummary
+    anchors.top: feedbackCategory.bottom
+    anchors.left: feedbackCategory.left
+    anchors.right: feedbackCategory.right
+    height: 23
+    color: #b5b5b5
+    text-auto-resize: false
+
+Panel
+  id: gameBetaAdminFeedbackPage
+  anchors.top: parent.top
+  anchors.left: parent.left
+  anchors.right: parent.right
+  anchors.bottom: parent.bottom
+  visible: false
+
+  Panel
+    id: feedbackFilters
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    height: 68
+
+    Label
+      id: feedbackCategoryLabel
+      anchors.top: parent.top
+      anchors.left: parent.left
+      margin: 3 0 0 8
+      width: 68
+      height: 18
+      !text: tr('Categoria')
+
+    ComboBox
+      id: feedbackCategoryFilter
+      anchors.top: feedbackCategoryLabel.bottom
+      anchors.left: feedbackCategoryLabel.left
+      width: 160
+      height: 22
+
+    Label
+      id: feedbackStatusFilterLabel
+      anchors.top: feedbackCategoryLabel.top
+      anchors.left: feedbackCategoryFilter.right
+      margin-left: 12
+      width: 52
+      height: 18
+      !text: tr('Estado')
+
+    ComboBox
+      id: feedbackStatusFilter
+      anchors.top: feedbackCategoryFilter.top
+      anchors.left: feedbackStatusFilterLabel.left
+      width: 160
+      height: 22
+
+    Button
+      id: feedbackFilterButton
+      anchors.top: feedbackCategoryFilter.top
+      anchors.left: feedbackStatusFilter.right
+      margin-left: 10
+      width: 86
+      height: 22
+      !text: tr('Filtrar')
+      @onClick: modules.game_beta_admin.BetaAdminFeedback:loadFeedback(false)
+
+    Button
+      id: feedbackResetFiltersButton
+      anchors.top: feedbackFilterButton.top
+      anchors.left: feedbackFilterButton.right
+      margin-left: 5
+      width: 80
+      height: 22
+      !text: tr('Limpar')
+      @onClick: modules.game_beta_admin.BetaAdminFeedback:resetFilters()
+
+    Button
+      id: feedbackRefreshButton
+      anchors.top: feedbackResetFiltersButton.top
+      anchors.left: feedbackResetFiltersButton.right
+      margin-left: 5
+      width: 84
+      height: 22
+      !text: tr('Atualizar')
+      @onClick: modules.game_beta_admin.BetaAdminFeedback:loadFeedback(false)
+
+    Label
+      id: feedbackSinceLabel
+      anchors.top: feedbackCategoryFilter.bottom
+      anchors.left: feedbackCategoryLabel.left
+      margin-top: 4
+      width: 76
+      height: 17
+      !text: tr('Desde UTC')
+
+    TextEdit
+      id: feedbackSinceFilter
+      anchors.top: feedbackSinceLabel.top
+      anchors.left: feedbackSinceLabel.right
+      width: 206
+      height: 20
+
+    Label
+      id: feedbackUntilLabel
+      anchors.top: feedbackSinceLabel.top
+      anchors.left: feedbackSinceFilter.right
+      margin-left: 10
+      width: 64
+      height: 17
+      !text: tr('Ate UTC')
+
+    TextEdit
+      id: feedbackUntilFilter
+      anchors.top: feedbackSinceFilter.top
+      anchors.left: feedbackUntilLabel.right
+      width: 206
+      height: 20
+
+    Label
+      id: feedbackDateHelp
+      anchors.top: feedbackSinceLabel.top
+      anchors.left: feedbackUntilFilter.right
+      margin-left: 8
+      width: 240
+      height: 18
+      color: #aaaaaa
+      !text: tr('AAAA-MM-DDTHH:MM:SSZ')
+
+  VerticalScrollBar
+    id: feedbackResultsScrollBar
+    anchors.top: feedbackFilters.bottom
+    anchors.left: parent.left
+    anchors.bottom: feedbackLoadMoreButton.top
+    margin: 6 0 5 0
+    width: 15
+    step: 50
+    pixels-scroll: true
+
+  ScrollablePanel
+    id: feedbackResults
+    anchors.top: feedbackResultsScrollBar.top
+    anchors.left: feedbackResultsScrollBar.right
+    anchors.bottom: feedbackResultsScrollBar.bottom
+    width: 340
+    margin-right: 8
+    vertical-scrollbar: feedbackResultsScrollBar
+    background-color: #222222
+    border-width: 1
+    border-color: #606060
+    layout:
+      type: verticalBox
+      spacing: 2
+
+  Button
+    id: feedbackLoadMoreButton
+    anchors.left: parent.left
+    anchors.bottom: feedbackListStatus.top
+    margin-left: 15
+    margin-bottom: 4
+    width: 340
+    height: 24
+    enabled: false
+    !text: tr('Carregar mais')
+    @onClick: modules.game_beta_admin.BetaAdminFeedback:loadMore()
+
+  Label
+    id: feedbackListStatus
+    anchors.left: parent.left
+    anchors.bottom: parent.bottom
+    margin: 0 8 0 0
+    width: 345
+    height: 18
+    color: #b5b5b5
+    text-auto-resize: false
+
+  Panel
+    id: feedbackDetails
+    anchors.top: feedbackFilters.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    margin: 6 0 0 363
+    background-color: #222222
+    border-width: 1
+    border-color: #606060
+
+    Label
+      id: feedbackTitle
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin: 8 8 0 8
+      height: 22
+      font: verdana-11px-monochrome
+      !text: tr('Selecione um relato.')
+
+    Label
+      id: feedbackMetadata
+      anchors.top: feedbackTitle.bottom
+      anchors.left: feedbackTitle.left
+      anchors.right: feedbackTitle.right
+      height: 36
+      text-wrap: true
+      color: #b5b5b5
+      text-auto-resize: false
+
+    VerticalScrollBar
+      id: feedbackDescriptionScrollBar
+      anchors.top: feedbackMetadata.bottom
+      anchors.right: parent.right
+      anchors.bottom: feedbackDetailStatus.top
+      margin: 6 8 6 0
+      width: 14
+      step: 35
+      pixels-scroll: true
+
+    ScrollablePanel
+      id: feedbackDescriptionPanel
+      anchors.top: feedbackDescriptionScrollBar.top
+      anchors.left: feedbackMetadata.left
+      anchors.right: feedbackDescriptionScrollBar.left
+      anchors.bottom: feedbackDescriptionScrollBar.bottom
+      margin-right: 5
+      vertical-scrollbar: feedbackDescriptionScrollBar
+      background-color: #191919
+      border-width: 1
+      border-color: #484848
+
+      Label
+        id: feedbackDescription
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        margin: 8
+        height: 30
+        text-wrap: true
+        text-auto-resize: true
+        color: #e0e0e0
+
+    Label
+      id: feedbackDetailStatus
+      anchors.left: feedbackMetadata.left
+      anchors.right: feedbackUpdateStatusButton.left
+      anchors.bottom: feedbackStatusSelection.top
+      margin: 0 6 4 0
+      height: 18
+      color: #b5b5b5
+      text-auto-resize: false
+
+    ComboBox
+      id: feedbackStatusSelection
+      anchors.left: feedbackMetadata.left
+      anchors.bottom: parent.bottom
+      margin: 0 0 8 0
+      width: 190
+      height: 22
+      enabled: false
+
+    Button
+      id: feedbackUpdateStatusButton
+      anchors.left: feedbackStatusSelection.right
+      anchors.right: parent.right
+      anchors.bottom: feedbackStatusSelection.bottom
+      margin-left: 8
+      margin-right: 8
+      height: 22
+      enabled: false
+      !text: tr('Salvar estado')
+      @onClick: modules.game_beta_admin.BetaAdminFeedback:confirmStatusUpdate()

@@ -1,6 +1,7 @@
 local ownBattleSubChannelsSaved = nil
 local otherPlayersSubChannelsSaved = nil
 local consoleMessagesSubChannelsSaved = nil
+local DEFAULT_OFFLINE_FPS = 60
 
 return {
     vsync                             = {
@@ -217,6 +218,7 @@ return {
 
             panels.graphicsPanel:recursiveGetChildById('backgroundFrameRate'):setText(tr('Game framerate limit: %s', text))
             g_app.setMaxFps(v)
+            g_app.setTargetFps(v > 0 and v < DEFAULT_OFFLINE_FPS and v or DEFAULT_OFFLINE_FPS)
         end
     },
     -- Master volume and muting are controlled by soundMaster.
