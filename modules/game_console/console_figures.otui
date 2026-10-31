@@ -82,6 +82,7 @@ LocalChatFigureOverlay < UIWidget
     id: image
     anchors.fill: parent
     margin: 3
+    phantom: true
     image-fixed-ratio: true
     image-auto-resize: false
     image-smooth: true
