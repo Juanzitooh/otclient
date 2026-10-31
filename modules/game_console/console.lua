@@ -175,10 +175,190 @@ local ELEMENTAL_CHAT_EXPANDED_CONTENT_MARGIN_TOP = 31
 local ELEMENTAL_CHAT_COLLAPSED_WIDGETS = {
     'background', 'textLineWindow', 'lockButton', 'prevChannelButton', 'consoleTabBar', 'hidesubchat',
     'nextChannelButton', 'closeChannelButton', 'clearChannelButton', 'channelsButton', 'ignoreButton',
-    'hideChatButton', 'enterBackground', 'consoleTextEdit', 'sayModeButton', 'toggleChat', 'readOnlyButton',
+    'hideChatButton', 'enterBackground', 'consoleTextEdit', 'sayModeButton', 'figurePickerButton',
+    'toggleChat', 'readOnlyButton',
     'readOnlyPanel', 'exivaOption', 'extendedViewDraggable', 'extendedViewHide',
     'elementalWindowRightResize', 'elementalWindowBottomResize'
 }
+
+local LOCAL_CHAT_FIGURE_COUNT = 17
+local LOCAL_CHAT_FIGURE_COOLDOWN_MS = 3000
+local LOCAL_CHAT_FIGURE_DURATION_MS = 2000
+local LOCAL_CHAT_FIGURE_ASSET_FORMAT = '/modules/game_console/figures/fig-%03d.png'
+local localChatFigurePicker = nil
+local localChatFigureNextAllowedAt = 0
+local localChatFigureOverlays = {}
+
+local function getLocalChatFigureId(message)
+    local digits = message:match('^fig%-(%d%d%d)$')
+    if not digits then
+        return nil
+    end
+
+    local figureNumber = tonumber(digits)
+    if figureNumber < 1 or figureNumber > LOCAL_CHAT_FIGURE_COUNT then
+        return nil
+    end
+
+    return string.format('fig-%03d', figureNumber), figureNumber
+end
+
+local function clearLocalChatFigureOverlay(creatureId)
+    local overlay = localChatFigureOverlays[creatureId]
+    if not overlay then
+        return
+    end
+
+    removeEvent(overlay.expirationEvent)
+    removeEvent(overlay.updateEvent)
+    if overlay.widget and not overlay.widget:isDestroyed() then
+        overlay.widget:destroy()
+    end
+    localChatFigureOverlays[creatureId] = nil
+end
+
+local function clearLocalChatFigureOverlays()
+    for creatureId in pairs(localChatFigureOverlays) do
+        clearLocalChatFigureOverlay(creatureId)
+    end
+end
+
+local function updateLocalChatFigureOverlay(creatureId, widget)
+    local overlay = localChatFigureOverlays[creatureId]
+    if not overlay or overlay.widget ~= widget or widget:isDestroyed() then
+        return
+    end
+
+    local creature = g_map.getCreatureById(creatureId)
+    local mapPanel = modules.game_interface.getMapPanel()
+    local position = creature and creature:getPosition()
+    if position and mapPanel and mapPanel:isInRange(position) then
+        local tileRect = mapPanel:getTileRect(position)
+        if tileRect.width > 0 and tileRect.height > 0 then
+            widget:setPosition({
+                x = tileRect.x + math.floor((tileRect.width - widget:getWidth()) / 2),
+                y = tileRect.y - widget:getHeight()
+            })
+            widget:show()
+        else
+            widget:hide()
+        end
+    else
+        widget:hide()
+    end
+
+    overlay.updateEvent = scheduleEvent(function()
+        updateLocalChatFigureOverlay(creatureId, widget)
+    end, 50)
+end
+
+local function showLocalChatFigure(name, figureNumber, creaturePosition)
+    local assetPath = string.format(LOCAL_CHAT_FIGURE_ASSET_FORMAT, figureNumber)
+    if not g_resources.fileExists(assetPath) then
+        return
+    end
+
+    local tile = g_map.getTile(creaturePosition)
+    if not tile then
+        return
+    end
+
+    local mapPanel = modules.game_interface.getMapPanel()
+    if not mapPanel then
+        return
+    end
+
+    for _, creature in ipairs(tile:getCreatures()) do
+        if creature:getName() == name then
+            local creatureId = creature:getId()
+            clearLocalChatFigureOverlay(creatureId)
+
+            local widget = g_ui.createWidget('LocalChatFigureOverlay', mapPanel)
+            widget:breakAnchors()
+            widget:getChildById('image'):setImageSource(assetPath)
+            localChatFigureOverlays[creatureId] = {
+                widget = widget,
+                updateEvent = nil,
+                expirationEvent = scheduleEvent(function()
+                    clearLocalChatFigureOverlay(creatureId)
+                end, LOCAL_CHAT_FIGURE_DURATION_MS)
+            }
+            updateLocalChatFigureOverlay(creatureId, widget)
+            return
+        end
+    end
+end
+
+local function updateLocalChatFigurePickerLayout()
+    if not localChatFigurePicker or localChatFigurePicker:isDestroyed() then
+        return
+    end
+
+    local columns = consolePanel:getWidth() >= 520 and 5 or 4
+    local width = 16 + columns * 44 + (columns - 1) * 4
+    local height = 276
+    localChatFigurePicker:setSize(string.format('%d %d', width, height))
+    localChatFigurePicker:getChildById('figureGrid'):getLayout():setNumColumns(columns)
+
+    local pickerButton = consolePanel:getChildById('figurePickerButton')
+    local buttonRect = pickerButton:getRect()
+    local rootWidth = rootWidget:getWidth()
+    local rootHeight = rootWidget:getHeight()
+    local x = math.max(8, math.min(buttonRect.x + buttonRect.width - width, rootWidth - width - 8))
+    local y = buttonRect.y - height - 4
+    if y < 8 then
+        y = buttonRect.y + buttonRect.height + 4
+    end
+    y = math.max(8, math.min(y, rootHeight - height - 8))
+
+    localChatFigurePicker:breakAnchors()
+    localChatFigurePicker:setPosition({ x = x, y = y })
+end
+
+local function createLocalChatFigurePicker()
+    localChatFigurePicker = g_ui.createWidget('LocalChatFigurePicker', rootWidget)
+    local grid = localChatFigurePicker:getChildById('figureGrid')
+
+    for figureNumber = 1, LOCAL_CHAT_FIGURE_COUNT do
+        local figureId = string.format('fig-%03d', figureNumber)
+        local assetPath = string.format(LOCAL_CHAT_FIGURE_ASSET_FORMAT, figureNumber)
+        if g_resources.fileExists(assetPath) then
+            local button = g_ui.createWidget('LocalChatFigureButton', grid)
+            button:getChildById('image'):setImageSource(assetPath)
+            button.onClick = function()
+                if not g_game.isOnline() then
+                    return
+                end
+
+                if g_clock.millis() < localChatFigureNextAllowedAt then
+                    return
+                end
+
+                localChatFigureNextAllowedAt = g_clock.millis() + LOCAL_CHAT_FIGURE_COOLDOWN_MS
+                g_game.talkChannel(MessageModes.Say, 0, figureId)
+                localChatFigurePicker:hide()
+            end
+        end
+    end
+
+    local pickerButton = consolePanel:getChildById('figurePickerButton')
+    pickerButton.onClick = function()
+        if localChatFigurePicker:isVisible() then
+            localChatFigurePicker:hide()
+            return
+        end
+
+        updateLocalChatFigurePickerLayout()
+        localChatFigurePicker:show()
+        localChatFigurePicker:raise()
+    end
+end
+
+local function onLocalChatFigureConsoleVisibilityChange(widget, visible)
+    if not visible and localChatFigurePicker and not localChatFigurePicker:isDestroyed() then
+        localChatFigurePicker:hide()
+    end
+end
 
 local function destroyElementalMobileChatButton()
     if elementalMobileChatButton and not elementalMobileChatButton:isDestroyed() then
@@ -601,7 +781,10 @@ function consoleController:onInit()
     gameBottomPanel = modules.game_interface.getBottomPanel()
     useElementalChatUi = modules.game_interface.getInterfaceProfile() == 'elemental'
     local consoleUi = useElementalChatUi and 'console_elemental' or 'console'
+    g_ui.importStyle('console_figures')
     consolePanel = g_ui.loadUI(consoleUi, gameBottomPanel)
+    createLocalChatFigurePicker()
+    connect(consolePanel, { onVisibilityChange = onLocalChatFigureConsoleVisibilityChange })
     if useElementalChatUi and g_platform.isMobile() then
         local hideButton = consolePanel:getChildById('hideChatButton')
         hideButton:breakAnchors()
@@ -824,6 +1007,9 @@ setElementalChatMinimized = function(minimized)
     end
 
     if minimized then
+        if localChatFigurePicker and not localChatFigurePicker:isDestroyed() then
+            localChatFigurePicker:hide()
+        end
         if not g_platform.isMobile() then
             local windowLayer = modules.game_interface.getElementalWindowLayer()
             if windowLayer and not windowLayer:isDestroyed() then
@@ -1033,6 +1219,15 @@ function consoleController:onTerminate()
         elementalKeyboardReflowEvent = nil
     end
     destroyElementalMobileChatButton()
+    clearLocalChatFigureOverlays()
+    if consolePanel and not consolePanel:isDestroyed() then
+        disconnect(consolePanel, { onVisibilityChange = onLocalChatFigureConsoleVisibilityChange })
+    end
+    if localChatFigurePicker and not localChatFigurePicker:isDestroyed() then
+        localChatFigurePicker:destroy()
+    end
+    localChatFigurePicker = nil
+    localChatFigureNextAllowedAt = 0
     disconnectElementalMobileHudGeometry()
     if consolePanel and not consolePanel:isDestroyed() then
         consolePanel.onGeometryChange = elementalChatOriginalGeometryChange
@@ -2408,6 +2603,14 @@ function onTalk(name, level, mode, message, channelId, creaturePos)
         end
     end
 
+    if mode == MessageModes.Say and message:match('^fig%-%d%d%d$') then
+        local _, figureNumber = getLocalChatFigureId(message)
+        if figureNumber and creaturePos then
+            showLocalChatFigure(name, figureNumber, creaturePos)
+        end
+        return
+    end
+
     if mode == MessageModes.RVRChannel then
         channelId = violationsChannelId
     end
@@ -3007,6 +3210,10 @@ function consoleController:onGameEnd()
     if elementalChatStartEvent then
         removeEvent(elementalChatStartEvent)
         elementalChatStartEvent = nil
+    end
+    clearLocalChatFigureOverlays()
+    if localChatFigurePicker and not localChatFigurePicker:isDestroyed() then
+        localChatFigurePicker:hide()
     end
     if elementalKeyboardReflowEvent then
         removeEvent(elementalKeyboardReflowEvent)

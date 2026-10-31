@@ -1,0 +1,87 @@
+LocalChatFigurePickerButton < Button
+  size: 42 20
+  font: cipsoftFont
+  color: #F4E9D6
+  background-color: #20252D
+  border-width: 1
+  border-color: #735C2E
+  opacity: 0.9
+
+  $hover:
+    color: white
+    background-color: #303844
+    border-color: #FFB829
+    opacity: 1
+
+LocalChatFigurePicker < Panel
+  id: figurePickerPanel
+  size: 204 276
+  padding: 8
+  background-color: #10141AF2
+  border-width: 1
+  border-color: #735C2E
+  focusable: false
+  phantom: false
+  visible: false
+
+  Label
+    id: title
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    height: 18
+    font: cipsoftFont
+    color: #F4E9D6
+    !text: tr('Figurinhas')
+
+  Panel
+    id: figureGrid
+    anchors.top: title.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    margin-top: 6
+    layout:
+      type: grid
+      cell-size: 44 44
+      cell-spacing: 4
+      num-columns: 4
+
+LocalChatFigureButton < Button
+  size: 44 44
+  padding: 1
+  background-color: #20252D
+  border-width: 1
+  border-color: #414955
+  focusable: false
+  tooltip: ''
+
+  $hover:
+    background-color: #303844
+    border-color: #FFB829
+
+  UIWidget
+    id: image
+    anchors.fill: parent
+    margin: 3
+    phantom: true
+    image-fixed-ratio: true
+    image-auto-resize: false
+    image-smooth: true
+
+LocalChatFigureOverlay < UIWidget
+  size: 64 64
+  padding: 3
+  background-color: #10141AE8
+  border-width: 1
+  border-color: #FFB829
+  focusable: false
+  phantom: true
+
+  UIWidget
+    id: image
+    anchors.fill: parent
+    margin: 3
+    image-fixed-ratio: true
+    image-auto-resize: false
+    image-smooth: true
