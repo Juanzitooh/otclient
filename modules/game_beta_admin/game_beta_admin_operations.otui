@@ -1,41 +1,41 @@
 BetaAdminElevationRow < Panel
-  height: 66
+  height: 60
 
-  Label
+  BetaAdminLabel
     id: elevationSummary
     anchors.top: parent.top
     anchors.left: parent.left
     anchors.right: parent.right
-    margin: 3 4 0 5
-    height: 32
+    margin: 2 4 0 5
+    height: 28
     color: #dedede
     text-auto-resize: false
 
-  Button
+  BetaAdminButton
     id: approveButton
     anchors.left: parent.left
     anchors.bottom: parent.bottom
     margin: 2 0 3 5
-    width: 76
-    height: 22
+    width: 68
+    height: 21
     !text: tr('Aprovar')
 
-  Button
+  BetaAdminButton
     id: denyButton
     anchors.left: approveButton.right
     anchors.bottom: approveButton.bottom
     margin-left: 4
-    width: 76
-    height: 22
+    width: 68
+    height: 21
     !text: tr('Recusar')
 
-  Button
+  BetaAdminButton
     id: revokeButton
     anchors.left: denyButton.right
     anchors.bottom: approveButton.bottom
     margin-left: 4
-    width: 82
-    height: 22
+    width: 74
+    height: 21
     !text: tr('Revogar')
 
 Panel
@@ -50,123 +50,123 @@ Panel
     id: compensationPanel
     anchors.top: parent.top
     anchors.left: parent.left
+    anchors.right: parent.right
     anchors.bottom: parent.bottom
-    width: 420
-    margin: 3 6 4 6
+    margin: 3 4 4 4
 
-    Label
+    BetaAdminLabel
       id: compensationTitle
       anchors.top: parent.top
       anchors.left: parent.left
       anchors.right: parent.right
-      height: 24
+      height: 22
       color: #f0d080
       !text: tr('Compensacao limitada do CM')
 
-    Label
+    BetaAdminLabel
       id: compensationScope
       anchors.top: compensationTitle.bottom
       anchors.left: parent.left
       anchors.right: parent.right
-      height: 36
+      height: 42
       color: #b5b5b5
       text-wrap: true
 
-    Label
+    BetaAdminLabel
       id: compensationTargetLabel
       anchors.top: compensationScope.bottom
       anchors.left: parent.left
-      width: 110
-      height: 22
+      width: 92
+      height: 21
       !text: tr('Personagem online')
 
-    TextEdit
+    BetaAdminTextEdit
       id: compensationTarget
       anchors.top: compensationTargetLabel.top
       anchors.left: compensationTargetLabel.right
       anchors.right: parent.right
-      height: 22
+      height: 21
       @onTextChange: modules.game_beta_admin.BetaAdminOperations:updatePreview()
 
-    Label
+    BetaAdminLabel
       id: compensationAmountLabel
       anchors.top: compensationTarget.bottom
       anchors.left: parent.left
-      margin-top: 8
-      width: 110
-      height: 22
+      margin-top: 6
+      width: 92
+      height: 21
       !text: tr('Ouro no banco')
 
-    TextEdit
+    BetaAdminTextEdit
       id: compensationAmount
       anchors.top: compensationAmountLabel.top
       anchors.left: compensationAmountLabel.right
       width: 130
-      height: 22
+      height: 21
       text: 1
       @onTextChange: modules.game_beta_admin.BetaAdminOperations:updatePreview()
 
-    Label
+    BetaAdminLabel
       id: compensationReasonLabel
       anchors.top: compensationAmount.bottom
       anchors.left: parent.left
-      margin-top: 8
-      width: 110
-      height: 22
+      margin-top: 6
+      width: 92
+      height: 21
       !text: tr('Motivo')
 
-    TextEdit
+    BetaAdminTextEdit
       id: compensationReason
       anchors.top: compensationReasonLabel.top
       anchors.left: compensationReasonLabel.right
       anchors.right: parent.right
-      height: 22
+      height: 21
       @onTextChange: modules.game_beta_admin.BetaAdminOperations:updatePreview()
 
-    Label
+    BetaAdminLabel
       id: compensationTicketLabel
       anchors.top: compensationReason.bottom
       anchors.left: parent.left
-      margin-top: 8
-      width: 110
-      height: 22
+      margin-top: 6
+      width: 92
+      height: 21
       !text: tr('Bug / ticket')
 
-    TextEdit
+    BetaAdminTextEdit
       id: compensationTicket
       anchors.top: compensationTicketLabel.top
       anchors.left: compensationTicketLabel.right
       anchors.right: parent.right
-      height: 22
+      height: 21
       @onTextChange: modules.game_beta_admin.BetaAdminOperations:updatePreview()
 
-    Label
+    BetaAdminLabel
       id: compensationPreview
       anchors.top: compensationTicket.bottom
       anchors.left: parent.left
       anchors.right: parent.right
-      margin-top: 12
-      height: 76
+      margin-top: 7
+      height: 58
       color: #d0d0d0
       text-wrap: true
 
-    Button
+    BetaAdminPrimaryButton
       id: compensationConfirmButton
       anchors.left: parent.left
       anchors.bottom: parent.bottom
-      width: 170
-      height: 26
+      width: 150
+      height: 24
       enabled: false
       !text: tr('Revisar compensacao')
       @onClick: modules.game_beta_admin.BetaAdminOperations:submitCompensation()
 
-    Label
+    BetaAdminLabel
       id: compensationStatus
       anchors.left: compensationConfirmButton.right
       anchors.right: parent.right
       anchors.verticalCenter: compensationConfirmButton.verticalCenter
       margin-left: 8
-      height: 36
+      height: 32
       color: #b5b5b5
       text-wrap: true
 
@@ -176,117 +176,117 @@ Panel
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.bottom: parent.bottom
-    margin: 3 6 4 6
+    margin: 3 4 4 4
 
-    Label
+    BetaAdminLabel
       id: elevationTitle
       anchors.top: parent.top
       anchors.left: parent.left
       anchors.right: parent.right
-      height: 24
+      height: 22
       color: #f0d080
       !text: tr('Elevacao tecnica temporaria')
 
-    Label
+    BetaAdminLabel
       id: elevationScope
       anchors.top: elevationTitle.bottom
       anchors.left: parent.left
       anchors.right: parent.right
-      height: 36
+      height: 42
       color: #b5b5b5
       text-wrap: true
 
-    Label
+    BetaAdminLabel
       id: elevationCapabilityLabel
       anchors.top: elevationScope.bottom
       anchors.left: parent.left
-      width: 102
-      height: 22
+      width: 88
+      height: 21
       !text: tr('Acesso de teste')
 
-    ComboBox
+    BetaAdminComboBox
       id: elevationCapability
       anchors.top: elevationCapabilityLabel.top
       anchors.left: elevationCapabilityLabel.right
-      width: 180
-      height: 22
+      anchors.right: parent.right
+      height: 21
 
-    Label
+    BetaAdminLabel
       id: elevationDurationLabel
       anchors.top: elevationCapabilityLabel.bottom
       anchors.left: parent.left
-      margin-top: 8
-      width: 102
-      height: 22
+      margin-top: 6
+      width: 88
+      height: 21
       !text: tr('Duracao maxima')
 
-    ComboBox
+    BetaAdminComboBox
       id: elevationDuration
       anchors.top: elevationDurationLabel.top
       anchors.left: elevationDurationLabel.right
-      width: 100
-      height: 22
+      width: 82
+      height: 21
 
-    Label
+    BetaAdminLabel
       id: elevationReasonLabel
       anchors.top: elevationDuration.bottom
       anchors.left: parent.left
-      margin-top: 8
-      width: 102
-      height: 22
+      margin-top: 6
+      width: 88
+      height: 21
       !text: tr('Motivo')
 
-    TextEdit
+    BetaAdminTextEdit
       id: elevationReason
       anchors.top: elevationReasonLabel.top
       anchors.left: elevationReasonLabel.right
       anchors.right: parent.right
-      height: 22
+      height: 21
 
-    Label
+    BetaAdminLabel
       id: elevationTicketLabel
       anchors.top: elevationReason.bottom
       anchors.left: parent.left
-      margin-top: 8
-      width: 102
-      height: 22
+      margin-top: 6
+      width: 88
+      height: 21
       !text: tr('Bug / ticket')
 
-    TextEdit
+    BetaAdminTextEdit
       id: elevationTicket
       anchors.top: elevationTicketLabel.top
       anchors.left: elevationTicketLabel.right
-      width: 180
-      height: 22
+      width: 122
+      height: 21
 
-    Button
+    BetaAdminPrimaryButton
       id: elevationRequestButton
       anchors.top: elevationTicket.top
       anchors.left: elevationTicket.right
-      margin-left: 6
-      width: 126
-      height: 22
+      margin-left: 5
+      width: 102
+      height: 21
       enabled: false
       !text: tr('Solicitar acesso')
       @onClick: modules.game_beta_admin.BetaAdminOperations:requestElevation()
 
-    Button
+    BetaAdminButton
       id: elevationRefreshButton
       anchors.top: elevationRequestButton.bottom
       anchors.left: parent.left
-      margin-top: 10
-      width: 112
-      height: 22
+      margin-top: 6
+      width: 104
+      height: 21
       !text: tr('Atualizar lista')
       @onClick: modules.game_beta_admin.BetaAdminOperations:refreshElevations()
 
-    Label
+    BetaAdminLabel
       id: elevationListStatus
       anchors.left: elevationRefreshButton.right
       anchors.right: parent.right
       anchors.verticalCenter: elevationRefreshButton.verticalCenter
       margin-left: 8
-      height: 28
+      height: 24
       color: #b5b5b5
       text-wrap: true
 
@@ -295,10 +295,10 @@ Panel
       anchors.top: elevationRefreshButton.bottom
       anchors.left: parent.left
       anchors.bottom: parent.bottom
-      margin-top: 5
+      margin-top: 4
       margin-bottom: 3
-      width: 14
-      step: 66
+      width: 12
+      step: 60
       pixels-scroll: true
 
     ScrollablePanel
@@ -307,7 +307,7 @@ Panel
       anchors.left: elevationScrollBar.right
       anchors.right: parent.right
       anchors.bottom: elevationScrollBar.bottom
-      margin-left: 5
+      margin-left: 4
       vertical-scrollbar: elevationScrollBar
       layout:
         type: verticalBox

@@ -55,10 +55,14 @@ local function getDefaultRect(id)
     local rect = { x = 24, y = 72, width = 300, height = 320 }
 
     if id == 'beta-admin' then
-        local width, height = 940, 620
+        local width = math.min(438, math.max(340, math.floor(parentWidth * 0.32)))
+        local height = math.min(567, math.max(parentHeight - 32, 480))
+        local clearMapWidth = math.ceil(parentWidth * 0.65)
+        local maxRightMargin = math.max(8, parentWidth - width - clearMapWidth)
+        local rightMargin = math.min(30, maxRightMargin)
         rect = {
-            x = math.floor((parentWidth - width) / 2),
-            y = 24,
+            x = parentWidth - width - rightMargin,
+            y = math.floor((parentHeight - height) / 2),
             width = width,
             height = height
         }
@@ -107,7 +111,8 @@ local function saveGeometry(entry)
         x = widget:getX(),
         y = widget:getY(),
         width = widget:getWidth(),
-        height = widget:getHeight()
+        height = widget:getHeight(),
+        version = entry.geometryVersion
     }
     g_settings.setNode(SETTINGS_KEY, settings)
     g_settings.save()
@@ -180,7 +185,11 @@ local function applyGeometry(entry)
     if g_platform.isMobile() and entry.id == 'chat' then
         rect = getDefaultRect(entry.id)
     else
-        rect = settings[entry.id] or getDefaultRect(entry.id)
+        rect = settings[entry.id]
+        if entry.geometryVersion and rect and rect.version ~= entry.geometryVersion then
+            rect = nil
+        end
+        rect = rect or getDefaultRect(entry.id)
     end
     local width = math.min(tonumber(rect.width) or 300, math.max(parentWidth - 16, 160))
     local height = math.min(tonumber(rect.height) or 300, math.max(parentHeight - 16, 120))
@@ -489,6 +498,7 @@ function ElementalWindowHost.register(id, title, widget, options)
             resizable = options.resizable ~= false,
             minimumWidth = options.minimumWidth,
             minimumHeight = options.minimumHeight,
+            geometryVersion = options.geometryVersion,
             onContentSync = options.onContentSync
         }
         entries[id] = entry

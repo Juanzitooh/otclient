@@ -18,6 +18,8 @@ local CAPABILITY_MANAGE_STAFF = "beta.manage.staff"
 local CAPABILITY_COMPENSATE = "beta.compensate"
 local CAPABILITY_ELEVATION_REQUEST = "beta.elevation.request"
 local MAX_QUERY_LENGTH = 64
+local USER_RESULTS_HEIGHT = 184
+local USER_RESULTS_ACCESS_HEIGHT = 100
 local CAPABILITY_LABELS = {
     ["beta.feedback.triage"] = "Triagem de feedback",
     [CAPABILITY_MANAGE_STAFF] = "Gerir equipe abaixo de CM",
@@ -27,27 +29,13 @@ local CAPABILITY_LABELS = {
     ["beta.test.items"] = "Teste de itens",
     ["beta.test.monsters"] = "Teste de monstros",
 }
-local MANAGEMENT_SCOPE_LABELS = {
-    god = "God: gerencia personagens abaixo de God; grants beta exclusivos de God.",
-    tutors = "Senior Tutor: contas Normal/Tutor; grupos Player/Tutor.",
-    staff = "Community Manager: equipe abaixo de CM; grupos Player/Tutor/Senior Tutor.",
-}
 local MANAGEMENT_OPTION_LIMITS = {
     god = { accountType = 5, group = 3 },
     tutors = { accountType = 2, group = 2 },
     staff = { accountType = 4, group = 3 },
 }
 local USER_MANAGEMENT_WIDGET_IDS = {
-    "accountTypeScope",
-    "accountTypeSelection",
-    "applyAccountTypeButton",
-    "groupScope",
-    "groupSelection",
-    "applyGroupButton",
-    "capabilitiesTitle",
-    "capabilityStoreStatus",
-    "userCapabilitiesScrollBar",
-    "userCapabilities",
+    "userAccessToggleButton",
 }
 local TARGET_ACTION_MENU_CATEGORY = "betaAdmin"
 local TARGET_ACTION_MENU_HOOKS = {
@@ -245,6 +233,8 @@ GameBetaAdmin.userResults = {}
 GameBetaAdmin.assignableCapabilities = {}
 GameBetaAdmin.userQuery = ""
 GameBetaAdmin.userHasMore = false
+GameBetaAdmin.userAccessExpanded = false
+GameBetaAdmin.userHasQuickActions = false
 GameBetaAdmin.userReselectName = nil
 GameBetaAdmin.searchEvent = nil
 GameBetaAdmin.latestItemSearchRequestId = nil
@@ -256,6 +246,7 @@ GameBetaAdmin.settingItemRecipient = false
 GameBetaAdmin.settingUserSearch = false
 GameBetaAdmin.nextRequestId = 0
 GameBetaAdmin.activePage = "commands"
+GameBetaAdmin.hasChosenArea = false
 GameBetaAdmin.status = "Desconectado."
 GameBetaAdmin.catalogStatus = {
     items = "Digite um nome ou ID para pesquisar.",
@@ -280,6 +271,9 @@ function GameBetaAdmin:onInit()
     mode:addOption("Criatura comum", "spawn")
     mode:addOption("Summon do operador", "summon")
     mode:setCurrentOptionByData("spawn")
+    self.ui:recursiveGetChildById("areaSelector").onOptionChange = function()
+        self:onAreaChange()
+    end
     self.ui:recursiveGetChildById("accountTypeSelection").onOptionChange = function()
         self:updateUserActionButtons()
     end
@@ -295,8 +289,9 @@ function GameBetaAdmin:onInit()
     modules.game_interface.registerElementalWindow(ELEMENTAL_WINDOW_ID,
         tr("Administracao do beta"), self.ui, {
             directWindow = true,
-            minimumWidth = 920,
-            minimumHeight = 600
+            geometryVersion = 3,
+            minimumWidth = 340,
+            minimumHeight = 520
         })
     self:updateVisibility()
     self:registerTargetActionHooks()
@@ -496,11 +491,17 @@ function GameBetaAdmin:prepareLocalTestScreen()
     elseif isOperationsCM or isOperationsRequester or isOperationsGod then
         self.activePage = "operations"
     end
-    self.status = selfTestPassed and "QA local isolado: schemas validos; nenhuma solicitacao sera enviada."
+    self.status = selfTestPassed and "QA isolado: nenhum comando sera enviado."
         or ("Falha no self-test: " .. selfTestMessage)
     self:updateUI()
     if screen == "beta-feedback" then
         BetaAdminFeedback:prepareLocalTestScreen()
+    end
+    local requestedArea = os.getenv("ELEMENTAL_LOCAL_TEST_AREA")
+    if requestedArea then
+        self:showPage(requestedArea)
+    elseif screen == "beta-admin" and self.snapshot.canSearchOnlinePlayers then
+        self:showPage("users")
     end
     if screen == "beta-admin" then
         local selectedTalkAction = os.getenv("ELEMENTAL_LOCAL_TEST_TALK_ACTION") or "/ban"
@@ -510,6 +511,10 @@ function GameBetaAdmin:prepareLocalTestScreen()
                 break
             end
         end
+    end
+    local testWindowWidth = tonumber(os.getenv("ELEMENTAL_LOCAL_TEST_WINDOW_WIDTH"))
+    if testWindowWidth and testWindowWidth >= 340 and testWindowWidth <= 438 then
+        self.ui:setWidth(testWindowWidth)
     end
     self.ui:show()
     self.ui:raise()
@@ -593,8 +598,8 @@ function GameBetaAdmin:prepareLocalTestScreen()
         self.ui:recursiveGetChildById("groupSelection"):setCurrentOptionByData(3)
         self:updateUserActionButtons()
     elseif screen == "beta-users-moderator" then
-        self.userQuery = "T543"
-        self.ui:recursiveGetChildById("userSearch"):setText(self.userQuery)
+        self.userQuery = ""
+        self.ui:recursiveGetChildById("userSearch"):setText("")
         self:renderUserResults({
             {
                 name = "T543 Synthetic Player",
@@ -605,6 +610,13 @@ function GameBetaAdmin:prepareLocalTestScreen()
                 capabilities = {},
                 quickActions = { ["/kick"] = true, ["/ban"] = true, ["/t"] = true },
             },
+            { name = "T544 Player Test", accountType = 1, groupType = 1, manageable = false, capabilitiesAvailable = false, capabilities = {} },
+            { name = "T545 Tutor Test", accountType = 2, groupType = 2, manageable = false, capabilitiesAvailable = false, capabilities = {} },
+            { name = "T546 Community Test", accountType = 5, groupType = 1, manageable = false, capabilitiesAvailable = false, capabilities = {} },
+            { name = "T547 Builder Test", accountType = 4, groupType = 1, manageable = false, capabilitiesAvailable = false, capabilities = {} },
+            { name = "T548 Senior Test", accountType = 3, groupType = 3, manageable = false, capabilitiesAvailable = false, capabilities = {} },
+            { name = "T549 Operations Test", accountType = 5, groupType = 1, manageable = false, capabilitiesAvailable = false, capabilities = {} },
+            { name = "T550 Extra Player", accountType = 1, groupType = 1, manageable = false, capabilitiesAvailable = false, capabilities = {} },
         }, false, false)
         self:selectUser(self.userResults[1])
     end
@@ -650,6 +662,7 @@ function GameBetaAdmin:onGameStart()
     BetaAdminFeedback:onGameEnd()
     BetaAdminOperations:onGameEnd()
     self.nextRequestId = 0
+    self.hasChosenArea = false
     self.pendingRequests = {}
     self.snapshot = nil
     self.actions = {}
@@ -663,9 +676,14 @@ function GameBetaAdmin:onGameStart()
     self.assignableCapabilities = {}
     self.userQuery = ""
     self.userHasMore = false
+    self.userAccessExpanded = false
+    self.userHasQuickActions = false
     self.latestUserSearchRequestId = nil
     self.latestItemRecipientRequestId = nil
     self.status = "Solicitando permissoes ao servidor..."
+    if self.ui then
+        self:updateUserResultsHeight()
+    end
     self:updateUI()
     self:updateAdminButton()
     self:requestSnapshot()
@@ -692,13 +710,19 @@ function GameBetaAdmin:onGameEnd()
     self.assignableCapabilities = {}
     self.userQuery = ""
     self.userHasMore = false
+    self.userAccessExpanded = false
+    self.userHasQuickActions = false
     self.userReselectName = nil
     self.fieldWidgets = {}
     self.latestItemSearchRequestId = nil
     self.latestMonsterSearchRequestId = nil
     self.latestUserSearchRequestId = nil
     self.latestItemRecipientRequestId = nil
+    if self.ui then
+        self:updateUserResultsHeight()
+    end
     self.activePage = "commands"
+    self.hasChosenArea = false
     self.status = "Desconectado."
     self.isResettingSession = true
     if self.ui then
@@ -724,6 +748,13 @@ function GameBetaAdmin:onGameEnd()
         self.ui:recursiveGetChildById("itemRecipientResultsScrollBar"):hide()
         self.ui:recursiveGetChildById("spawnMonsterButton"):setEnabled(false)
         self.ui:recursiveGetChildById("userLoadMoreButton"):setEnabled(false)
+        self.ui:recursiveGetChildById("userLoadMoreButton"):setHeight(0)
+        self.ui:recursiveGetChildById("userLoadMoreButton"):hide()
+        self.ui:recursiveGetChildById("userResultsCount"):setText("0 online")
+        self.ui:recursiveGetChildById("userAccessEditor"):hide()
+        self.ui:recursiveGetChildById("userAccessToggleButton"):hide()
+        self.ui:recursiveGetChildById("userActionInfo"):setText("")
+        self.ui:recursiveGetChildById("userActionInfo"):setHeight(0)
         self.ui:recursiveGetChildById("applyAccountTypeButton"):setEnabled(false)
         self.ui:recursiveGetChildById("applyGroupButton"):setEnabled(false)
         self.ui:recursiveGetChildById("accountTypeSelection"):clearOptions()
@@ -764,6 +795,8 @@ function GameBetaAdmin:clearUserManagementState()
     self.assignableCapabilities = {}
     self.userQuery = ""
     self.userHasMore = false
+    self.userAccessExpanded = false
+    self.userHasQuickActions = false
     self.userReselectName = nil
     self.latestUserSearchRequestId = nil
     if not self.ui then
@@ -773,8 +806,16 @@ function GameBetaAdmin:clearUserManagementState()
     self.isResettingSession = true
     self.ui:recursiveGetChildById("userSearch"):setText("")
     self.ui:recursiveGetChildById("userResults"):destroyChildren()
+    self:updateUserResultsHeight()
     self.ui:recursiveGetChildById("userCapabilities"):destroyChildren()
     self.ui:recursiveGetChildById("userLoadMoreButton"):setEnabled(false)
+    self.ui:recursiveGetChildById("userLoadMoreButton"):setHeight(0)
+    self.ui:recursiveGetChildById("userLoadMoreButton"):hide()
+    self.ui:recursiveGetChildById("userResultsCount"):setText("0 online")
+    self.ui:recursiveGetChildById("userAccessEditor"):hide()
+    self.ui:recursiveGetChildById("userAccessToggleButton"):hide()
+    self.ui:recursiveGetChildById("userActionInfo"):setText("")
+    self.ui:recursiveGetChildById("userActionInfo"):setHeight(0)
     self:updateQuickTargetActionButtons(nil)
     self.ui:recursiveGetChildById("applyAccountTypeButton"):setEnabled(false)
     self.ui:recursiveGetChildById("applyGroupButton"):setEnabled(false)
@@ -817,7 +858,7 @@ function GameBetaAdmin:updateAdminButton()
         if not layer or layer:isDestroyed() then
             return
         end
-        self.elementalButton = g_ui.createWidget("Button", layer)
+        self.elementalButton = g_ui.createWidget("BetaAdminPrimaryButton", layer)
         self.elementalButton:setId("elementalBetaAdminAccess")
         self.elementalButton:setText(tr("Admin"))
         self.elementalButton:setTooltip(tr("Administracao do beta"))
@@ -827,9 +868,6 @@ function GameBetaAdmin:updateAdminButton()
         self.elementalButton:addAnchor(AnchorRight, "parent", AnchorRight)
         self.elementalButton:setMarginBottom(16)
         self.elementalButton:setMarginRight(16)
-        self.elementalButton:setBackgroundColor("#171A20DD")
-        self.elementalButton:setBorderWidth(1)
-        self.elementalButton:setBorderColor("#FFB829")
         self.elementalButton:setPhantom(false)
         self.elementalButton.onClick = function()
             self:toggle()
@@ -993,6 +1031,7 @@ function GameBetaAdmin:onSnapshot(snapshot)
         return
     end
 
+    local openOnlineUsers = not self.hasChosenArea and snapshot.canSearchOnlinePlayers == true
     self.snapshot = snapshot
     self.capabilities = {}
     for _, capability in ipairs(snapshot.capabilities) do
@@ -1030,6 +1069,9 @@ function GameBetaAdmin:onSnapshot(snapshot)
     end
     self:updateUI()
     self:updateAdminButton()
+    if openOnlineUsers then
+        self:showPage("users")
+    end
 end
 
 function GameBetaAdmin:findSchema(words)
@@ -1333,26 +1375,46 @@ function GameBetaAdmin:updateVisibility()
     local hasFeedback = hasCapability(self.capabilities, CAPABILITY_FEEDBACK)
     local hasOperations = self.snapshot ~= nil and (self.snapshot.canCompensate == true
         or self.snapshot.canRequestElevation == true or self.snapshot.canApproveElevation == true)
-    local userScopeText = self.snapshot and MANAGEMENT_SCOPE_LABELS[self.snapshot.managementScope] or ""
-    if hasUsers and not canManageUsers then
-        userScopeText = "Busca somente jogadores online elegiveis para moderacao."
-    end
+    local userScopeText = hasUsers and "Escopo do seu cargo" or ""
     setWidgetText(self.ui:recursiveGetChildById("userScopeInfo"), userScopeText)
-    setWidgetText(self.ui:recursiveGetChildById("usersTab"), tr(canManageUsers and "Usuarios" or "Jogadores"))
     for _, widgetId in ipairs(USER_MANAGEMENT_WIDGET_IDS) do
         self.ui:recursiveGetChildById(widgetId):setVisible(canManageUsers)
     end
+    local canEditSelectedUser = canManageUsers and self.selectedUser ~= nil
+        and self.selectedUser.manageable == true
+    self.ui:recursiveGetChildById("userAccessToggleButton"):setVisible(canEditSelectedUser)
+    if not canManageUsers then
+        self.userAccessExpanded = false
+        self:updateUserResultsHeight()
+        self.ui:recursiveGetChildById("userAccessEditor"):hide()
+    end
     local readOnlySearchInfo = self.ui:recursiveGetChildById("readOnlySearchInfo")
     setWidgetText(readOnlySearchInfo,
-        "Acoes limitadas ao seu cargo. Alteracao de conta e grupo indisponivel.")
-    readOnlySearchInfo:setVisible(hasUsers and not canManageUsers)
+        "So pode usar as acoes permitidas ao seu cargo.")
+    local showReadOnlyInfo = hasUsers and not canManageUsers and self.selectedUser == nil
+    readOnlySearchInfo:setVisible(showReadOnlyInfo)
+    readOnlySearchInfo:setHeight(showReadOnlyInfo and 24 or 0)
     BetaAdminFeedback:setAuthorized(hasFeedback)
-    self.ui:recursiveGetChildById("commandsTab"):setVisible(hasCommands)
-    self.ui:recursiveGetChildById("itemsTab"):setVisible(hasItems)
-    self.ui:recursiveGetChildById("monstersTab"):setVisible(hasMonsters)
-    self.ui:recursiveGetChildById("usersTab"):setVisible(hasUsers)
-    self.ui:recursiveGetChildById("feedbackTab"):setVisible(hasFeedback)
-    self.ui:recursiveGetChildById("operationsTab"):setVisible(hasOperations)
+
+    local areaOptions = {}
+    if hasUsers then
+        areaOptions[#areaOptions + 1] = { "Usuarios online", "users" }
+    end
+    if hasCommands then
+        areaOptions[#areaOptions + 1] = { "Comandos", "commands" }
+    end
+    if hasItems then
+        areaOptions[#areaOptions + 1] = { "Itens", "items" }
+    end
+    if hasMonsters then
+        areaOptions[#areaOptions + 1] = { "Criaturas", "monsters" }
+    end
+    if hasFeedback then
+        areaOptions[#areaOptions + 1] = { "Feedback", "feedback" }
+    end
+    if hasOperations then
+        areaOptions[#areaOptions + 1] = { "Operacoes", "operations" }
+    end
     if self.activePage == "items" and not hasItems then
         self.activePage = "commands"
     elseif self.activePage == "monsters" and not hasMonsters then
@@ -1368,6 +1430,18 @@ function GameBetaAdmin:updateVisibility()
         self.activePage = hasItems and "items" or hasMonsters and "monsters" or hasUsers and "users"
             or hasFeedback and "feedback" or hasOperations and "operations" or "commands"
     end
+
+    local areaSelector = self.ui:recursiveGetChildById("areaSelector")
+    self.settingAreaSelector = true
+    areaSelector:clearOptions()
+    for _, option in ipairs(areaOptions) do
+        areaSelector:addOption(option[1], option[2])
+    end
+    if #areaOptions > 0 then
+        areaSelector:setCurrentOptionByData(self.activePage)
+    end
+    self.settingAreaSelector = false
+
     self.ui:recursiveGetChildById("commandsPage"):setVisible(self.activePage == "commands" and hasCommands)
     self.ui:recursiveGetChildById("itemsPage"):setVisible(self.activePage == "items" and hasItems)
     self.ui:recursiveGetChildById("monstersPage"):setVisible(self.activePage == "monsters" and hasMonsters)
@@ -1379,6 +1453,16 @@ function GameBetaAdmin:updateVisibility()
     end
     if BetaAdminOperations.ui and not BetaAdminOperations.ui:isDestroyed() then
         BetaAdminOperations.ui:setVisible(self.activePage == "operations" and hasOperations)
+    end
+end
+
+function GameBetaAdmin:onAreaChange()
+    if self.settingAreaSelector or not self.ui then
+        return
+    end
+    local option = self.ui:recursiveGetChildById("areaSelector"):getCurrentOption()
+    if option and type(option.data) == "string" then
+        self:showPage(option.data)
     end
 end
 
@@ -1403,6 +1487,7 @@ function GameBetaAdmin:showPage(page)
         return
     end
     self.activePage = page
+    self.hasChosenArea = true
     self:updateVisibility()
     if page == "items" or page == "monsters" then
         self:setStatus(self.catalogStatus[page])
@@ -1556,7 +1641,45 @@ function GameBetaAdmin:updateQuickTargetActionButtons(user)
             self:openSelectedUserAction(actionWords)
         end
     end
-    self.ui:recursiveGetChildById("userQuickActions"):setVisible(hasActions)
+    self.userHasQuickActions = hasActions
+    local showActions = hasActions and self.userAccessExpanded ~= true
+    local quickActions = self.ui:recursiveGetChildById("userQuickActions")
+    quickActions:setHeight(showActions and 58 or 0)
+    quickActions:setVisible(showActions)
+end
+
+function GameBetaAdmin:updateUserResultsHeight()
+    if not self.ui then
+        return
+    end
+
+    local height = self.userAccessExpanded and USER_RESULTS_ACCESS_HEIGHT or USER_RESULTS_HEIGHT
+    self.ui:recursiveGetChildById("userResultsScrollBar"):setHeight(height)
+    self.ui:recursiveGetChildById("userResults"):setHeight(height)
+end
+
+function GameBetaAdmin:toggleUserAccessEditor()
+    local user = self.selectedUser
+    if not user or user.manageable ~= true or not self.snapshot or self.snapshot.canManageUsers ~= true then
+        return
+    end
+
+    self.userAccessExpanded = not self.userAccessExpanded
+    self:updateUserResultsHeight()
+    self.ui:recursiveGetChildById("userAccessEditor"):setVisible(self.userAccessExpanded)
+    self.ui:recursiveGetChildById("userAccessToggleButton"):setText(
+        tr(self.userAccessExpanded and "Voltar as acoes" or "Gerenciar acesso"))
+
+    local showActions = self.userHasQuickActions and not self.userAccessExpanded
+    local quickActions = self.ui:recursiveGetChildById("userQuickActions")
+    quickActions:setHeight(showActions and 58 or 0)
+    quickActions:setVisible(showActions)
+
+    local actionInfo = self.ui:recursiveGetChildById("userActionInfo")
+    actionInfo:setText(self.userAccessExpanded
+        and tr("Alteracoes persistentes exigem confirmacao.")
+        or tr("Confirme a previa; servidor valida cargo/alvo."))
+    actionInfo:setHeight(self.userAccessExpanded and 16 or 20)
 end
 
 function GameBetaAdmin:openSelectedUserAction(words)
@@ -1588,7 +1711,7 @@ function GameBetaAdmin:openSelectedUserAction(words)
 end
 
 function GameBetaAdmin:getExecutableTargetAction(words)
-    if not self.snapshot or not g_game.isOnline() then
+    if not self.snapshot or (not g_game.isOnline() and self.localTestMode ~= true) then
         return nil
     end
     return findExecutableTargetAction(self.actions, self.snapshot, words)
@@ -2118,6 +2241,7 @@ function GameBetaAdmin:updateUserActionButtons()
     local groupOption = self.ui:recursiveGetChildById("groupSelection"):getCurrentOption()
     local accountType = accountOption and tonumber(accountOption.data) or nil
     local groupId = groupOption and tonumber(groupOption.data) or nil
+    self.ui:recursiveGetChildById("userAccessToggleButton"):setVisible(canChange)
     self.ui:recursiveGetChildById("applyAccountTypeButton"):setEnabled(canChange
         and accountType ~= nil and accountType > 0 and accountType ~= user.accountType)
     self.ui:recursiveGetChildById("applyGroupButton"):setEnabled(canChange
@@ -2131,22 +2255,49 @@ function GameBetaAdmin:renderUserDetails(user)
     local nameLabel = self.ui:recursiveGetChildById("selectedUserName")
     local accessLabel = self.ui:recursiveGetChildById("currentUserAccess")
     local capabilityList = self.ui:recursiveGetChildById("userCapabilities")
+    local readOnlyInfo = self.ui:recursiveGetChildById("readOnlySearchInfo")
     capabilityList:destroyChildren()
+    self.userAccessExpanded = false
+    self:updateUserResultsHeight()
+    self.ui:recursiveGetChildById("userAccessEditor"):hide()
+    self.ui:recursiveGetChildById("userAccessToggleButton"):setText(tr("Gerenciar acesso"))
+    self.ui:recursiveGetChildById("userAccessToggleButton"):hide()
+    self.ui:recursiveGetChildById("userActionInfo"):setHeight(0)
     self:resetUserOptionBoxes(user)
-	self:updateQuickTargetActionButtons(user)
+    self:updateQuickTargetActionButtons(user)
 
     if not user then
         setWidgetText(nameLabel, "Selecione um jogador online.")
         setWidgetText(accessLabel, "")
         setWidgetText(self.ui:recursiveGetChildById("capabilityStoreStatus"), "")
+        setWidgetText(self.ui:recursiveGetChildById("userActionInfo"), "")
+        local showReadOnlyInfo = self.snapshot and self.snapshot.canSearchOnlinePlayers == true
+            and self.snapshot.canManageUsers ~= true
+        readOnlyInfo:setVisible(showReadOnlyInfo)
+        readOnlyInfo:setHeight(showReadOnlyInfo and 24 or 0)
         self:updateUserActionButtons()
         return
     end
+    readOnlyInfo:hide()
+    readOnlyInfo:setHeight(0)
 
     local accountTypeName = ROLE_NAMES[user.accountType] or tostring(user.accountType)
     setWidgetText(nameLabel, user.name)
-    setWidgetText(accessLabel, string.format("AccountType da conta: %s  |  Group/flags do personagem: %s",
+    setWidgetText(accessLabel, string.format("Online  |  Conta: %s  |  Grupo: %s",
         accountTypeName, self:getGroupLabel(user.groupType)))
+
+    local actionInfo = self.ui:recursiveGetChildById("userActionInfo")
+    if self.userHasQuickActions then
+        setWidgetText(actionInfo,
+            "Confirme a previa; servidor valida cargo/alvo.")
+        actionInfo:setHeight(20)
+    elseif not user.manageable then
+        setWidgetText(actionInfo, "Alvo acima do seu nivel; alteracoes bloqueadas.")
+        actionInfo:setHeight(20)
+    else
+        setWidgetText(actionInfo, "Nenhuma acao rapida disponivel para este alvo.")
+        actionInfo:setHeight(20)
+    end
 
     local storeAvailable = self.snapshot and self.snapshot.capabilityStoreAvailable == true
     if not self.snapshot or not self.snapshot.canManageUsers then
@@ -2156,13 +2307,13 @@ function GameBetaAdmin:renderUserDetails(user)
     end
     if user.manageable ~= true then
         setWidgetText(self.ui:recursiveGetChildById("capabilityStoreStatus"),
-            "Este jogador nao esta abaixo do seu nivel; alteracoes estao bloqueadas.")
+            "Alvo acima do seu nivel; alteracoes bloqueadas.")
         self:updateUserActionButtons()
         return
     end
     if not storeAvailable then
         setWidgetText(self.ui:recursiveGetChildById("capabilityStoreStatus"),
-            "Store de grants indisponivel; alteracoes de permissao estao bloqueadas.")
+            "Grants indisponiveis; alteracoes bloqueadas.")
         self:updateUserActionButtons()
         return
     end
@@ -2230,15 +2381,24 @@ function GameBetaAdmin:renderUserResults(users, hasMore, append)
         row.userEntry = user
         row:getChildById("userName"):setText(user.name)
         local accountTypeName = ROLE_NAMES[user.accountType] or tostring(user.accountType)
-        row:getChildById("userAccess"):setText(string.format("%s  |  Grupo %s",
-            accountTypeName, tostring(user.groupType)))
+        row:getChildById("userAccess"):setText(string.format("Conta %s  |  Grupo %s",
+            accountTypeName, self:getGroupLabel(user.groupType)))
         row:setOn(self.selectedUser == user)
         row.onClick = function()
             self:selectUser(user)
         end
     end
+    if not append then
+        local userResultsScrollBar = self.ui:recursiveGetChildById("userResultsScrollBar")
+        userResultsScrollBar:setValue(userResultsScrollBar:getMinimum())
+    end
     self.userHasMore = hasMore == true
-    self.ui:recursiveGetChildById("userLoadMoreButton"):setEnabled(self.userHasMore)
+    local loadMoreButton = self.ui:recursiveGetChildById("userLoadMoreButton")
+    loadMoreButton:setEnabled(self.userHasMore)
+    loadMoreButton:setHeight(self.userHasMore and 22 or 0)
+    loadMoreButton:setVisible(self.userHasMore)
+    setWidgetText(self.ui:recursiveGetChildById("userResultsCount"),
+        string.format("%d online", #self.userResults))
 
     if self.userReselectName then
         local selectedName = self.userReselectName:lower()
@@ -2253,13 +2413,7 @@ function GameBetaAdmin:renderUserResults(users, hasMore, append)
     if not self.selectedUser then
         self:renderUserDetails(nil)
     end
-    if self.userQuery == "" then
-        self:setStatus(string.format("%d jogador(es) online visiveis para seu cargo%s.", #self.userResults,
-            self.userHasMore and "; ha mais resultados" or ""))
-    else
-        self:setStatus(string.format("%d jogador(es) online na busca%s.", #self.userResults,
-            self.userHasMore and "; ha mais resultados" or ""))
-    end
+    self:setStatus("")
 end
 
 function GameBetaAdmin:requestOnlinePlayers(query, offset, append)
@@ -2291,8 +2445,11 @@ function GameBetaAdmin:onUserSearchChange(query)
     self.selectedUser = nil
     self.userResults = {}
     self.userHasMore = false
+    self.ui:recursiveGetChildById("userResultsCount"):setText("0 online")
     self.ui:recursiveGetChildById("userResults"):destroyChildren()
     self.ui:recursiveGetChildById("userLoadMoreButton"):setEnabled(false)
+    self.ui:recursiveGetChildById("userLoadMoreButton"):setHeight(0)
+    self.ui:recursiveGetChildById("userLoadMoreButton"):hide()
     self:renderUserDetails(nil)
 
     if #query > MAX_QUERY_LENGTH then
@@ -2331,7 +2488,10 @@ function GameBetaAdmin:loadMoreUsers()
     end
     if self.localTestMode then
         self.userHasMore = false
-        self.ui:recursiveGetChildById("userLoadMoreButton"):setEnabled(false)
+        local loadMoreButton = self.ui:recursiveGetChildById("userLoadMoreButton")
+        loadMoreButton:setEnabled(false)
+        loadMoreButton:setHeight(0)
+        loadMoreButton:hide()
         return
     end
     self:requestOnlinePlayers(self.userQuery, #self.userResults, true)
@@ -2759,8 +2919,7 @@ function GameBetaAdmin:updateUI()
     end
     local role = self.snapshot and (ROLE_NAMES[self.snapshot.accountType] or tostring(self.snapshot.accountType)) or "aguardando servidor"
     local groupId = self.snapshot and tostring(self.snapshot.groupType) or "-"
-    local storeStatus = self.snapshot and (self.snapshot.capabilityStoreAvailable and "disponivel" or "indisponivel") or "-"
-    setWidgetText(self.ui:recursiveGetChildById("accessLabel"), string.format("Conta: %s  |  Grupo do personagem: %s  |  Permissoes beta: %s", role, groupId, storeStatus))
+    setWidgetText(self.ui:recursiveGetChildById("accessLabel"), string.format("Conta: %s  |  Grupo %s", role, groupId))
     setWidgetText(self.ui:recursiveGetChildById("statusLabel"), self.status)
     self:updateVisibility()
     self:renderActionList()

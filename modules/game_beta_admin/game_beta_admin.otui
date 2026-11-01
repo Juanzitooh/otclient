@@ -1,16 +1,23 @@
+BetaAdminLabel < Label
+  color: $elementalText
+  font: verdana-11px-antialised
+
 BetaAdminActionRow < UIButton
   height: 42
   focusable: false
   text-align: left
-  background-color: #292929
+  background-color: #171922
+  border-width: 1
+  border-color: #292c35
 
   $hover:
-    background-color: #373737
+    background-color: #222631
 
   $on:
-    background-color: #454545
+    background-color: #292b2e
+    border-color: #c68b48
 
-  Label
+  BetaAdminLabel
     id: actionWords
     anchors.top: parent.top
     anchors.left: parent.left
@@ -20,7 +27,7 @@ BetaAdminActionRow < UIButton
     color: #f0f0f0
     text-auto-resize: false
 
-  Label
+  BetaAdminLabel
     id: actionLevel
     anchors.top: actionWords.bottom
     anchors.left: actionWords.left
@@ -30,20 +37,23 @@ BetaAdminActionRow < UIButton
     text-auto-resize: false
 
 BetaAdminItemRow < UIButton
-  height: 52
+  height: 46
   focusable: false
   text-align: left
-  background-color: #292929
+  background-color: #171922
+  border-width: 1
+  border-color: #292c35
 
   $hover:
-    background-color: #373737
+    background-color: #222631
 
   $on:
-    background-color: #454545
+    background-color: #292b2e
+    border-color: #c68b48
 
   UIItem
     id: itemSprite
-    size: 36 36
+    size: 34 34
     anchors.left: parent.left
     anchors.verticalCenter: parent.verticalCenter
     margin-left: 6
@@ -58,7 +68,7 @@ BetaAdminItemRow < UIButton
     visible: false
     phantom: true
 
-  Label
+  BetaAdminLabel
     id: itemName
     anchors.top: parent.top
     anchors.left: itemSprite.right
@@ -67,7 +77,7 @@ BetaAdminItemRow < UIButton
     height: 15
     text-auto-resize: false
 
-  Label
+  BetaAdminLabel
     id: itemId
     anchors.top: itemName.bottom
     anchors.left: itemName.left
@@ -80,24 +90,37 @@ BetaAdminUserRow < UIButton
   height: 42
   focusable: false
   text-align: left
-  background-color: #292929
+  background-color: #171922
+  border-width: 1
+  border-color: #292c35
 
   $hover:
-    background-color: #373737
+    background-color: #222631
 
   $on:
-    background-color: #454545
+    background-color: #292b2e
+    border-color: #c68b48
 
-  Label
+  Panel
+    id: userOnlineDot
+    size: 8 8
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 8
+    background-color: #9ccc65
+    phantom: true
+
+  BetaAdminLabel
     id: userName
     anchors.top: parent.top
-    anchors.left: parent.left
+    anchors.left: userOnlineDot.right
     anchors.right: parent.right
     margin: 4 6 0 7
     height: 16
+    font-size: 12
     text-auto-resize: false
 
-  Label
+  BetaAdminLabel
     id: userAccess
     anchors.top: userName.bottom
     anchors.left: userName.left
@@ -109,7 +132,7 @@ BetaAdminUserRow < UIButton
 BetaAdminCapabilityRow < Panel
   height: 42
 
-  Label
+  BetaAdminLabel
     id: capabilityName
     anchors.top: parent.top
     anchors.left: parent.left
@@ -118,7 +141,7 @@ BetaAdminCapabilityRow < Panel
     height: 18
     text-auto-resize: false
 
-  Label
+  BetaAdminLabel
     id: capabilityStatus
     anchors.top: capabilityName.bottom
     anchors.left: capabilityName.left
@@ -127,7 +150,7 @@ BetaAdminCapabilityRow < Panel
     color: #b5b5b5
     text-auto-resize: false
 
-  Button
+  BetaAdminButton
     id: changeCapabilityButton
     anchors.top: parent.top
     anchors.right: parent.right
@@ -138,7 +161,7 @@ BetaAdminCapabilityRow < Panel
 BetaAdminTextFieldRow < Panel
   height: 58
 
-  Label
+  BetaAdminLabel
     id: fieldLabel
     anchors.top: parent.top
     anchors.left: parent.left
@@ -146,7 +169,7 @@ BetaAdminTextFieldRow < Panel
     height: 17
     text-auto-resize: false
 
-  TextEdit
+  BetaAdminTextEdit
     id: fieldInput
     anchors.top: fieldLabel.bottom
     anchors.left: parent.left
@@ -154,7 +177,7 @@ BetaAdminTextFieldRow < Panel
     height: 22
     margin-top: 2
 
-  Label
+  BetaAdminLabel
     id: fieldHelp
     anchors.top: fieldInput.bottom
     anchors.left: parent.left
@@ -166,7 +189,7 @@ BetaAdminTextFieldRow < Panel
 BetaAdminSelectFieldRow < Panel
   height: 58
 
-  Label
+  BetaAdminLabel
     id: fieldLabel
     anchors.top: parent.top
     anchors.left: parent.left
@@ -174,7 +197,7 @@ BetaAdminSelectFieldRow < Panel
     height: 17
     text-auto-resize: false
 
-  ComboBox
+  BetaAdminComboBox
     id: fieldInput
     anchors.top: fieldLabel.bottom
     anchors.left: parent.left
@@ -182,7 +205,7 @@ BetaAdminSelectFieldRow < Panel
     height: 22
     margin-top: 2
 
-  Label
+  BetaAdminLabel
     id: fieldHelp
     anchors.top: fieldInput.bottom
     anchors.left: parent.left
@@ -191,29 +214,230 @@ BetaAdminSelectFieldRow < Panel
     color: #aaaaaa
     text-auto-resize: false
 
-MainWindow
+BetaAdminTextEdit < ElementalInput
+  color: $elementalText
+  background-color: $elementalInput
+  border-width: 1
+  border-color: $elementalBorder
+  image-color: #ffffff00
+  image-border: 0
+  height: 22
+  padding: 4
+
+  $focus:
+    border-color: $elementalAmberFocus
+
+BetaAdminComboBox < QtComboBox
+  color: $elementalText
+  font: verdana-11px-antialised
+  text-align: left
+  text-offset: 6 0
+  background-color: $elementalInput
+  image-color: #ffffff00
+  image-border: 0
+  border-width: 1
+  border-color: $elementalBorder
+
+  $focus:
+    border-color: $elementalAmberFocus
+
+  UIWidget
+    size: 7 7
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    margin-right: 7
+    image-source: /images/ui/icon-arrow7x7-down
+    image-color: $elementalAmber
+    phantom: true
+
+BetaAdminComboBoxPopupMenuButton < QtComboBoxPopupMenuButton
+  color: #eee8dcff
+
+  $hover !disabled:
+    color: #101219ff
+    background-color: $elementalAmber
+
+BetaAdminComboBoxPopupMenu < QtComboBoxPopupMenu
+  image-source:
+  background-color: #101219
+  border-width: 1
+  border-color: $elementalAmber
+
+BetaAdminButton < ElementalSecondaryButton
+  font: verdana-11px-antialised
+
+BetaAdminPrimaryButton < ElementalPrimaryButton
+  font: verdana-11px-antialised
+
+BetaAdminDangerButton < ElementalSecondaryButton
+  font: verdana-11px-antialised
+  border-color: $elementalDanger
+
+  $hover !disabled:
+    border-color: $elementalDanger
+
+BetaAdminVerticalScrollBar < UIScrollBar
+  orientation: vertical
+  width: 12
+  pixels-scroll: true
+  background-color: #00000000
+  image-color: #ffffff00
+
+  Panel
+    id: scrollTrack
+    anchors.top: decrementButton.bottom
+    anchors.bottom: incrementButton.top
+    anchors.horizontalCenter: parent.horizontalCenter
+    width: 2
+    background-color: #39424e
+    phantom: true
+
+  UIButton
+    id: decrementButton
+    anchors.top: parent.top
+    anchors.horizontalCenter: parent.horizontalCenter
+    size: 12 12
+    image-source: /images/ui/elemental-scroll/up
+    image-color: #ffbd6b
+    background-color: #00000000
+    border-width: 0
+    focusable: false
+
+    $hover:
+      image-color: #ffe2a7
+
+    $pressed:
+      image-color: #ff9e51
+
+  UIButton
+    id: incrementButton
+    anchors.bottom: parent.bottom
+    anchors.horizontalCenter: parent.horizontalCenter
+    size: 12 12
+    image-source: /images/ui/elemental-scroll/down
+    image-color: #ffbd6b
+    background-color: #00000000
+    border-width: 0
+    focusable: false
+
+    $hover:
+      image-color: #ffe2a7
+
+    $pressed:
+      image-color: #ff9e51
+
+  UIButton
+    id: sliderButton
+    anchors.centerIn: parent
+    size: 6 44
+    minimum: 12
+    image-source: /images/ui/elemental-scroll/thumb
+    image-border-top: 3
+    image-border-bottom: 3
+    image-color: #ffbd6b
+    background-color: #00000000
+    border-width: 0
+    focusable: false
+
+    $hover:
+      image-color: #ffe2a7
+
+    $pressed:
+      image-color: #ff9e51
+
+UIWindow
   id: gameBetaAdminWindow
-  size: 940 620
-  !text: tr('Administracao do beta')
+  size: 438 567
+  background-color: #171c26f5
+  border-width: 1
+  border-color: #3b414b
+  focusable: true
+  draggable: true
   visible: false
   @onEscape: modules.game_beta_admin.GameBetaAdmin:hide()
-  @onClose: modules.game_beta_admin.GameBetaAdmin:hide()
 
-  Label
-    id: accessLabel
+  Panel
+    id: adminTopAccent
     anchors.top: parent.top
     anchors.left: parent.left
-    width: 500
-    height: 22
-    color: #d0d0d0
-    !text: tr('Aguardando autorizacao do servidor...')
+    anchors.right: parent.right
+    height: 2
+    background-color: $elementalAmber
+    phantom: true
 
-  Button
-    id: refreshButton
+  BetaAdminLabel
+    id: adminTitle
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-left: 48
+    margin-right: 48
+    height: 36
+    margin-top: 1
+    color: #eee8dc
+    font: verdana-11px-antialised
+    text-offset: 0 10
+    font-size: 14
+    text-align: center
+    !text: tr('Administracao beta')
+    phantom: true
+
+  BetaAdminButton
+    id: elementalAdminCloseButton
     anchors.top: parent.top
     anchors.right: parent.right
-    width: 92
-    height: 22
+    size: 28 28
+    margin: 9 12 0 0
+    text: X
+    color: #eee8dc
+    background-color: #171922
+    border-width: 1
+    border-color: #514334
+    focusable: false
+    @onClick: modules.game_beta_admin.GameBetaAdmin:hide()
+    $hover:
+      border-color: #e4a34f
+
+  ResizeBorder
+    id: elementalWindowRightResize
+    anchors.right: parent.right
+    anchors.top: adminTitle.bottom
+    anchors.bottom: parent.bottom
+    margin-right: -8
+    width: 12
+    minimum: 340
+    maximum: 1000
+    phantom: false
+
+  ResizeBorder
+    id: elementalWindowBottomResize
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    margin-bottom: -8
+    height: 12
+    minimum: 520
+    maximum: 1000
+    phantom: false
+
+  BetaAdminLabel
+    id: accessLabel
+    anchors.top: adminTitle.bottom
+    anchors.left: parent.left
+    anchors.right: refreshButton.left
+    margin-left: 12
+    margin-right: 6
+    height: 18
+    color: #b5b8c1
+    !text: tr('Aguardando autorizacao do servidor...')
+
+  BetaAdminButton
+    id: refreshButton
+    anchors.top: adminTitle.bottom
+    anchors.right: parent.right
+    margin-right: 12
+    width: 82
+    height: 20
     !text: tr('Atualizar')
     @onClick: modules.game_beta_admin.GameBetaAdmin:requestSnapshot()
 
@@ -222,72 +446,24 @@ MainWindow
     anchors.top: accessLabel.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 6
-    height: 26
+    margin: 2 12 0 12
+    height: 56
 
-    Button
-      id: commandsTab
+    BetaAdminLabel
+      id: areaLabel
       anchors.top: parent.top
       anchors.left: parent.left
-      width: 136
-      height: 24
-      !text: tr('TalkActions')
-      @onClick: modules.game_beta_admin.GameBetaAdmin:showPage('commands')
+      height: 16
+      color: #a8a9b1
+      !text: tr('AREA')
 
-    Button
-      id: itemsTab
-      anchors.top: parent.top
-      anchors.left: commandsTab.right
-      margin-left: 4
-      width: 126
-      height: 24
-      visible: false
-      !text: tr('Teste de itens')
-      @onClick: modules.game_beta_admin.GameBetaAdmin:showPage('items')
-
-    Button
-      id: monstersTab
-      anchors.top: parent.top
-      anchors.left: itemsTab.right
-      margin-left: 4
-      width: 136
-      height: 24
-      visible: false
-      !text: tr('Teste de monstros')
-      @onClick: modules.game_beta_admin.GameBetaAdmin:showPage('monsters')
-
-    Button
-      id: usersTab
-      anchors.top: parent.top
-      anchors.left: monstersTab.right
-      margin-left: 4
-      width: 102
-      height: 24
-      visible: false
-      !text: tr('Usuarios')
-      @onClick: modules.game_beta_admin.GameBetaAdmin:showPage('users')
-
-    Button
-      id: feedbackTab
-      anchors.top: parent.top
-      anchors.left: usersTab.right
-      margin-left: 4
-      width: 90
-      height: 24
-      visible: false
-      !text: tr('Feedback')
-      @onClick: modules.game_beta_admin.GameBetaAdmin:showPage('feedback')
-
-    Button
-      id: operationsTab
-      anchors.top: parent.top
-      anchors.left: feedbackTab.right
-      margin-left: 4
-      width: 142
-      height: 24
-      visible: false
-      !text: tr('Operacoes especiais')
-      @onClick: modules.game_beta_admin.GameBetaAdmin:showPage('operations')
+    BetaAdminComboBox
+      id: areaSelector
+      anchors.top: areaLabel.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      height: 40
+      @onOptionChange: modules.game_beta_admin.GameBetaAdmin:onAreaChange()
 
   Panel
     id: commandsPage
@@ -298,15 +474,15 @@ MainWindow
     margin-top: 5
     margin-bottom: 5
 
-    Label
+    BetaAdminLabel
       id: searchLabel
       anchors.top: parent.top
       anchors.left: parent.left
-      width: 76
+      width: 50
       height: 20
       !text: tr('Buscar')
 
-    TextEdit
+    BetaAdminTextEdit
       id: actionSearch
       anchors.top: parent.top
       anchors.left: searchLabel.right
@@ -314,24 +490,24 @@ MainWindow
       height: 20
       @onTextChange: modules.game_beta_admin.GameBetaAdmin:onActionSearch(self:getText())
 
-    Label
+    BetaAdminLabel
       id: levelLabel
       anchors.top: actionSearch.bottom
       anchors.left: parent.left
       margin-top: 6
-      width: 76
+      width: 50
       height: 20
       !text: tr('Nivel')
 
-    ComboBox
+    BetaAdminComboBox
       id: levelFilter
       anchors.top: levelLabel.top
       anchors.left: levelLabel.right
-      width: 180
+      width: 152
       height: 20
       @onOptionChange: modules.game_beta_admin.GameBetaAdmin:onLevelFilterChange()
 
-    Label
+    BetaAdminLabel
       id: actionCount
       anchors.top: levelLabel.top
       anchors.right: parent.right
@@ -340,89 +516,90 @@ MainWindow
       text-align: right
       color: #b5b5b5
 
-    VerticalScrollBar
+    BetaAdminVerticalScrollBar
       id: actionsScrollBar
       anchors.top: levelLabel.bottom
-      anchors.left: parent.left
-      anchors.bottom: parent.bottom
+      anchors.right: parent.right
       margin-top: 5
-      width: 15
-      step: 42
+      height: 105
+      step: 40
+      increment: 40
       pixels-scroll: true
 
     ScrollablePanel
       id: actionsList
       anchors.top: actionsScrollBar.top
-      anchors.left: actionsScrollBar.right
-      anchors.bottom: parent.bottom
-      width: 292
-      margin-right: 6
+      anchors.left: parent.left
+      anchors.right: actionsScrollBar.left
+      height: 105
+      margin-right: 4
       vertical-scrollbar: actionsScrollBar
-      background-color: #222222
+      background-color: #11141c
       border-width: 1
-      border-color: #606060
+      border-color: #39323a
       layout:
         type: verticalBox
         spacing: 2
 
     Panel
       id: actionDetails
-      anchors.top: levelLabel.bottom
-      anchors.left: actionsList.right
+      anchors.top: actionsList.bottom
+      anchors.left: parent.left
       anchors.right: parent.right
       anchors.bottom: parent.bottom
       margin-top: 5
-      background-color: #222222
+      background-color: #171922
       border-width: 1
-      border-color: #606060
+      border-color: #39323a
 
-      Label
+      BetaAdminLabel
         id: selectedWords
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        margin: 7 8 0 8
-        height: 22
+        margin: 5 7 0 7
+        height: 18
         font: verdana-11px-monochrome
         text-auto-resize: false
 
-      Label
+      BetaAdminLabel
         id: selectedLevel
         anchors.top: selectedWords.bottom
         anchors.left: selectedWords.left
         anchors.right: selectedWords.right
-        height: 18
+        height: 16
         color: #b5b5b5
         text-auto-resize: false
 
-      Label
+      BetaAdminLabel
         id: selectedDescription
         anchors.top: selectedLevel.bottom
         anchors.left: selectedWords.left
         anchors.right: selectedWords.right
-        height: 46
+        height: 34
         text-wrap: true
         color: #d0d0d0
         text-auto-resize: false
 
-      Label
+      BetaAdminLabel
         id: schemaMessage
         anchors.top: selectedDescription.bottom
         anchors.left: selectedWords.left
         anchors.right: selectedWords.right
-        height: 48
+        height: 36
         text-wrap: true
         color: #ffcc80
         text-auto-resize: false
 
-      VerticalScrollBar
+      BetaAdminVerticalScrollBar
         id: fieldsScrollBar
         anchors.top: schemaMessage.bottom
         anchors.right: parent.right
         anchors.bottom: previewLabel.top
-        margin: 4 6 4 0
-        width: 14
+        margin: 3 5 3 0
+        width: 12
         step: 58
+        increment: 58
         pixels-scroll: true
 
       ScrollablePanel
@@ -431,29 +608,29 @@ MainWindow
         anchors.left: selectedWords.left
         anchors.right: fieldsScrollBar.left
         anchors.bottom: fieldsScrollBar.bottom
-        margin-right: 5
+        margin-right: 4
         vertical-scrollbar: fieldsScrollBar
         layout:
           type: verticalBox
           spacing: 2
 
-      Label
+      BetaAdminLabel
         id: previewLabel
         anchors.left: selectedWords.left
         anchors.right: selectedWords.right
         anchors.bottom: executeButton.top
-        margin-bottom: 5
-        height: 40
+        margin-bottom: 4
+        height: 38
         text-wrap: true
         color: #9ccc65
         text-auto-resize: false
 
-      Button
+      BetaAdminPrimaryButton
         id: executeButton
         anchors.left: selectedWords.left
         anchors.right: selectedWords.right
         anchors.bottom: parent.bottom
-        margin-bottom: 7
+        margin-bottom: 6
         height: 24
         enabled: false
         !text: tr('Executar TalkAction')
@@ -465,19 +642,18 @@ MainWindow
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.bottom: statusLabel.top
-    margin-top: 5
-    margin-bottom: 5
+    margin: 5 12 5 12
     visible: false
 
-    Label
+    BetaAdminLabel
       id: itemSearchLabel
       anchors.top: parent.top
       anchors.left: parent.left
-      width: 82
+      width: 60
       height: 20
       !text: tr('Item / ID')
 
-    TextEdit
+    BetaAdminTextEdit
       id: itemSearch
       anchors.top: parent.top
       anchors.left: itemSearchLabel.right
@@ -485,125 +661,127 @@ MainWindow
       height: 20
       @onTextChange: modules.game_beta_admin.GameBetaAdmin:onItemSearchChange(self:getText())
 
-    VerticalScrollBar
+    BetaAdminVerticalScrollBar
       id: itemResultsScrollBar
       anchors.top: itemSearch.bottom
-      anchors.left: parent.left
-      anchors.bottom: parent.bottom
-      margin-top: 8
-      width: 15
-      step: 54
+      anchors.right: parent.right
+      margin-top: 5
+      height: 102
+      step: 46
+      increment: 46
       pixels-scroll: true
 
     ScrollablePanel
       id: itemResults
       anchors.top: itemResultsScrollBar.top
-      anchors.left: itemResultsScrollBar.right
-      anchors.bottom: parent.bottom
-      width: 350
-      margin-right: 8
+      anchors.left: parent.left
+      anchors.right: itemResultsScrollBar.left
+      margin-right: 4
+      height: 102
       vertical-scrollbar: itemResultsScrollBar
-      background-color: #222222
+      background-color: #11141c
       border-width: 1
-      border-color: #606060
+      border-color: #39323a
       layout:
         type: verticalBox
         spacing: 2
 
     Panel
       id: itemGrantForm
-      anchors.top: itemSearch.bottom
-      anchors.left: itemResults.right
+      anchors.top: itemResults.bottom
+      anchors.left: parent.left
       anchors.right: parent.right
       anchors.bottom: parent.bottom
-      margin-top: 8
-      background-color: #222222
+      margin-top: 5
+      background-color: #171922
       border-width: 1
-      border-color: #606060
+      border-color: #39323a
 
-      Label
+      BetaAdminLabel
         id: selectedItemLabel
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: itemPreviewSprite.left
-        margin: 8 8 0 8
-        height: 24
+        margin: 5 48 0 7
+        height: 20
         !text: tr('Selecione um item da busca.')
 
       UIItem
         id: itemPreviewSprite
         anchors.top: parent.top
         anchors.right: parent.right
-        margin: 8
-        size: 56 56
+        margin: 4
+        size: 40 40
         visible: false
         phantom: true
 
-      Label
+      BetaAdminLabel
         id: recipientLabel
         anchors.top: selectedItemLabel.bottom
         anchors.left: selectedItemLabel.left
         anchors.right: selectedItemLabel.right
-        margin-top: 12
-        height: 18
+        margin-top: 3
+        height: 16
         !text: tr('Destinatario online')
 
-      TextEdit
+      BetaAdminTextEdit
         id: itemRecipient
         anchors.top: recipientLabel.bottom
         anchors.left: recipientLabel.left
         anchors.right: recipientLabel.right
-        height: 22
+        height: 21
         @onTextChange: modules.game_beta_admin.GameBetaAdmin:onItemRecipientChange(self:getText())
 
-      Label
+      BetaAdminLabel
         id: itemCountLabel
         anchors.top: itemRecipient.bottom
         anchors.left: recipientLabel.left
-        margin-top: 10
-        width: 140
+        margin-top: 4
+        width: 170
         height: 18
         !text: tr('Quantidade (1-100)')
 
-      TextEdit
+      BetaAdminTextEdit
         id: itemCount
-        anchors.top: itemCountLabel.bottom
-        anchors.left: itemCountLabel.left
-        width: 140
+        anchors.top: itemCountLabel.top
+        anchors.left: itemCountLabel.right
+        anchors.right: parent.right
+        margin-right: 7
         height: 22
         text: 1
         @onTextChange: modules.game_beta_admin.GameBetaAdmin:updateItemPreview()
 
-      Label
+      BetaAdminLabel
         id: itemPreview
         anchors.top: itemCount.bottom
         anchors.left: recipientLabel.left
         anchors.right: recipientLabel.right
-        margin-top: 10
-        height: 44
+        margin-top: 4
+        height: 36
         text-wrap: true
         color: #9ccc65
 
-      Button
+      BetaAdminPrimaryButton
         id: giveItemButton
         anchors.left: recipientLabel.left
         anchors.right: recipientLabel.right
         anchors.bottom: parent.bottom
-        margin-bottom: 8
+        margin: 0 7 6 7
         height: 24
         enabled: false
         !text: tr('Entregar item')
         @onClick: modules.game_beta_admin.GameBetaAdmin:confirmGiveItem()
 
-      VerticalScrollBar
+      BetaAdminVerticalScrollBar
         id: itemRecipientResultsScrollBar
         anchors.top: itemRecipient.bottom
         anchors.right: parent.right
-        margin-top: 4
-        margin-right: 8
-        width: 14
-        height: 84
+        margin-top: 3
+        margin-right: 7
+        width: 12
+        height: 72
         step: 42
+        increment: 42
         pixels-scroll: true
         visible: false
 
@@ -612,12 +790,12 @@ MainWindow
         anchors.top: itemRecipient.bottom
         anchors.left: itemRecipient.left
         anchors.right: itemRecipientResultsScrollBar.left
-        height: 84
-        margin-top: 4
+        height: 72
+        margin-top: 3
         vertical-scrollbar: itemRecipientResultsScrollBar
-        background-color: #222222
+        background-color: #11141c
         border-width: 1
-        border-color: #606060
+        border-color: #39323a
         visible: false
         layout:
           type: verticalBox
@@ -629,11 +807,10 @@ MainWindow
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.bottom: statusLabel.top
-    margin-top: 5
-    margin-bottom: 5
+    margin: 5 12 5 12
     visible: false
 
-    Label
+    BetaAdminLabel
       id: monsterSearchLabel
       anchors.top: parent.top
       anchors.left: parent.left
@@ -641,7 +818,7 @@ MainWindow
       height: 20
       !text: tr('Nome / LookType ID')
 
-    TextEdit
+    BetaAdminTextEdit
       id: monsterSearch
       anchors.top: parent.top
       anchors.left: monsterSearchLabel.right
@@ -649,112 +826,113 @@ MainWindow
       height: 20
       @onTextChange: modules.game_beta_admin.GameBetaAdmin:onMonsterSearchChange(self:getText())
 
-    VerticalScrollBar
+    BetaAdminVerticalScrollBar
       id: monsterResultsScrollBar
       anchors.top: monsterSearch.bottom
-      anchors.left: parent.left
-      anchors.bottom: parent.bottom
-      margin-top: 8
-      width: 15
-      step: 54
+      anchors.right: parent.right
+      margin-top: 5
+      height: 102
+      step: 46
+      increment: 46
       pixels-scroll: true
 
     ScrollablePanel
       id: monsterResults
       anchors.top: monsterResultsScrollBar.top
-      anchors.left: monsterResultsScrollBar.right
-      anchors.bottom: parent.bottom
-      width: 350
-      margin-right: 8
+      anchors.left: parent.left
+      anchors.right: monsterResultsScrollBar.left
+      margin-right: 4
+      height: 102
       vertical-scrollbar: monsterResultsScrollBar
-      background-color: #222222
+      background-color: #11141c
       border-width: 1
-      border-color: #606060
+      border-color: #39323a
       layout:
         type: verticalBox
         spacing: 2
 
     Panel
       id: monsterSpawnForm
-      anchors.top: monsterSearch.bottom
-      anchors.left: monsterResults.right
+      anchors.top: monsterResults.bottom
+      anchors.left: parent.left
       anchors.right: parent.right
       anchors.bottom: parent.bottom
-      margin-top: 8
-      background-color: #222222
+      margin-top: 5
+      background-color: #171922
       border-width: 1
-      border-color: #606060
+      border-color: #39323a
 
-      Label
+      BetaAdminLabel
         id: selectedMonsterLabel
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: monsterPreviewSprite.left
-        margin: 8 8 0 8
-        height: 24
+        margin: 5 48 0 7
+        height: 20
         !text: tr('Selecione um monstro da busca.')
 
       UICreature
         id: monsterPreviewSprite
         anchors.top: parent.top
         anchors.right: parent.right
-        margin: 4 8 0 0
-        size: 64 64
+        margin: 3 5 0 0
+        size: 42 42
         visible: false
         phantom: true
         animate: true
 
-      Label
+      BetaAdminLabel
         id: monsterCountLabel
         anchors.top: selectedMonsterLabel.bottom
-        anchors.left: selectedMonsterLabel.left
-        margin-top: 12
-        width: 140
+        anchors.left: parent.left
+        margin: 4 0 0 7
+        width: 100
         height: 18
         !text: tr('Quantidade (1-3)')
 
-      TextEdit
+      BetaAdminTextEdit
         id: monsterCount
-        anchors.top: monsterCountLabel.bottom
-        anchors.left: monsterCountLabel.left
-        width: 140
+        anchors.top: monsterCountLabel.top
+        anchors.left: monsterCountLabel.right
+        width: 54
         height: 22
         text: 1
         @onTextChange: modules.game_beta_admin.GameBetaAdmin:updateMonsterPreview()
 
-      Label
+      BetaAdminLabel
         id: monsterModeLabel
         anchors.top: monsterCountLabel.top
-        anchors.left: monsterCountLabel.right
-        margin-left: 16
-        width: 140
+        anchors.left: monsterCount.right
+        margin-left: 8
+        width: 44
         height: 18
         !text: tr('Tipo')
 
-      ComboBox
+      BetaAdminComboBox
         id: monsterMode
         anchors.top: monsterModeLabel.bottom
         anchors.left: monsterModeLabel.left
-        width: 140
+        anchors.right: parent.right
+        margin-right: 7
         height: 22
         @onOptionChange: modules.game_beta_admin.GameBetaAdmin:updateMonsterPreview()
 
-      Label
+      BetaAdminLabel
         id: monsterPreview
-        anchors.top: monsterCount.bottom
-        anchors.left: selectedMonsterLabel.left
+        anchors.top: monsterMode.bottom
+        anchors.left: parent.left
         anchors.right: parent.right
-        margin-top: 10
-        height: 44
+        margin: 4 7 0 7
+        height: 36
         text-wrap: true
         color: #9ccc65
 
-      Button
+      BetaAdminPrimaryButton
         id: spawnMonsterButton
         anchors.left: selectedMonsterLabel.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        margin: 0 8 8 8
+        margin: 0 7 6 7
         height: 24
         enabled: false
         !text: tr('Criar monstro')
@@ -766,246 +944,303 @@ MainWindow
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.bottom: statusLabel.top
-    margin-top: 5
-    margin-bottom: 5
+    margin: 13 12 5 12
     visible: false
 
-    Label
-      id: userSearchLabel
-      anchors.top: parent.top
-      anchors.left: parent.left
-      width: 82
-      height: 20
-      !text: tr('Jogador online')
-
-    TextEdit
+    BetaAdminTextEdit
       id: userSearch
       anchors.top: parent.top
-      anchors.left: userSearchLabel.right
-      anchors.right: parent.right
-      height: 20
-      @onTextChange: modules.game_beta_admin.GameBetaAdmin:onUserSearchChange(self:getText())
-
-    Label
-      id: userScopeInfo
-      anchors.top: userSearch.bottom
       anchors.left: parent.left
       anchors.right: parent.right
-      margin-top: 3
+      height: 40
+      !placeholder: tr('Buscar jogador online...')
+      @onTextChange: modules.game_beta_admin.GameBetaAdmin:onUserSearchChange(self:getText())
+
+    BetaAdminLabel
+      id: userScopeInfo
+      anchors.top: userResultsCount.top
+      anchors.left: userResultsCount.right
+      anchors.right: parent.right
+      margin-left: 8
       height: 18
+      text-align: right
       color: #b5b5b5
       text-auto-resize: false
 
-    VerticalScrollBar
+    BetaAdminLabel
+      id: userResultsCount
+      anchors.top: userSearch.bottom
+      anchors.left: parent.left
+      width: 72
+      margin-top: 13
+      height: 18
+      color: #9ccc65
+      font-size: 12
+      text-auto-resize: false
+      !text: tr('0 online')
+
+    BetaAdminVerticalScrollBar
       id: userResultsScrollBar
       anchors.top: userScopeInfo.bottom
-      anchors.left: parent.left
-      anchors.bottom: userLoadMoreButton.top
-      margin-top: 8
-      margin-bottom: 5
-      width: 15
+      anchors.right: parent.right
+      margin-top: 5
+      height: 184
       step: 42
+      increment: 42
       pixels-scroll: true
 
     ScrollablePanel
       id: userResults
       anchors.top: userResultsScrollBar.top
-      anchors.left: userResultsScrollBar.right
-      anchors.bottom: userResultsScrollBar.bottom
-      width: 310
-      margin-right: 8
+      anchors.left: parent.left
+      anchors.right: userResultsScrollBar.left
+      height: 184
+      margin-right: 4
       vertical-scrollbar: userResultsScrollBar
-      background-color: #222222
+      background-color: #11151d
       border-width: 1
-      border-color: #606060
+      border-color: #343b47
       layout:
         type: verticalBox
         spacing: 2
 
-    Button
+    BetaAdminButton
       id: userLoadMoreButton
+      anchors.top: userResults.bottom
       anchors.left: parent.left
-      anchors.bottom: parent.bottom
-      margin-left: 15
-      width: 310
-      height: 24
+      anchors.right: parent.right
+      margin-top: 3
+      height: 0
+      visible: false
       enabled: false
       !text: tr('Carregar mais')
       @onClick: modules.game_beta_admin.GameBetaAdmin:loadMoreUsers()
 
     Panel
       id: userDetails
-      anchors.top: userScopeInfo.bottom
-      anchors.left: userResults.right
+      anchors.top: userLoadMoreButton.bottom
+      anchors.left: parent.left
       anchors.right: parent.right
       anchors.bottom: parent.bottom
-      margin: 8 0 0 0
-      background-color: #222222
+      margin: 5 0 0 0
+      background-color: #1a202b
       border-width: 1
-      border-color: #606060
+      border-color: #343b47
 
-      Label
-        id: selectedUserName
+      Panel
+        id: userSummary
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        margin: 8 8 0 8
-        height: 22
-        font: verdana-11px-monochrome
+        margin: 6 6 0 6
+        height: 56
+        background-color: #202734
+        border-width: 1
+        border-color: #35404d
+
+      BetaAdminLabel
+        id: selectedUserName
+        anchors.top: userSummary.top
+        anchors.left: userSummary.left
+        anchors.right: userSummary.right
+        margin: 4 7 0 7
+        height: 18
+        font: verdana-11px-antialised
+        font-size: 13
         !text: tr('Selecione um jogador online.')
 
-      Label
+      BetaAdminLabel
         id: currentUserAccess
         anchors.top: selectedUserName.bottom
         anchors.left: selectedUserName.left
         anchors.right: selectedUserName.right
-        height: 20
+        height: 14
         color: #b5b5b5
         text-auto-resize: false
 
       Panel
         id: userQuickActions
-        anchors.top: currentUserAccess.bottom
-        anchors.left: currentUserAccess.left
-        anchors.right: currentUserAccess.right
-        margin-top: 4
-        height: 28
+        anchors.top: userSummary.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        margin: 13 6 0 6
+        height: 58
         visible: false
-        layout:
-          type: horizontalBox
-          spacing: 6
 
-        Label
+        BetaAdminLabel
           id: userQuickActionsLabel
-          width: 90
-          height: 24
+          anchors.top: parent.top
+          anchors.left: parent.left
+          anchors.right: parent.right
+          height: 16
           !text: tr('Acoes rapidas')
 
-        Button
+        BetaAdminButton
           id: userQuickKickButton
-          width: 82
-          height: 24
+          anchors.top: userQuickActionsLabel.bottom
+          anchors.left: parent.left
+          anchors.right: userQuickBanButton.left
+          height: 34
+          margin: 1 4 0 0
           visible: false
           !text: tr('Expulsar')
 
-        Button
+        BetaAdminDangerButton
           id: userQuickBanButton
-          width: 72
-          height: 24
+          anchors.top: userQuickActionsLabel.bottom
+          anchors.horizontalCenter: parent.horizontalCenter
+          width: 78
+          height: 34
+          margin-top: 1
           visible: false
           !text: tr('Banir')
 
-        Button
+        BetaAdminButton
           id: userQuickTempleButton
-          width: 95
-          height: 24
+          anchors.top: userQuickActionsLabel.bottom
+          anchors.left: userQuickBanButton.right
+          anchors.right: parent.right
+          height: 34
+          margin: 1 0 0 4
           visible: false
-          !text: tr('Enviar ao templo')
+          !text: tr('Templo')
 
-      Label
-        id: readOnlySearchInfo
+      BetaAdminLabel
+        id: userActionInfo
         anchors.top: userQuickActions.bottom
-        anchors.left: selectedUserName.left
-        anchors.right: selectedUserName.right
-        margin-top: 8
-        height: 28
+        anchors.left: userSummary.left
+        anchors.right: userSummary.right
+        margin-top: 4
+        height: 0
+        color: #b5b8c1
+        text-auto-resize: false
+        text-wrap: true
+
+      BetaAdminLabel
+        id: readOnlySearchInfo
+        anchors.top: userActionInfo.bottom
+        anchors.left: userSummary.left
+        anchors.right: userSummary.right
+        margin-top: 4
+        height: 0
         visible: false
         color: #b5b5b5
         text-auto-resize: false
 
-      Label
-        id: accountTypeScope
-        anchors.top: userQuickActions.bottom
-        anchors.left: selectedUserName.left
-        anchors.right: selectedUserName.right
-        margin-top: 8
-        height: 18
-        !text: tr('AccountType: TalkActions de todos os personagens da conta')
-
-      ComboBox
-        id: accountTypeSelection
-        anchors.top: accountTypeScope.bottom
-        anchors.left: accountTypeScope.left
-        width: 240
+      BetaAdminButton
+        id: userAccessToggleButton
+        anchors.top: readOnlySearchInfo.bottom
+        anchors.left: userSummary.left
+        width: 124
         height: 22
+        margin-top: 3
+        visible: false
+        !text: tr('Gerenciar acesso')
+        @onClick: modules.game_beta_admin.GameBetaAdmin:toggleUserAccessEditor()
 
-      Button
-        id: applyAccountTypeButton
-        anchors.top: accountTypeSelection.top
-        anchors.left: accountTypeSelection.right
-        anchors.right: accountTypeScope.right
-        margin-left: 6
-        height: 22
-        enabled: false
-        !text: tr('Alterar conta')
-        @onClick: modules.game_beta_admin.GameBetaAdmin:confirmAccountTypeChange()
-
-      Label
-        id: groupScope
-        anchors.top: accountTypeSelection.bottom
-        anchors.left: accountTypeScope.left
-        anchors.right: accountTypeScope.right
-        margin-top: 8
-        height: 18
-        !text: tr('Group: flags de jogo somente deste personagem')
-
-      ComboBox
-        id: groupSelection
-        anchors.top: groupScope.bottom
-        anchors.left: groupScope.left
-        width: 240
-        height: 22
-
-      Button
-        id: applyGroupButton
-        anchors.top: groupSelection.top
-        anchors.left: groupSelection.right
-        anchors.right: groupScope.right
-        margin-left: 6
-        height: 22
-        enabled: false
-        !text: tr('Alterar grupo')
-        @onClick: modules.game_beta_admin.GameBetaAdmin:confirmGroupChange()
-
-      Label
-        id: capabilitiesTitle
-        anchors.top: groupSelection.bottom
-        anchors.left: groupScope.left
-        anchors.right: groupScope.right
-        margin-top: 10
-        height: 18
-        !text: tr('Permissoes beta extras da conta')
-
-      Label
-        id: capabilityStoreStatus
-        anchors.top: capabilitiesTitle.bottom
-        anchors.left: capabilitiesTitle.left
-        anchors.right: capabilitiesTitle.right
-        height: 18
-        color: #b5b5b5
-        text-auto-resize: false
-
-      VerticalScrollBar
-        id: userCapabilitiesScrollBar
-        anchors.top: capabilityStoreStatus.bottom
+      Panel
+        id: userAccessEditor
+        anchors.top: userAccessToggleButton.bottom
+        anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        margin: 4 8 8 0
-        width: 14
-        step: 42
-        pixels-scroll: true
+        margin: 3 6 5 6
+        visible: false
 
-      ScrollablePanel
-        id: userCapabilities
-        anchors.top: userCapabilitiesScrollBar.top
-        anchors.left: capabilitiesTitle.left
-        anchors.right: userCapabilitiesScrollBar.left
-        anchors.bottom: userCapabilitiesScrollBar.bottom
-        margin-right: 5
-        vertical-scrollbar: userCapabilitiesScrollBar
-        layout:
-          type: verticalBox
-          spacing: 1
+        BetaAdminLabel
+          id: accountTypeScope
+          anchors.top: parent.top
+          anchors.left: parent.left
+          anchors.right: parent.right
+          margin-top: 2
+          height: 18
+          !text: tr('AccountType: TalkActions da conta')
+
+        BetaAdminComboBox
+          id: accountTypeSelection
+          anchors.top: accountTypeScope.bottom
+          anchors.left: accountTypeScope.left
+          width: 176
+          height: 22
+
+        BetaAdminButton
+          id: applyAccountTypeButton
+          anchors.top: accountTypeSelection.top
+          anchors.left: accountTypeSelection.right
+          anchors.right: accountTypeScope.right
+          margin-left: 4
+          height: 22
+          enabled: false
+          !text: tr('Alterar conta')
+          @onClick: modules.game_beta_admin.GameBetaAdmin:confirmAccountTypeChange()
+
+        BetaAdminLabel
+          id: groupScope
+          anchors.top: accountTypeSelection.bottom
+          anchors.left: accountTypeScope.left
+          anchors.right: accountTypeScope.right
+          margin-top: 3
+          height: 16
+          !text: tr('Group: flags so deste personagem')
+
+        BetaAdminComboBox
+          id: groupSelection
+          anchors.top: groupScope.bottom
+          anchors.left: groupScope.left
+          width: 176
+          height: 22
+
+        BetaAdminButton
+          id: applyGroupButton
+          anchors.top: groupSelection.top
+          anchors.left: groupSelection.right
+          anchors.right: groupScope.right
+          margin-left: 4
+          height: 22
+          enabled: false
+          !text: tr('Alterar grupo')
+          @onClick: modules.game_beta_admin.GameBetaAdmin:confirmGroupChange()
+
+        BetaAdminLabel
+          id: capabilitiesTitle
+          anchors.top: groupSelection.bottom
+          anchors.left: groupScope.left
+          anchors.right: groupScope.right
+          margin-top: 3
+          height: 16
+          !text: tr('Permissoes beta extras da conta')
+
+        BetaAdminLabel
+          id: capabilityStoreStatus
+          anchors.top: capabilitiesTitle.bottom
+          anchors.left: capabilitiesTitle.left
+          anchors.right: capabilitiesTitle.right
+          height: 16
+          color: #b5b5b5
+          text-auto-resize: false
+
+        BetaAdminVerticalScrollBar
+          id: userCapabilitiesScrollBar
+          anchors.top: capabilityStoreStatus.bottom
+          anchors.right: parent.right
+          anchors.bottom: parent.bottom
+          margin: 3 0 2 0
+          width: 12
+          step: 42
+          increment: 42
+          pixels-scroll: true
+
+        ScrollablePanel
+          id: userCapabilities
+          anchors.top: userCapabilitiesScrollBar.top
+          anchors.left: capabilitiesTitle.left
+          anchors.right: userCapabilitiesScrollBar.left
+          anchors.bottom: userCapabilitiesScrollBar.bottom
+          margin-right: 4
+          vertical-scrollbar: userCapabilitiesScrollBar
+          layout:
+            type: verticalBox
+            spacing: 1
 
   Panel
     id: feedbackHost
@@ -1027,11 +1262,12 @@ MainWindow
     margin-bottom: 5
     visible: false
 
-  Label
+  BetaAdminLabel
     id: statusLabel
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.bottom: parent.bottom
+    margin: 0 12 6 12
     height: 20
     color: #b5b5b5
     text-auto-resize: false
