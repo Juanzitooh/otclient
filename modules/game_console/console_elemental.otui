@@ -322,12 +322,12 @@ UIWindow
     image-border: 4
     size: 515 23
     anchors.left: sayModeButton.right
-    anchors.right: toggleChat.left
+    anchors.right: figurePickerButton.left
     anchors.bottom: parent.bottom
     height: 23
     margin-bottom: 9
     margin-left: 5
-    margin-right: 9
+    margin-right: 6
     visible: true
 
   UITextEdit
@@ -335,9 +335,9 @@ UIWindow
     size: 86 21
     padding: 3
     anchors.left: parent.left
-    anchors.right: toggleChat.left
+    anchors.right: figurePickerButton.left
     anchors.bottom: parent.bottom
-    margin-right: 9
+    margin-right: 6
     margin-left: 29
     margin-bottom: 11
     max-length: 255
@@ -348,6 +348,15 @@ UIWindow
     selection-background-color: #FFF7E745
     visible: true
     @onTextChange: onTextChange(self:getText())
+
+  LocalChatFigurePickerButton
+    id: figurePickerButton
+    anchors.right: toggleChat.left
+    anchors.bottom: parent.bottom
+    margin-right: 9
+    margin-bottom: 11
+    !text: tr('Fig')
+    !tooltip: tr('Abrir figurinhas')
 
   UIButton
     id: hideChatButton2

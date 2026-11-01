@@ -460,7 +460,7 @@ Panel
   TextEdit
     id: consoleTextEdit
     anchors.left: sayModeButton.right
-    anchors.right: toggleChat.left
+    anchors.right: figurePickerButton.left
     anchors.bottom: parent.bottom
     margin-right: 5
     margin-left: 5
@@ -471,6 +471,15 @@ Panel
     placeholder:  "Type here to chat"
     placeholder-color: #707070
     @onTextChange: onTextChange(self:getText())
+
+  LocalChatFigurePickerButton
+    id: figurePickerButton
+    anchors.right: toggleChat.left
+    anchors.bottom: parent.bottom
+    margin-right: 5
+    margin-bottom: 3
+    !text: tr('Fig')
+    !tooltip: tr('Abrir figurinhas')
 
   TopToggleButton
     id: toggleChat
