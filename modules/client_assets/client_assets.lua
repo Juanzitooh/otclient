@@ -34,6 +34,7 @@ local BUSY_INDICATOR_IMAGE = '/client_assets/images/hourglass'
 local BUSY_INDICATOR_SIZE = 20
 local BUSY_INDICATOR_ROTATION_DELAY = 650
 local BUSY_INDICATOR_ROTATION_STEP = 180
+local MANIFEST_DOWNLOAD_CONCURRENCY = 6
 local HTTP_NOT_FOUND_SHA256 = 'd5558cd419c8d46bdc958064cb97f963d1ea793866414c025906ec15033512ed'
 
 local function logInfo(message)
@@ -267,6 +268,25 @@ local function httpGetJSON(config, url, callback)
 end
 
 local function httpDownload(config, url, path, callback, progressCallback)
+  local function startTrackedDownload(start)
+    local operationId
+    local completed = false
+    local function onComplete(downloadPath, checksum, err)
+      completed = true
+      if activeDownload and operationId then
+        activeDownload.operations[operationId] = nil
+      end
+      callback(downloadPath, checksum, err)
+    end
+    operationId = start(onComplete)
+    if activeDownload and operationId and operationId >= 0 and not completed then
+      activeDownload.operations = activeDownload.operations or {}
+      activeDownload.operations[operationId] = true
+      activeDownload.operationId = operationId
+    end
+    return operationId
+  end
+
   return withHttpTimeout(config, function()
     if ClientDistributionAuth and ClientDistributionAuth.requiresToken(config.channel, url) then
       if not ClientDistributionAuth.isTrustedUrl(url) then
@@ -282,21 +302,22 @@ local function httpDownload(config, url, path, callback, progressCallback)
           return callback(nil, nil, err)
         end
         local operation = withHttpTimeout(config, function()
-          return HTTP.downloadWithBearer(url, path, token, function(downloadPath, checksum, err)
-            if ClientDistributionAuth.isUnauthorized(err) then
-              ClientDistributionAuth.forgetToken()
-            end
-            callback(downloadPath, checksum, err)
-          end, progressCallback)
+          return startTrackedDownload(function(onComplete)
+            return HTTP.downloadWithBearer(url, path, token, function(downloadPath, checksum, err)
+              if ClientDistributionAuth.isUnauthorized(err) then
+                ClientDistributionAuth.forgetToken()
+              end
+              onComplete(downloadPath, checksum, err)
+            end, progressCallback)
+          end)
         end)
-        if operation and operation >= 0 then
-          operationId = operation
-          activeDownload.operationId = operation
-        end
+        operationId = operation
       end)
       return operationId
     end
-    return HTTP.download(url, path, callback, progressCallback)
+    return startTrackedDownload(function(onComplete)
+      return HTTP.download(url, path, onComplete, progressCallback)
+    end)
   end)
 end
 
@@ -325,6 +346,12 @@ local function userFacingError(message)
   end
 
   message = tostring(message)
+  if message:find('Cannot retrieve status line', 1, true) or
+     message:find('Cannot parse http headers', 1, true) or
+     message:find('Cannot read chunk', 1, true) or
+     message:find('Cannot read http body', 1, true) then
+    return 'O feed nao concluiu a resposta. Verifique a conexao e tente novamente.'
+  end
   if message:find('SHA%-256') or #message > 180 then
     return 'Unable to download client assets.\nSee the console for full details.\n' .. shortenText(message, 120)
   end
@@ -742,12 +769,46 @@ local function overallProgress(index, total, fileProgress)
   return clampPercent(((index - 1) + (fileProgress / 100)) * 100 / total)
 end
 
-local function assetEntryProgress(index, total, fileProgress, entry)
+local function currentAssetProgressBytes()
+  local bytes = activeDownload and (activeDownload.completedBytes or 0) or 0
+  if activeDownload and activeDownload.assetProgressBytes then
+    for _, progressBytes in pairs(activeDownload.assetProgressBytes) do
+      bytes = bytes + progressBytes
+    end
+  end
+  return bytes
+end
+
+local function assetProgressDetail()
+  if not activeDownload or not activeDownload.totalBytes or activeDownload.totalBytes <= 0 then
+    return nil
+  end
+  local speedKbps = 0
+  for _, speed in pairs(activeDownload.assetSpeedKbps or {}) do
+    speedKbps = speedKbps + (tonumber(speed) or 0)
+  end
+  if speedKbps <= 0 then
+    return nil
+  end
+  local remainingBytes = activeDownload.totalBytes - currentAssetProgressBytes()
+  local remainingSeconds = math.max(0, math.ceil(remainingBytes / (speedKbps * 1024)))
+  local minutes = math.floor(remainingSeconds / 60)
+  local seconds = remainingSeconds % 60
+  if minutes > 0 then
+    return string.format('~%d min %02d s restantes · %.0f KB/s', minutes, seconds, speedKbps)
+  end
+  return string.format('~%d s restantes · %.0f KB/s', seconds, speedKbps)
+end
+
+local function assetEntryProgress(index, total, fileProgress, entry, speedKbps)
   if activeDownload and activeDownload.totalBytes and activeDownload.totalBytes > 0 then
-    local completedBytes = activeDownload.completedBytes or 0
     local entryBytes = tonumber(entry.size) or 0
     local currentProgress = math.max(0, math.min(100, tonumber(fileProgress) or 0))
-    return clampPercent((completedBytes + entryBytes * currentProgress / 100) * 100 / activeDownload.totalBytes)
+    activeDownload.assetProgressBytes = activeDownload.assetProgressBytes or {}
+    activeDownload.assetSpeedKbps = activeDownload.assetSpeedKbps or {}
+    activeDownload.assetProgressBytes[index] = entryBytes * currentProgress / 100
+    activeDownload.assetSpeedKbps[index] = math.max(0, tonumber(speedKbps) or 0)
+    return clampPercent(currentAssetProgressBytes() * 100 / activeDownload.totalBytes)
   end
 
   return overallProgress(index, total, fileProgress)
@@ -755,11 +816,37 @@ end
 
 local function completeAssetEntryProgress(index, total, entry)
   if activeDownload and activeDownload.totalBytes and activeDownload.totalBytes > 0 then
+    if activeDownload.assetProgressBytes then
+      activeDownload.assetProgressBytes[index] = nil
+    end
+    if activeDownload.assetSpeedKbps then
+      activeDownload.assetSpeedKbps[index] = nil
+    end
     activeDownload.completedBytes = (activeDownload.completedBytes or 0) + (tonumber(entry.size) or 0)
     return clampPercent(activeDownload.completedBytes * 100 / activeDownload.totalBytes)
   end
 
   return overallProgress(index, total, 100)
+end
+
+local function updateAndroidAssetNotification(status, percent, detail)
+  if not g_android or type(g_android.updateAssetDownloadNotification) ~= 'function' then
+    return
+  end
+  local ok, err = pcall(g_android.updateAssetDownloadNotification, status, tonumber(percent) or -1, detail or '')
+  if not ok then
+    logWarning('Android download notification update failed: ' .. tostring(err))
+  end
+end
+
+local function finishAndroidAssetNotification()
+  if not g_android or type(g_android.finishAssetDownloadNotification) ~= 'function' then
+    return
+  end
+  local ok, err = pcall(g_android.finishAssetDownloadNotification)
+  if not ok then
+    logWarning('Android download notification stop failed: ' .. tostring(err))
+  end
 end
 
 local function stopDownloadBusy()
@@ -813,14 +900,75 @@ local function renderDownloadStatus(status, percent, detail)
   end
 end
 
-local function setDownloadProgress(status, percent, detail)
-  stopDownloadBusy()
-  if activeDownload and activeDownload.progressCallback then
-    local ok, err = pcall(activeDownload.progressCallback, status, percent, detail)
-    if not ok then
-      logWarning('Progress callback failed: ' .. tostring(err))
+local function notifyDownloadListener(listener, status, percent, detail)
+  if not listener.progressCallback then
+    return
+  end
+
+  local ok, err = pcall(listener.progressCallback, status, percent, detail)
+  if not ok then
+    logWarning('Progress callback failed: ' .. tostring(err))
+  end
+end
+
+local function notifyDownloadListeners(status, percent, detail)
+  if not activeDownload then
+    return
+  end
+
+  activeDownload.lastProgress = {status, percent, detail}
+  for _, listener in ipairs(activeDownload.listeners or {}) do
+    notifyDownloadListener(listener, status, percent, detail)
+  end
+end
+
+local function addDownloadListener(download, callback, progressCallback)
+  local listener = {
+    callback = callback,
+    progressCallback = progressCallback
+  }
+  table.insert(download.listeners, listener)
+
+  if progressCallback and download.lastProgress then
+    notifyDownloadListener(listener, download.lastProgress[1], download.lastProgress[2], download.lastProgress[3])
+  end
+end
+
+local function addPendingDownload(download, version, callback, progressCallback)
+  download.pendingDownloads = download.pendingDownloads or {}
+  for _, pending in ipairs(download.pendingDownloads) do
+    if pending.version == version then
+      addDownloadListener(pending, callback, progressCallback)
+      return
     end
   end
+
+  local pending = {
+    version = version,
+    listeners = {}
+  }
+  addDownloadListener(pending, callback, progressCallback)
+  table.insert(download.pendingDownloads, pending)
+end
+
+local function notifyPendingDownloadCancellation(pendingDownloads)
+  for _, pending in ipairs(pendingDownloads or {}) do
+    for _, listener in ipairs(pending.listeners or {}) do
+      if listener.callback then
+        local ok, err = pcall(listener.callback, false, tr('Download canceled.'), false)
+        if not ok then
+          logWarning('Queued asset completion callback failed: ' .. tostring(err))
+        end
+      end
+    end
+  end
+end
+
+local function setDownloadProgress(status, percent, detail)
+  stopDownloadBusy()
+  local notificationDetail = detail or assetProgressDetail()
+  updateAndroidAssetNotification(status, percent, notificationDetail)
+  notifyDownloadListeners(status, percent, detail)
   renderDownloadStatus(status, percent, detail)
 end
 
@@ -858,12 +1006,8 @@ local function setDownloadBusy(status, detail)
 
   activeDownload.busyStatus = status
   activeDownload.busyDetail = detail
-  if activeDownload.progressCallback then
-    local ok, err = pcall(activeDownload.progressCallback, status, nil, detail)
-    if not ok then
-      logWarning('Progress callback failed: ' .. tostring(err))
-    end
-  end
+  updateAndroidAssetNotification(status, -1, detail)
+  notifyDownloadListeners(status, nil, detail)
   if not activeDownload.window then
     return
   end
@@ -908,31 +1052,60 @@ local function logArchiveHeartbeat(message)
 end
 
 local function finishDownload(ok, message, assetsChanged)
-  local callback = activeDownload and activeDownload.callback
+  local listeners = activeDownload and activeDownload.listeners or {}
+  local pendingDownloads = activeDownload and activeDownload.pendingDownloads or {}
   if ok then
     logInfo(message or 'Asset download finished.')
   elseif message then
     logError(message)
   end
   stopDownloadBusy()
+  finishAndroidAssetNotification()
   if activeDownload and activeDownload.window then
     activeDownload.window:destroy()
   end
   activeDownload = nil
-  if callback then
-    callback(ok, ok and message or userFacingError(message), assetsChanged == true)
+
+  local resultMessage = ok and message or userFacingError(message)
+  for _, listener in ipairs(listeners) do
+    if listener.callback then
+      local callbackOk, err = pcall(listener.callback, ok, resultMessage, assetsChanged == true)
+      if not callbackOk then
+        logWarning('Asset completion callback failed: ' .. tostring(err))
+      end
+    end
+  end
+
+  for _, pending in ipairs(pendingDownloads) do
+    for _, listener in ipairs(pending.listeners or {}) do
+      if listener.callback then
+        ensureClientVersion(pending.version, listener.callback, listener.progressCallback)
+      end
+    end
   end
 end
 
 local function cancelDownload()
+  local pendingDownloads = activeDownload and activeDownload.pendingDownloads or {}
   if activeDownload then
     activeDownload.canceled = true
+    activeDownload.pendingDownloads = {}
+    for operationId in pairs(activeDownload.operations or {}) do
+      HTTP.cancel(operationId)
+    end
     if activeDownload.operationId then
       HTTP.cancel(activeDownload.operationId)
     end
     activeDownload.window = nil
   end
   finishDownload(false, tr('Download canceled.'))
+  notifyPendingDownloadCancellation(pendingDownloads)
+end
+
+function cancelCurrentDownload()
+  if activeDownload then
+    cancelDownload()
+  end
 end
 
 local function verifyDownloadedSha256(downloadPath, expectedSha256, expectedSize)
@@ -1140,128 +1313,221 @@ local function installManifestEntries(config, descriptor, files, index, installe
     return callback(false, tr('Download canceled.'))
   end
 
-  local entry = files[index]
-  if not entry then
-    return callback(true, string.format('Installed %d assets.', installed))
-  end
-
-  local selectedEntry = shouldInstallManifestEntry(entry, descriptor.version, descriptor)
-  if not selectedEntry then
-    return installManifestEntries(config, descriptor, files, index + 1, installed, total, callback)
-  end
-
-  local preferPacked = descriptor.preferPackedManifestUrls
-  if preferPacked == nil then
-    preferPacked = config.preferPackedManifestUrls
-  end
-  local directDownload = buildManifestDownload(entry, descriptor, selectedEntry, preferPacked)
-  local fallbackDownload
-  if config.allowRawFallbackHashMismatch ~= false and not directDownload.extractArchive and not isLzmaPath(directDownload.sourcePath) then
-    directDownload.allowHashMismatch = true
-    directDownload.allowHashMismatchReason = 'allowRawFallbackHashMismatch is enabled'
-  end
-  if entry.url then
-    fallbackDownload = buildManifestDownload(entry, descriptor, selectedEntry, not preferPacked)
-    if fallbackDownload.sourcePath == directDownload.sourcePath then
-      fallbackDownload = nil
-    elseif config.allowRawFallbackHashMismatch ~= false and not isArchivePath(fallbackDownload.sourcePath) and not isLzmaPath(fallbackDownload.sourcePath) then
-      fallbackDownload.allowHashMismatch = true
-      fallbackDownload.allowHashMismatchReason = 'allowRawFallbackHashMismatch is enabled'
+  local jobs = {}
+  for fileIndex = index, #files do
+    local entry = files[fileIndex]
+    local selectedEntry = shouldInstallManifestEntry(entry, descriptor.version, descriptor)
+    if selectedEntry then
+      local preferPacked = descriptor.preferPackedManifestUrls
+      if preferPacked == nil then
+        preferPacked = config.preferPackedManifestUrls
+      end
+      local directDownload = buildManifestDownload(entry, descriptor, selectedEntry, preferPacked)
+      local fallbackDownload
+      if config.allowRawFallbackHashMismatch ~= false and not directDownload.extractArchive and
+         not isLzmaPath(directDownload.sourcePath) then
+        directDownload.allowHashMismatch = true
+        directDownload.allowHashMismatchReason = 'allowRawFallbackHashMismatch is enabled'
+      end
+      if entry.url then
+        fallbackDownload = buildManifestDownload(entry, descriptor, selectedEntry, not preferPacked)
+        if fallbackDownload.sourcePath == directDownload.sourcePath then
+          fallbackDownload = nil
+        elseif config.allowRawFallbackHashMismatch ~= false and not isArchivePath(fallbackDownload.sourcePath) and
+               not isLzmaPath(fallbackDownload.sourcePath) then
+          fallbackDownload.allowHashMismatch = true
+          fallbackDownload.allowHashMismatchReason = 'allowRawFallbackHashMismatch is enabled'
+        end
+      end
+      jobs[#jobs + 1] = {
+        index = fileIndex,
+        entry = entry,
+        directDownload = directDownload,
+        fallbackDownload = fallbackDownload
+      }
     end
   end
-  local installedFileMatches = directDownload.expectedFileSha256 and
-    verifyInstalledSha256(directDownload.destinationPath, directDownload.expectedFileSha256, false)
-  if installedFileMatches then
-    setDownloadProgress(string.format('Checking assets for client %s', versionLabel(descriptor.version)),
-      completeAssetEntryProgress(index, total, entry))
-    return installManifestEntries(config, descriptor, files, index + 1, installed, total, callback)
+
+  local nextJob = 1
+  local activeWorkers = 0
+  local completedJobs = 0
+  local installedCount = installed or 0
+  local failed = false
+  local function failAll(err)
+    if failed then
+      return
+    end
+    failed = true
+    for operationId in pairs(activeDownload and activeDownload.operations or {}) do
+      HTTP.cancel(operationId)
+    end
+    if activeDownload then
+      activeDownload.operations = {}
+    end
+    callback(false, err)
   end
 
-  local function downloadEntry(downloadInfo, nextFallback, retriesLeft)
-    local fileName = string.format('asset-downloads/%d/%04d-%s', descriptor.version, index, g_resources.getFileName(downloadInfo.sourcePath))
-    setDownloadProgress(string.format('Downloading assets for client %s', versionLabel(descriptor.version)),
-      assetEntryProgress(index, total, 0, entry))
+  local runNext
+  local function settleJob(job, wasInstalled)
+    activeWorkers = activeWorkers - 1
+    completedJobs = completedJobs + 1
+    if not wasInstalled then
+      installedCount = installedCount + 1
+    end
+    local percent = completeAssetEntryProgress(job.index, total, job.entry)
+    setDownloadProgress(
+      string.format('Downloading assets for client %s', versionLabel(descriptor.version)),
+      percent,
+      assetProgressDetail()
+    )
+    runNext()
+  end
 
-    activeDownload.operationId = httpDownload(config, downloadInfo.url, fileName, function(path, checksum, err)
-      if not activeDownload then
+  local function runJob(job)
+    local directDownload = job.directDownload
+    local installedFileMatches = directDownload.expectedFileSha256 and
+      verifyInstalledSha256(directDownload.destinationPath, directDownload.expectedFileSha256, false)
+    if installedFileMatches then
+      return scheduleEvent(function()
+        if not failed and activeDownload then
+          settleJob(job, true)
+        end
+      end, 0)
+    end
+
+    local function downloadEntry(downloadInfo, nextFallback, retriesLeft)
+      if failed or not activeDownload or activeDownload.canceled then
         return
       end
+      local fileName = string.format(
+        'asset-downloads/%d/%04d-%s',
+        descriptor.version,
+        job.index,
+        g_resources.getFileName(downloadInfo.sourcePath)
+      )
+      setDownloadProgress(
+        string.format('Downloading assets for client %s', versionLabel(descriptor.version)),
+        assetEntryProgress(job.index, total, 0, job.entry)
+      )
 
-      activeDownload.operationId = nil
-
-      if activeDownload.canceled then
-        return callback(false, tr('Download canceled.'))
-      end
-
-      if err then
-        if retriesLeft > 0 then
-          return downloadEntry(downloadInfo, nextFallback, retriesLeft - 1)
+      httpDownload(config, downloadInfo.url, fileName, function(path, _checksum, err)
+        if failed or not activeDownload then
+          return
         end
-        if nextFallback then
-          if config.allowMissingPackedRawFallback ~= false and isNotFoundError(err) and isPackedToRawFallback(downloadInfo, nextFallback) then
-            nextFallback.allowHashMismatch = true
-            nextFallback.allowHashMismatchReason = 'the packed asset is missing and allowMissingPackedRawFallback is enabled'
+        if activeDownload.canceled then
+          return failAll(tr('Download canceled.'))
+        end
+
+        if err then
+          activeDownload.assetProgressBytes[job.index] = 0
+          activeDownload.assetSpeedKbps[job.index] = 0
+          if retriesLeft > 0 then
+            return downloadEntry(downloadInfo, nextFallback, retriesLeft - 1)
           end
-          logWarning(string.format('Download failed for %s: %s. Trying %s.', downloadInfo.sourcePath, err, nextFallback.sourcePath))
-          return downloadEntry(nextFallback, nil, config.retries or 0)
-        end
-        return callback(false, err)
-      end
-
-      local expectedSize = config.updateCheckEnabled == true and tonumber(entry.size) or nil
-      local ok, hashError = verifyDownloadedSha256(path, downloadInfo.expectedDownloadSha256, expectedSize)
-      if not ok then
-        if nextFallback then
-          if config.allowMissingPackedRawFallback ~= false and isMissingPackedHashError(hashError) and isPackedToRawFallback(downloadInfo, nextFallback) then
-            nextFallback.allowHashMismatch = true
-            nextFallback.allowHashMismatchReason = 'the packed asset is missing and allowMissingPackedRawFallback is enabled'
+          if nextFallback then
+            if config.allowMissingPackedRawFallback ~= false and isNotFoundError(err) and
+               isPackedToRawFallback(downloadInfo, nextFallback) then
+              nextFallback.allowHashMismatch = true
+              nextFallback.allowHashMismatchReason =
+                'the packed asset is missing and allowMissingPackedRawFallback is enabled'
+            end
+            logWarning(string.format(
+              'Download failed for %s: %s. Trying %s.',
+              downloadInfo.sourcePath,
+              err,
+              nextFallback.sourcePath
+            ))
+            return downloadEntry(nextFallback, nil, config.retries or 0)
           end
-          logWarning(hashError .. ' Trying ' .. nextFallback.sourcePath .. '.')
-          return downloadEntry(nextFallback, nil, config.retries or 0)
+          return failAll(err)
         end
-        if downloadInfo.allowHashMismatch and not hashError:find(HTTP_NOT_FOUND_SHA256, 1, true) then
-          logWarning(hashError .. ' Continuing because ' .. (downloadInfo.allowHashMismatchReason or 'allowRawFallbackHashMismatch is enabled') .. '.')
-          ok = true
+
+        local expectedSize = config.updateCheckEnabled == true and tonumber(job.entry.size) or nil
+        local ok, hashError = verifyDownloadedSha256(path, downloadInfo.expectedDownloadSha256, expectedSize)
+        if not ok then
+          if nextFallback then
+            if config.allowMissingPackedRawFallback ~= false and isMissingPackedHashError(hashError) and
+               isPackedToRawFallback(downloadInfo, nextFallback) then
+              nextFallback.allowHashMismatch = true
+              nextFallback.allowHashMismatchReason =
+                'the packed asset is missing and allowMissingPackedRawFallback is enabled'
+            end
+            logWarning(hashError .. ' Trying ' .. nextFallback.sourcePath .. '.')
+            return downloadEntry(nextFallback, nil, config.retries or 0)
+          end
+          if downloadInfo.allowHashMismatch and not hashError:find(HTTP_NOT_FOUND_SHA256, 1, true) then
+            logWarning(hashError .. ' Continuing because ' ..
+              (downloadInfo.allowHashMismatchReason or 'allowRawFallbackHashMismatch is enabled') .. '.')
+            ok = true
+          else
+            return failAll(hashError)
+          end
+        end
+        if not ok then
+          return failAll(hashError)
+        end
+
+        if downloadInfo.extractArchive then
+          ok, hashError = installDownloadedArchive(
+            config,
+            path,
+            downloadInfo.destinationPath,
+            downloadInfo.archiveEntryPrefix,
+            downloadInfo.stripArchivePrefix,
+            downloadInfo.extractedFilePath,
+            downloadInfo.expectedFileSha256
+          )
         else
-          return callback(false, hashError)
+          ok, hashError = installDownloadedFile(
+            config,
+            path,
+            downloadInfo.destinationPath,
+            downloadInfo.decompressLzma,
+            downloadInfo.expectedFileSha256,
+            downloadInfo.allowHashMismatch,
+            downloadInfo.allowHashMismatchReason
+          )
         end
-      end
-
-      if not ok then
-        return callback(false, hashError)
-      end
-
-      if downloadInfo.extractArchive then
-        ok, hashError = installDownloadedArchive(
-          config,
-          path,
-          downloadInfo.destinationPath,
-          downloadInfo.archiveEntryPrefix,
-          downloadInfo.stripArchivePrefix,
-          downloadInfo.extractedFilePath,
-          downloadInfo.expectedFileSha256
+        if not ok then
+          if nextFallback then
+            logWarning(hashError .. ' Trying ' .. nextFallback.sourcePath .. '.')
+            return downloadEntry(nextFallback, nil, config.retries or 0)
+          end
+          return failAll(hashError)
+        end
+        settleJob(job, false)
+      end, function(progress, speed)
+        if failed or not activeDownload then
+          return
+        end
+        local percent = assetEntryProgress(job.index, total, progress, job.entry, speed)
+        setDownloadProgress(
+          string.format('Downloading assets for client %s', versionLabel(descriptor.version)),
+          percent,
+          assetProgressDetail()
         )
-      else
-        ok, hashError = installDownloadedFile(config, path, downloadInfo.destinationPath, downloadInfo.decompressLzma, downloadInfo.expectedFileSha256, downloadInfo.allowHashMismatch, downloadInfo.allowHashMismatchReason)
-      end
-      if not ok then
-        if nextFallback then
-          logWarning(hashError .. ' Trying ' .. nextFallback.sourcePath .. '.')
-          return downloadEntry(nextFallback, nil, config.retries or 0)
-        end
-        return callback(false, hashError)
-      end
+      end)
+    end
 
-      setDownloadProgress(string.format('Downloading assets for client %s', versionLabel(descriptor.version)),
-        completeAssetEntryProgress(index, total, entry))
-      return installManifestEntries(config, descriptor, files, index + 1, installed + 1, total, callback)
-    end, function(progress, speed)
-      setDownloadProgress(string.format('Downloading assets for client %s', versionLabel(descriptor.version)),
-        assetEntryProgress(index, total, progress, entry))
-    end)
+    downloadEntry(job.directDownload, job.fallbackDownload, config.retries or 0)
   end
 
-  downloadEntry(directDownload, fallbackDownload, config.retries or 0)
+  runNext = function()
+    if failed or not activeDownload or activeDownload.canceled then
+      return
+    end
+    if completedJobs >= #jobs and activeWorkers == 0 then
+      return callback(true, string.format('Installed %d assets.', installedCount))
+    end
+    while activeWorkers < MANIFEST_DOWNLOAD_CONCURRENCY and nextJob <= #jobs do
+      local job = jobs[nextJob]
+      nextJob = nextJob + 1
+      activeWorkers = activeWorkers + 1
+      runJob(job)
+    end
+  end
+
+  runNext()
 end
 
 local function fetchManifestSha256(config, descriptor, callback)
@@ -1348,6 +1614,7 @@ local function installFromManifest(config, descriptor, callback)
     return callback(false, 'No asset manifest URL configured.')
   end
 
+  logInfo(string.format('Requesting assets manifest for client %s.', versionLabel(descriptor.version)))
   setDownloadProgress(string.format('Fetching assets manifest for client %s', versionLabel(descriptor.version)), 0)
   activeDownload.operationId = httpGet(config, descriptor.manifestUrl, function(data, err)
     if not activeDownload then
@@ -1355,8 +1622,18 @@ local function installFromManifest(config, descriptor, callback)
     end
     activeDownload.operationId = nil
     if err then
+      logWarning(string.format(
+        'Assets manifest request failed for client %s: %s',
+        versionLabel(descriptor.version),
+        tostring(err)
+      ))
       return callback(false, err)
     end
+    logInfo(string.format(
+      'Received assets manifest for client %s (%d bytes).',
+      versionLabel(descriptor.version),
+      #(data or '')
+    ))
 
     fetchManifestSha256(config, descriptor, function(expectedSha256)
       local actualSha256 = g_crypt.sha256(data)
@@ -1789,6 +2066,14 @@ function isClientVersionInstalled(version)
          g_resources.fileExists(string.format('/data/things/%d/Tibia.spr', version))
 end
 
+function getInstalledAssetRevision(version)
+  version = tonumber(version)
+  if not version or version < 1281 then
+    return nil
+  end
+  return readInstalledAssetRevision(version)
+end
+
 function getInstalledClientVersions()
   local installed = {}
   local paths = { '/data/things/' }
@@ -1819,7 +2104,18 @@ function ensureClientVersion(version, callback, progressCallback)
   end
 
   if activeDownload then
-    return callback(false, 'Another asset download is already running.')
+    if activeDownload.version == version then
+      addDownloadListener(activeDownload, callback, progressCallback)
+      logInfo(string.format('Joining active asset download for client %s.', versionLabel(version)))
+      return
+    end
+    addPendingDownload(activeDownload, version, callback, progressCallback)
+    logInfo(string.format(
+      'Queued asset download for client %s behind active client %s.',
+      versionLabel(version),
+      versionLabel(activeDownload.version)
+    ))
+    return
   end
 
   local promptBox
@@ -1837,10 +2133,15 @@ function ensureClientVersion(version, callback, progressCallback)
 
     activeDownload = {
       version = version,
-      callback = callback,
-      progressCallback = progressCallback,
-      canceled = false
+      listeners = {},
+      canceled = false,
+      operations = {},
+      assetProgressBytes = {},
+      assetSpeedKbps = {}
     }
+    addDownloadListener(activeDownload, callback, progressCallback)
+
+    updateAndroidAssetNotification('Preparando download dos dados', -1, '')
 
     logInfo(string.format('Starting asset download for client %s.', versionLabel(version)))
     if not progressCallback then

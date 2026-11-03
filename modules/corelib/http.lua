@@ -26,6 +26,21 @@ function HTTP.getJSON(url, callback)
   return operation
 end
 
+function HTTP.getWithBearer(url, token, callback)
+  if not g_http or not g_http.getWithBearer then
+    return error("HTTP.getWithBearer is not supported")
+  end
+  local operation = g_http.getWithBearer(url, token, HTTP.timeout)
+  if operation < 0 then
+    if callback then
+      callback(nil, "secure_request_unavailable")
+    end
+    return nil
+  end
+  HTTP.operations[operation] = { type = "get", url = url, callback = callback }
+  return operation
+end
+
 function HTTP.getJSONWithBearer(url, token, callback)
   if not g_http or not g_http.getWithBearer then
     return error("HTTP.getJSONWithBearer is not supported")
@@ -105,14 +120,14 @@ function HTTP.postJSON(url, data, callback)
   return operation
 end
 
-function HTTP.postSecureJSON(url, data, callback)
+function HTTP.postSecureJSON(url, data, callback, timeout)
   if not g_http or not g_http.postSecure then
     return error("HTTP.postSecureJSON is not supported")
   end
   if type(data) == "table" then
     data = json.encode(data)
   end
-  local operation = g_http.postSecure(url, data, HTTP.timeout)
+  local operation = g_http.postSecure(url, data, timeout or HTTP.timeout)
   if operation < 0 then
     if callback then
       callback(nil, "secure_request_unavailable")

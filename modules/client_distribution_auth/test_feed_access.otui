@@ -1,0 +1,91 @@
+ElementalTestFeedAccessPassword < ElementalInput
+  height: 44
+  text-hidden: true
+  @onEnter: ClientDistributionAuth.submitPassword()
+
+ElementalTestFeedAccessWindow < ElementalModal
+  size: 520 360
+  anchors.horizontalCenter: parent.horizontalCenter
+  anchors.verticalCenter: parent.verticalCenter
+  text: Acesso ao teste Elemental
+  @onEscape: ClientDistributionAuth.cancelPassword()
+  @onEnter: ClientDistributionAuth.submitPassword()
+
+ElementalTestFeedAccessWindow
+  id: testFeedAccessWindow
+
+  UIWidget
+    id: testFeedAccessMark
+    anchors.horizontalCenter: parent.horizontalCenter
+    anchors.top: parent.top
+    size: 48 48
+    image-source: /images/brand/elemental-mark.png
+    image-size: 48 48
+    image-smooth: true
+    phantom: true
+
+  Label
+    anchors.horizontalCenter: parent.horizontalCenter
+    anchors.top: testFeedAccessMark.bottom
+    margin-top: 7
+    height: 20
+    text: ACESSO DE DESENVOLVEDOR
+    text-align: center
+    color: $elementalAmber
+    font: Verdana Bold-11px
+
+  Label
+    id: testFeedAccessDescription
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: prev.bottom
+    margin-top: 5
+    height: 38
+    text-wrap: true
+    text-align: center
+    color: $elementalMuted
+    text: Informe a senha de acesso para autorizar este dispositivo e baixar os arquivos do teste fechado.
+
+  Label
+    anchors.left: parent.left
+    anchors.top: testFeedAccessDescription.bottom
+    margin-top: 12
+    height: 18
+    text: Senha de acesso
+    color: $elementalMuted
+
+  ElementalTestFeedAccessPassword
+    id: testFeedAccessPassword
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: prev.bottom
+    margin-top: 5
+
+  Label
+    id: testFeedAccessStatus
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: testFeedAccessPassword.bottom
+    margin-top: 8
+    height: 40
+    text-wrap: true
+    color: $elementalMuted
+    text: A senha autoriza o dispositivo e não fica salva no aplicativo.
+
+  ElementalSecondaryButton
+    id: testFeedAccessCancel
+    anchors.left: parent.left
+    anchors.bottom: parent.bottom
+    width: 190
+    height: 44
+    text: VOLTAR
+    @onClick: ClientDistributionAuth.cancelPassword()
+
+  ElementalPrimaryButton
+    id: testFeedAccessSubmit
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    width: 190
+    height: 44
+    text: CONTINUAR
+    @onClick: ClientDistributionAuth.submitPassword()

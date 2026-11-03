@@ -25,6 +25,7 @@
 #include "androidwindow.h"
 #include "androidmanager.h"
 #include <game-activity/native_app_glue/android_native_app_glue.h>
+#include <android/configuration.h>
 #include "framework/core/clock.h"
 #include <framework/core/eventdispatcher.h>
 #include <android/log.h>
@@ -191,7 +192,25 @@ void AndroidWindow::queryGlSize() {
         EGL_FALSE ==  eglQuerySurface(m_eglDisplay, m_eglSurface, EGL_HEIGHT, &height)) {
         g_logger.fatal("Unable to query surface to get width and height");
     }
+
+    const auto previousSize = m_size;
+    if (m_app->config) {
+        const auto orientation = AConfiguration_getOrientation(m_app->config);
+        if (orientation == ACONFIGURATION_ORIENTATION_LAND && width < height) {
+            const int surfaceWidth = width;
+            width = height;
+            height = surfaceWidth;
+        } else if (orientation == ACONFIGURATION_ORIENTATION_PORT && width > height) {
+            const int surfaceWidth = width;
+            width = height;
+            height = surfaceWidth;
+        }
+    }
+
     m_size = Size(width, height);
+    if (m_size != previousSize && m_onResize) {
+        m_onResize(m_size);
+    }
 }
 
 void AndroidWindow::terminate() {

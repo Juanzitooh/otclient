@@ -95,8 +95,8 @@ python3 scripts/package_android_data.py \
 ```
 
 The bundle embeds those values in `elemental-distribution.lua`. Keep URLs on
-the same channel as the APK and use HTTPS for collaborator devices. HTTP is
-accepted only for loopback development fixtures. The output contains the
+the same channel as the APK and use HTTPS on devices used by Desenvolvedores.
+HTTP is accepted only for loopback development fixtures. The output contains the
 `data`, `mods`, and `modules` trees; local community 15.25 directories are
 excluded from generic channel packages. Do not reuse a stale `data.zip`
 when changing channels. A remote `test` feed must also provide the shared-
@@ -227,7 +227,7 @@ Elemental app is not installed. Do not replace the project owner's app/profile.
 
 The community 15.25 pack is included only when
 `ELEMENTAL_INCLUDE_LOCAL_DEVELOPMENT_1525_ASSETS=1` is explicitly set. D047
-allows that pack only for invited collaborators during closed development; it
+allows that pack only for Desenvolvedores invited during closed development; it
 does not approve a public beta. D080 authorizes the closed test cohort only;
 it does not approve open beta or release and does not mark T5.7/T5.19 complete.
 

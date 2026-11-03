@@ -61,6 +61,25 @@ class ConfigureServerInitTests(unittest.TestCase):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 build_elemental_bundle.parse_beta_login_url(url)
 
+    def test_test_bundle_disables_local_account_creation(self):
+        result = build_elemental_bundle.disable_local_account_creation(self.init_lua)
+
+        self.assertNotIn(build_elemental_bundle.LOCAL_TEST_ACCOUNT_CREATE_URL, result)
+
+    def test_disabling_account_creation_rejects_missing_or_duplicate_endpoint(self):
+        without_endpoint = self.init_lua.replace(
+            build_elemental_bundle.LOCAL_TEST_ACCOUNT_CREATE_URL, "http://other.invalid/create"
+        )
+        with self.assertRaises(ValueError):
+            build_elemental_bundle.disable_local_account_creation(without_endpoint)
+
+        duplicated = self.init_lua + "\n" + next(
+            line for line in self.init_lua.splitlines()
+            if build_elemental_bundle.LOCAL_TEST_ACCOUNT_CREATE_URL in line
+        )
+        with self.assertRaises(ValueError):
+            build_elemental_bundle.disable_local_account_creation(duplicated)
+
 
 class DistributionConfigTests(unittest.TestCase):
     def test_beta_config_disables_unconfigured_updaters(self):

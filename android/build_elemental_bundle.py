@@ -20,10 +20,16 @@ from package_android_data import CHANNELS, validated_distribution_config
 
 
 DEFAULT_LOCAL_LOGIN_URL = "http://127.0.0.1:8088/login"
+LOCAL_TEST_ACCOUNT_CREATE_URL = "http://127.0.0.1:8080/elemental/createaccount"
 SERVER_INIT_ENTRY = re.compile(
     r'(?P<indent>^[ \t]*)\["http://127\.0\.0\.1:8088/login"\][ \t]*=[ \t]*\{\n'
     r'(?P<fields>.*?)^[ \t]*\},',
     re.MULTILINE | re.DOTALL,
+)
+LOCAL_TEST_ACCOUNT_CREATE_ENTRY = re.compile(
+    r'(?m)^[ \t]*createAccount[ \t]*=[ \t]*"'
+    r'http://127\.0\.0\.1:8080/elemental/createaccount",'
+    r'[ \t]*-- local development account creation[ \t]*$'
 )
 LOCAL_TEST_OVERRIDE = re.compile(
     r'(?ms)^if os\.getenv\("ELEMENTAL_LOCAL_TEST"\) == "1" then\n.*?^end[ \t]*\n'
@@ -65,6 +71,13 @@ def configure_server_init(init_lua, login_url, port):
     block = http_pattern.sub(lambda item: f"{item.group('prefix')}false{item.group('suffix')}", block, count=1)
     block = block.replace(DEFAULT_LOCAL_LOGIN_URL, login_url, 1)
     return init_lua[:match.start()] + block + init_lua[match.end():]
+
+
+def disable_local_account_creation(init_lua):
+    entries = list(LOCAL_TEST_ACCOUNT_CREATE_ENTRY.finditer(init_lua))
+    if len(entries) != 1:
+        raise ValueError("init.lua must contain exactly one local account-creation endpoint")
+    return LOCAL_TEST_ACCOUNT_CREATE_ENTRY.sub("", init_lua, count=1)
 
 
 def files_to_bundle():
@@ -154,6 +167,8 @@ def main():
             if relative == "init.lua":
                 init_lua = source.read_text(encoding="utf-8")
                 configured_init = configure_server_init(init_lua, args.login_url, port)
+                if args.channel == "test":
+                    configured_init = disable_local_account_creation(configured_init)
                 bundle.writestr(relative, configured_init)
             else:
                 bundle.write(source, relative)
@@ -176,6 +191,8 @@ def main():
         configured_init = bundle.read("init.lua").decode("utf-8")
     if DEFAULT_LOCAL_LOGIN_URL in configured_init or args.login_url not in configured_init:
         raise ValueError("Android init.lua does not contain the configured HTTPS beta endpoint")
+    if args.channel == "test" and LOCAL_TEST_ACCOUNT_CREATE_URL in configured_init:
+        raise ValueError("Closed test Android bundle must not expose local account creation")
     print(f"Android bundle: {OUTPUT} ({len(names)} files, {OUTPUT.stat().st_size} bytes)")
 
 

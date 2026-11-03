@@ -180,6 +180,99 @@ ElementalDesktopLogin
         self:hide()
       end
 
+  Label
+    id: firstPasswordHeading
+    anchors.top: parent.verticalCenter
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: -152
+    height: 25
+    text: Defina sua senha
+    color: #f7f1e4
+    font: Verdana Bold-13px
+    text-align: left
+    visible: false
+
+  Label
+    id: firstPasswordDescription
+    anchors.top: firstPasswordHeading.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 6
+    height: 36
+    text-wrap: true
+    text: Para proteger sua conta, escolha e confirme uma nova senha para continuar.
+    color: #aeb4c0
+    font: verdana-11px-antialised
+    visible: false
+
+  ElementalDesktopLoginLabel
+    id: firstPasswordNewLabel
+    anchors.top: firstPasswordDescription.bottom
+    anchors.left: parent.left
+    margin-top: 14
+    text: Nova senha
+    visible: false
+
+  ElementalDesktopPasswordInput
+    id: firstPasswordNewEdit
+    anchors.top: firstPasswordNewLabel.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 6
+    @onTextChange: EnterGame.clearFirstPasswordStatus()
+    visible: false
+
+  ElementalDesktopLoginLabel
+    id: firstPasswordConfirmLabel
+    anchors.top: firstPasswordNewEdit.bottom
+    anchors.left: parent.left
+    margin-top: 14
+    text: Confirmar nova senha
+    visible: false
+
+  ElementalDesktopPasswordInput
+    id: firstPasswordConfirmEdit
+    anchors.top: firstPasswordConfirmLabel.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 6
+    @onEnter: EnterGame.submitFirstPasswordChange()
+    @onTextChange: EnterGame.clearFirstPasswordStatus()
+    visible: false
+
+  Label
+    id: firstPasswordStatus
+    anchors.top: firstPasswordConfirmEdit.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 9
+    height: 40
+    text-wrap: true
+    color: #e56b6b
+    visible: false
+
+  ElementalPrimaryButton
+    id: btnFirstPasswordSubmit
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    margin-bottom: 54
+    height: 44
+    text: Salvar nova senha
+    @onClick: EnterGame.submitFirstPasswordChange()
+    visible: false
+
+  ElementalSecondaryButton
+    id: btnFirstPasswordCancel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    height: 40
+    text: Voltar ao login
+    @onClick: EnterGame.cancelFirstPasswordChange()
+    visible: false
+
   QtCheckBox
     id: autoLoginBox
     visible: false

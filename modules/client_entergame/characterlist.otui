@@ -437,6 +437,151 @@ ElementalBetaAccountWindow < MainWindow
       height: 24
       !text: tr('Close')
 
+ElementalBetaFirstPasswordWindow < ElementalModal
+  id: elementalBetaFirstPasswordWindow
+  size: 500 420
+  !text: tr('Primeiro acesso')
+  @onEscape: CharacterList.cancelFirstPasswordChange()
+
+  Panel
+    id: firstPasswordPanel
+    anchors.fill: parent
+    margin: 12
+    background-color: $elementalSurface
+    border-width: 1
+    border-color: $elementalBorder
+
+    Label
+      id: firstPasswordHeading
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.right
+      height: 24
+      color: $elementalAmber
+      font: Verdana Bold-11px
+      !text: tr('Defina sua senha pessoal')
+
+    Label
+      id: firstPasswordIntro
+      anchors.top: firstPasswordHeading.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 5
+      height: 42
+      text-wrap: true
+      color: $elementalText
+      !text: 'Para proteger sua conta, troque a senha inicial antes de continuar. Seus personagens s\243 ser\227o exibidos depois da troca.'
+
+    Panel
+      id: firstPasswordAccountPanel
+      anchors.top: firstPasswordIntro.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 8
+      height: 38
+      background-color: $elementalRaised
+      border-width: 1
+      border-color: $elementalBorder
+
+      Label
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        margin-left: 9
+        width: 104
+        color: $elementalMuted
+        !text: tr('Conta')
+
+      Label
+        id: firstPasswordEmailValue
+        anchors.left: prev.right
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        margin-left: 4
+        margin-right: 9
+        color: $elementalText
+
+    Label
+      anchors.top: firstPasswordAccountPanel.bottom
+      anchors.left: parent.left
+      id: firstPasswordNewLabel
+      margin-top: 11
+      height: 18
+      color: $elementalText
+      !text: tr('Nova senha')
+
+    HiddenTextQtEdit
+      id: firstPasswordNewEdit
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 3
+      height: 26
+      text-hidden: true
+      background-color: $elementalInput
+      border-width: 1
+      border-color: $elementalBorder
+      padding: 4
+
+    Label
+      id: firstPasswordConfirmLabel
+      anchors.top: firstPasswordNewEdit.bottom
+      anchors.left: parent.left
+      margin-top: 9
+      height: 18
+      color: $elementalText
+      !text: tr('Confirme a nova senha')
+
+    HiddenTextQtEdit
+      id: firstPasswordConfirmEdit
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 3
+      height: 26
+      text-hidden: true
+      background-color: $elementalInput
+      border-width: 1
+      border-color: $elementalBorder
+      padding: 4
+
+    Label
+      id: firstPasswordHint
+      anchors.top: firstPasswordConfirmEdit.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 8
+      height: 30
+      text-wrap: true
+      color: $elementalMuted
+      !text: 'Use pelo menos 12 caracteres. Guarde a senha em um gerenciador.'
+
+    Label
+      id: firstPasswordStatus
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: firstPasswordSubmitButton.top
+      margin-bottom: 7
+      height: 32
+      text-wrap: true
+      color: $elementalMuted
+
+    ElementalPrimaryButton
+      id: firstPasswordSubmitButton
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      width: 142
+      height: 30
+      !text: tr('Salvar senha')
+
+    ElementalSecondaryButton
+      id: firstPasswordCancelButton
+      anchors.right: firstPasswordSubmitButton.left
+      anchors.bottom: parent.bottom
+      margin-right: 8
+      width: 138
+      height: 30
+      !text: tr('Voltar ao login')
+
 CharacterWidget < UIWidget
   height: 14
   background-color: alpha

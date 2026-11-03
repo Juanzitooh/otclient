@@ -244,6 +244,15 @@ local function checkAndroidApk()
         end
         apkCheckComplete = true
         apkUpdateAvailable = success and type(manifest) == 'table'
+        local versionWidget = window:recursiveGetChildById('mobileLauncherVersion')
+        if not success and type(manifest) == 'table' and type(manifest.version) == 'string' and
+           type(message) == 'string' and message:find('oferece uma versao anterior', 1, true) then
+            if versionWidget then
+                versionWidget:setText('ANDROID | feed v' .. manifest.version)
+            end
+            message = string.format('O feed oferece %s, anterior ao APK instalado. O downgrade foi bloqueado.',
+                manifest.version)
+        end
         if apkUpdateAvailable then
             setStatus('Nova versao do aplicativo disponivel',
                 string.format('A versao %s pode ser instalada agora.', tostring(manifest.versionCode)), 100)

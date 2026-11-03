@@ -177,6 +177,8 @@ void AndroidManager::setAndroidManager(JNIEnv* env, jobject androidManager) {
     m_midSetClipboardText = jniEnv->GetMethodID(androidManagerJClass, "setClipboardText", "(Ljava/lang/String;)V");
     m_midGetPackageName = jniEnv->GetMethodID(androidManagerJClass, "getPackageName", "()Ljava/lang/String;");
     m_midGetVersionCode = jniEnv->GetMethodID(androidManagerJClass, "getVersionCode", "()I");
+    m_midUpdateAssetDownloadNotification = jniEnv->GetMethodID(androidManagerJClass, "updateAssetDownloadNotification", "(Ljava/lang/String;ILjava/lang/String;)V");
+    m_midFinishAssetDownloadNotification = jniEnv->GetMethodID(androidManagerJClass, "finishAssetDownloadNotification", "()V");
     m_midGetFileSize = jniEnv->GetMethodID(androidManagerJClass, "getFileSize", "(Ljava/lang/String;)J");
     m_midSha256File = jniEnv->GetMethodID(androidManagerJClass, "sha256File", "(Ljava/lang/String;)Ljava/lang/String;");
     m_midInstallApk = jniEnv->GetMethodID(androidManagerJClass, "installApk", "(Ljava/lang/String;)I");
@@ -226,6 +228,20 @@ void AndroidManager::updateInputPreview(const std::string& text) {
 void AndroidManager::hideInputPreview() {
     JNIEnv* env = getJNIEnv();
     env->CallVoidMethod(m_androidManagerJObject, m_midHideInputPreview);
+}
+
+void AndroidManager::updateAssetDownloadNotification(const std::string& status, int progress, const std::string& detail) {
+    JNIEnv* env = getJNIEnv();
+    jstring jStatus = latin1ToJString(env, status);
+    jstring jDetail = latin1ToJString(env, detail);
+    env->CallVoidMethod(m_androidManagerJObject, m_midUpdateAssetDownloadNotification, jStatus, static_cast<jint>(progress), jDetail);
+    env->DeleteLocalRef(jStatus);
+    env->DeleteLocalRef(jDetail);
+}
+
+void AndroidManager::finishAssetDownloadNotification() {
+    JNIEnv* env = getJNIEnv();
+    env->CallVoidMethod(m_androidManagerJObject, m_midFinishAssetDownloadNotification);
 }
 
 std::string AndroidManager::getClipboardText() {

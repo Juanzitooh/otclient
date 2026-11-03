@@ -21,11 +21,18 @@ local emptyCharacterPrompt
 local accountManagementButton
 local characterAssemblyWindow
 local accountManagementWindow
+local firstPasswordWindow
 local characterAssemblyRequestSerial = 0
 local characterAssemblyOptionsPending = false
 local characterAssemblyCreatePending = false
 local accountRequestSerial = 0
 local accountRequestPending = false
+local firstPasswordRequestSerial = 0
+local firstPasswordRequestPending = false
+local firstPasswordEmail
+local firstPasswordInitialPassword
+local firstPasswordKeyboardReflowEvent
+local firstPasswordKeyboardLayoutKey
 local accountPendingEmail
 local suppressCharacterAssemblyCallbacks = false
 local characterAssemblyCatalog = {}
@@ -33,6 +40,10 @@ local suppressCheckCallbacks = false
 local elementalDesktopLayout = false
 local worldLoginPending = false
 local ELEMENTAL_MODAL_BLUR_SHADER = 'Elemental Modal Blur'
+local FIRST_PASSWORD_KEYBOARD_RECHECK_MS = 100
+local FIRST_PASSWORD_KEYBOARD_WINDOW_MAX_WIDTH = 520
+local FIRST_PASSWORD_KEYBOARD_WINDOW_MAX_HEIGHT = 340
+local FIRST_PASSWORD_KEYBOARD_WINDOW_MIN_HEIGHT = 250
 
 local function setElementalBackgroundBlur(blurred)
     if not elementalDesktopLayout or not modules.client_background or
@@ -726,6 +737,224 @@ local function setAccountStatus(message, isError)
     status:setColor(isError and '#f07070' or '#c0c0c0')
 end
 
+local function getFirstPasswordWidget(id)
+    return firstPasswordWindow and firstPasswordWindow:recursiveGetChildById(id) or nil
+end
+
+local function cancelFirstPasswordKeyboardReflow()
+    if firstPasswordKeyboardReflowEvent then
+        removeEvent(firstPasswordKeyboardReflowEvent)
+        firstPasswordKeyboardReflowEvent = nil
+    end
+    firstPasswordKeyboardLayoutKey = nil
+end
+
+local function setFirstPasswordWidgetVisible(id, visible, height)
+    local widget = getFirstPasswordWidget(id)
+    if not widget then
+        return
+    end
+    if height ~= nil then
+        widget:setHeight(height)
+    end
+    widget:setVisible(visible)
+end
+
+local function applyFirstPasswordKeyboardLayout()
+    if not firstPasswordWindow or firstPasswordWindow:isDestroyed() or not g_platform.isMobile() then
+        return
+    end
+
+    local parent = firstPasswordWindow:getParent()
+    local parentWidth = parent and parent:getWidth() or 0
+    local parentHeight = parent and parent:getHeight() or 0
+    local keyboardBottom = 0
+    if firstPasswordWindow:isVisible() and g_platform.getSoftKeyboardHeight then
+        local keyboardPixelHeight = g_platform.getSoftKeyboardHeight()
+        local displayHeight = g_window.getDisplayHeight()
+        if keyboardPixelHeight > 0 and displayHeight > 0 and parentHeight > 0 then
+            keyboardBottom = math.floor(parentHeight * math.min(0.75, keyboardPixelHeight / displayHeight))
+        end
+    end
+
+    local keyboardOpen = keyboardBottom > 0
+    local visibleHeight = math.max(0, parentHeight - keyboardBottom)
+    local layoutKey = string.format('%s:%d:%d', keyboardOpen and 'keyboard' or 'full', parentWidth, visibleHeight)
+    if layoutKey == firstPasswordKeyboardLayoutKey then
+        return
+    end
+    firstPasswordKeyboardLayoutKey = layoutKey
+
+    local panel = getFirstPasswordWidget('firstPasswordPanel')
+    local heading = getFirstPasswordWidget('firstPasswordHeading')
+    local newPasswordLabel = getFirstPasswordWidget('firstPasswordNewLabel')
+    local newPasswordEdit = getFirstPasswordWidget('firstPasswordNewEdit')
+    local confirmPasswordLabel = getFirstPasswordWidget('firstPasswordConfirmLabel')
+    local confirmPasswordEdit = getFirstPasswordWidget('firstPasswordConfirmEdit')
+    local submitButton = getFirstPasswordWidget('firstPasswordSubmitButton')
+    local cancelButton = getFirstPasswordWidget('firstPasswordCancelButton')
+
+    if keyboardOpen then
+        local windowWidth = math.max(1, math.min(FIRST_PASSWORD_KEYBOARD_WINDOW_MAX_WIDTH, parentWidth - 24))
+        local windowHeight = math.max(FIRST_PASSWORD_KEYBOARD_WINDOW_MIN_HEIGHT,
+            math.min(FIRST_PASSWORD_KEYBOARD_WINDOW_MAX_HEIGHT, visibleHeight - 16))
+        firstPasswordWindow:setSize({width = windowWidth, height = windowHeight})
+        firstPasswordWindow:breakAnchors()
+        firstPasswordWindow:addAnchor(AnchorHorizontalCenter, 'parent', AnchorHorizontalCenter)
+        firstPasswordWindow:addAnchor(AnchorTop, 'parent', AnchorTop)
+        firstPasswordWindow:setMarginTop(math.max(8, math.floor((visibleHeight - windowHeight) / 2)))
+
+        if panel then
+            panel:setMarginTop(8)
+            panel:setMarginRight(8)
+            panel:setMarginBottom(8)
+            panel:setMarginLeft(8)
+        end
+        local intro = getFirstPasswordWidget('firstPasswordIntro')
+        local accountPanel = getFirstPasswordWidget('firstPasswordAccountPanel')
+        if intro then
+            intro:setMarginTop(0)
+        end
+        if accountPanel then
+            accountPanel:setMarginTop(0)
+        end
+        setFirstPasswordWidgetVisible('firstPasswordIntro', false, 0)
+        setFirstPasswordWidgetVisible('firstPasswordAccountPanel', false, 0)
+        setFirstPasswordWidgetVisible('firstPasswordHint', false, 0)
+        if heading then
+            heading:setHeight(22)
+        end
+        if newPasswordLabel then
+            newPasswordLabel:setMarginTop(5)
+        end
+        if newPasswordEdit then
+            newPasswordEdit:setHeight(40)
+            newPasswordEdit:setMarginTop(3)
+        end
+        if confirmPasswordLabel then
+            confirmPasswordLabel:setMarginTop(7)
+        end
+        if confirmPasswordEdit then
+            confirmPasswordEdit:setHeight(40)
+            confirmPasswordEdit:setMarginTop(3)
+        end
+        local status = getFirstPasswordWidget('firstPasswordStatus')
+        if status then
+            status:setHeight(30)
+        end
+        if submitButton then
+            submitButton:breakAnchors()
+            submitButton:addAnchor(AnchorLeft, 'parent', AnchorLeft)
+            submitButton:addAnchor(AnchorRight, 'parent', AnchorRight)
+            submitButton:addAnchor(AnchorBottom, 'parent', AnchorBottom)
+            submitButton:setHeight(40)
+        end
+        if cancelButton then
+            cancelButton:hide()
+        end
+    else
+        firstPasswordWindow:setSize({width = 500, height = 420})
+        firstPasswordWindow:breakAnchors()
+        firstPasswordWindow:addAnchor(AnchorHorizontalCenter, 'parent', AnchorHorizontalCenter)
+        firstPasswordWindow:addAnchor(AnchorVerticalCenter, 'parent', AnchorVerticalCenter)
+        firstPasswordWindow:setMarginTop(0)
+
+        if panel then
+            panel:setMarginTop(12)
+            panel:setMarginRight(12)
+            panel:setMarginBottom(12)
+            panel:setMarginLeft(12)
+        end
+        local intro = getFirstPasswordWidget('firstPasswordIntro')
+        local accountPanel = getFirstPasswordWidget('firstPasswordAccountPanel')
+        if intro then
+            intro:setMarginTop(5)
+        end
+        if accountPanel then
+            accountPanel:setMarginTop(8)
+        end
+        setFirstPasswordWidgetVisible('firstPasswordIntro', true, 42)
+        setFirstPasswordWidgetVisible('firstPasswordAccountPanel', true, 38)
+        setFirstPasswordWidgetVisible('firstPasswordHint', true, 30)
+        if heading then
+            heading:setHeight(24)
+        end
+        if newPasswordLabel then
+            newPasswordLabel:setMarginTop(11)
+        end
+        if newPasswordEdit then
+            newPasswordEdit:setHeight(26)
+            newPasswordEdit:setMarginTop(3)
+        end
+        if confirmPasswordLabel then
+            confirmPasswordLabel:setMarginTop(9)
+        end
+        if confirmPasswordEdit then
+            confirmPasswordEdit:setHeight(26)
+            confirmPasswordEdit:setMarginTop(3)
+        end
+        local status = getFirstPasswordWidget('firstPasswordStatus')
+        if status then
+            status:setHeight(32)
+        end
+        if submitButton then
+            submitButton:breakAnchors()
+            submitButton:addAnchor(AnchorRight, 'parent', AnchorRight)
+            submitButton:addAnchor(AnchorBottom, 'parent', AnchorBottom)
+            submitButton:setWidth(142)
+            submitButton:setHeight(30)
+        end
+        if cancelButton then
+            cancelButton:show()
+        end
+    end
+end
+
+local function scheduleFirstPasswordKeyboardReflow()
+    if not g_platform.isMobile() or firstPasswordKeyboardReflowEvent or not firstPasswordWindow then
+        return
+    end
+
+    firstPasswordKeyboardReflowEvent = scheduleEvent(function()
+        firstPasswordKeyboardReflowEvent = nil
+        if not firstPasswordWindow or firstPasswordWindow:isDestroyed() then
+            return
+        end
+        applyFirstPasswordKeyboardLayout()
+        if firstPasswordWindow:isVisible() then
+            scheduleFirstPasswordKeyboardReflow()
+        end
+    end, FIRST_PASSWORD_KEYBOARD_RECHECK_MS)
+end
+
+local function setFirstPasswordStatus(message, isError)
+    if not firstPasswordWindow then
+        return
+    end
+    local status = getFirstPasswordWidget('firstPasswordStatus')
+    status:setText(message or '')
+    status:setColor(isError and '#e56b6b' or '#aeb4c0')
+end
+
+local function clearFirstPasswordFields()
+    for _, id in ipairs({'firstPasswordNewEdit', 'firstPasswordConfirmEdit'}) do
+        local field = getFirstPasswordWidget(id)
+        if field then
+            field:clearText()
+        end
+    end
+end
+
+local function updateFirstPasswordButtons()
+    if not firstPasswordWindow then
+        return
+    end
+    getFirstPasswordWidget('firstPasswordNewEdit'):setEnabled(not firstPasswordRequestPending)
+    getFirstPasswordWidget('firstPasswordConfirmEdit'):setEnabled(not firstPasswordRequestPending)
+    getFirstPasswordWidget('firstPasswordSubmitButton'):setEnabled(not firstPasswordRequestPending)
+    getFirstPasswordWidget('firstPasswordCancelButton'):setEnabled(not firstPasswordRequestPending)
+end
+
 local function maskEmail(email)
     if type(email) ~= 'string' then
         return '***'
@@ -734,7 +963,7 @@ local function maskEmail(email)
     if not localPart or not domain then
         return '***'
     end
-    return localPart:sub(1, 1) .. string.rep('*', math.max(2, #localPart - 1)) .. '@' .. domain
+    return localPart:sub(1, 1) .. '***@' .. domain
 end
 
 local function clearAccountSensitiveFields()
@@ -1483,6 +1712,138 @@ function CharacterList.closeAccountManagement(force)
     return true
 end
 
+function CharacterList.closeFirstPasswordChange(force)
+    if firstPasswordRequestPending and not force then
+        return false
+    end
+    cancelFirstPasswordKeyboardReflow()
+    firstPasswordRequestSerial = firstPasswordRequestSerial + 1
+    firstPasswordRequestPending = false
+    clearFirstPasswordFields()
+    firstPasswordEmail = nil
+    firstPasswordInitialPassword = nil
+    if firstPasswordWindow then
+        firstPasswordWindow:destroy()
+        firstPasswordWindow = nil
+    end
+    return true
+end
+
+function CharacterList.cancelFirstPasswordChange()
+    if not CharacterList.closeFirstPasswordChange() then
+        return false
+    end
+    EnterGame.show()
+    if EnterGame and EnterGame.prepareBetaRelogin then
+        EnterGame.prepareBetaRelogin('')
+    end
+    EnterGame.setLoginStatus('A senha inicial continua ativa. Digite sua conta e senha para tentar novamente.', true)
+    return true
+end
+
+function CharacterList.openFirstPasswordChange(email, initialPassword)
+    if not isBetaLogin() or type(email) ~= 'string' or email == '' or
+        type(initialPassword) ~= 'string' or initialPassword == '' then
+        return false
+    end
+    CharacterList.closeFirstPasswordChange(true)
+    g_ui.importStyle('elemental_brand')
+    g_ui.importStyle('characterlist')
+    firstPasswordEmail = email
+    firstPasswordInitialPassword = initialPassword
+    firstPasswordWindow = g_ui.createWidget('ElementalBetaFirstPasswordWindow', rootWidget)
+    getFirstPasswordWidget('firstPasswordEmailValue'):setText(maskEmail(email))
+
+    getFirstPasswordWidget('firstPasswordSubmitButton').onClick = function()
+        EnterGame.playUiClickSound()
+        if firstPasswordRequestPending then
+            return
+        end
+
+        local newPassword = getFirstPasswordWidget('firstPasswordNewEdit'):getText()
+        local confirmedPassword = getFirstPasswordWidget('firstPasswordConfirmEdit'):getText()
+        if #newPassword < 12 or #newPassword > 1024 or newPassword ~= confirmedPassword then
+            setFirstPasswordStatus('Digite uma senha nova com pelo menos 12 caracteres e confirme a mesma senha.', true)
+            return
+        end
+        if newPassword == firstPasswordInitialPassword then
+            setFirstPasswordStatus('A senha nova precisa ser diferente da senha inicial.', true)
+            return
+        end
+
+        local endpoint = getElementalEndpoint('account/first-password')
+        if not endpoint then
+            setFirstPasswordStatus('O serviço de troca inicial de senha está indisponível.', true)
+            return
+        end
+
+        firstPasswordRequestSerial = firstPasswordRequestSerial + 1
+        local requestSerial = firstPasswordRequestSerial
+        local requestEmail = firstPasswordEmail
+        local requestInitialPassword = firstPasswordInitialPassword
+        firstPasswordRequestPending = true
+        clearFirstPasswordFields()
+        setFirstPasswordStatus('Atualizando sua senha…', false)
+        updateFirstPasswordButtons()
+
+        local function onFirstPasswordChanged(message, err)
+            if requestSerial ~= firstPasswordRequestSerial or not firstPasswordWindow then
+                return
+            end
+            firstPasswordRequestPending = false
+            local response = type(message) == 'table' and message or decodeElementalResponse(message, err)
+            if response and response.contractVersion == ELEMENTAL_CONTRACT_VERSION and
+                response.success == true and response.requiresLogin == true then
+                CharacterList.closeFirstPasswordChange(true)
+                EnterGame.show()
+                EnterGame.prepareBetaRelogin('')
+                EnterGame.setLoginStatus('Senha atualizada. Digite sua conta e a senha nova para entrar.', false)
+                return
+            end
+
+            local messages = {
+                invalid_credentials = 'A senha inicial não foi aceita. Volte ao login e tente novamente.',
+                password_confirmation_mismatch = 'As senhas digitadas não coincidem. Digite-as novamente.',
+                password_must_change = 'Escolha uma senha diferente da senha inicial.',
+                login_unavailable = 'Muitas tentativas. Aguarde antes de tentar de novo.',
+                account_change_unavailable = 'O serviço de contas está indisponível. Tente novamente.',
+            }
+            setFirstPasswordStatus(messages[response and response.errorCode] or
+                'Não foi possível atualizar a senha. Confira a conexão e tente novamente.', true)
+            updateFirstPasswordButtons()
+        end
+
+        local ok, operation = pcall(function()
+            return HTTP.postSecureJSON(endpoint, {
+                contractVersion = ELEMENTAL_CONTRACT_VERSION,
+                email = requestEmail,
+                currentPassword = requestInitialPassword,
+                newPassword = newPassword,
+                confirmPassword = confirmedPassword,
+            }, onFirstPasswordChanged, ACCOUNT_CHANGE_TIMEOUT_SECONDS)
+        end)
+        if (not ok or type(operation) ~= 'number' or operation < 0) and firstPasswordRequestPending then
+            firstPasswordRequestPending = false
+            setFirstPasswordStatus('Não foi possível iniciar a troca segura da senha. Tente novamente.', true)
+            updateFirstPasswordButtons()
+        end
+    end
+
+    getFirstPasswordWidget('firstPasswordCancelButton').onClick = function()
+        EnterGame.playUiClickSound()
+        CharacterList.cancelFirstPasswordChange()
+    end
+    firstPasswordWindow:show()
+    firstPasswordWindow:raise()
+    firstPasswordWindow:focus()
+    getFirstPasswordWidget('firstPasswordNewEdit'):focus()
+    applyFirstPasswordKeyboardLayout()
+    scheduleFirstPasswordKeyboardReflow()
+    setFirstPasswordStatus('', false)
+    updateFirstPasswordButtons()
+    return true
+end
+
 local function updateAccountButtons()
     if not accountManagementWindow then
         return
@@ -2006,7 +2367,9 @@ function CharacterList.openCharacterAssembly()
     characterAssemblyWindow:show()
     characterAssemblyWindow:raise()
     characterAssemblyWindow:focus()
-    nameEdit:focus()
+    if not g_platform.isMobile() then
+        nameEdit:focus()
+    end
     setAssemblyStatus('Choose every field. No selection is prefilled.', false)
     updateAssemblySubmitButton()
 end
@@ -2074,6 +2437,7 @@ function CharacterList.terminate()
     })
 
     CharacterList.closeAccountManagement(true)
+    CharacterList.closeFirstPasswordChange(true)
     CharacterList.closeCharacterAssembly(true)
 
     if charactersWindow then

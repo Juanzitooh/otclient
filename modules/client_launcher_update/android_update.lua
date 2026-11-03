@@ -478,7 +478,7 @@ function checkForUpdate(callback)
          local is_available, validation_error = validate_manifest(manifest)
          if is_available == nil then
             set_button_status(validation_error)
-            finish(false, nil, validation_error)
+            finish(false, manifest, validation_error)
             return
          end
          if not is_available then

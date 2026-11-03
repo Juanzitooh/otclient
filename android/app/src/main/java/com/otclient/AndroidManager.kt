@@ -1,6 +1,7 @@
 package com.otclient
 
 import android.app.PendingIntent
+import android.app.Activity
 import android.content.Intent
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -9,6 +10,7 @@ import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
@@ -36,6 +38,9 @@ class AndroidManager(
     private var pendingPreviewText: String = ""
     private var imeHeight: Int = 0
     private var startupSplash: ElementalStartupSplash? = null
+    private var assetNotificationStarted = false
+    private var lastAssetNotificationUpdate = 0L
+    private var pendingAssetNotificationUpdate: Runnable? = null
 
     // Widget position from C++ (in game pixels, maps 1:1 to screen pixels)
     private var widgetX: Int = -1
@@ -169,6 +174,55 @@ class AndroidManager(
         context.packageManager.getPackageInfo(context.packageName, 0),
     ).toInt()
 
+    fun updateAssetDownloadNotification(status: String, progress: Int, detail: String) {
+        handler.post {
+            val update = {
+                if (!assetNotificationStarted && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                    context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    (context as? Activity)?.requestPermissions(
+                        arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                        ASSET_NOTIFICATION_PERMISSION_REQUEST,
+                    )
+                }
+                val serviceIntent = Intent(context, AssetDownloadService::class.java)
+                    .setAction(AssetDownloadService.ACTION_UPDATE)
+                    .putExtra(AssetDownloadService.EXTRA_STATUS, status)
+                    .putExtra(AssetDownloadService.EXTRA_PROGRESS, progress)
+                    .putExtra(AssetDownloadService.EXTRA_DETAIL, detail)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && !assetNotificationStarted) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
+                assetNotificationStarted = true
+                lastAssetNotificationUpdate = SystemClock.elapsedRealtime()
+                pendingAssetNotificationUpdate = null
+            }
+
+            val now = SystemClock.elapsedRealtime()
+            val delay = ASSET_NOTIFICATION_UPDATE_INTERVAL_MS - (now - lastAssetNotificationUpdate)
+            if (!assetNotificationStarted || delay <= 0) {
+                pendingAssetNotificationUpdate?.let(handler::removeCallbacks)
+                update()
+            } else {
+                pendingAssetNotificationUpdate?.let(handler::removeCallbacks)
+                val pending = Runnable { update() }
+                pendingAssetNotificationUpdate = pending
+                handler.postDelayed(pending, delay)
+            }
+        }
+    }
+
+    fun finishAssetDownloadNotification() {
+        handler.post {
+            pendingAssetNotificationUpdate?.let(handler::removeCallbacks)
+            pendingAssetNotificationUpdate = null
+            context.stopService(Intent(context, AssetDownloadService::class.java))
+            assetNotificationStarted = false
+            lastAssetNotificationUpdate = 0L
+        }
+    }
+
     fun getFileSize(path: String): Long = validatedUpdateFile(path)?.length() ?: -1
 
     fun sha256File(path: String): String {
@@ -296,6 +350,11 @@ class AndroidManager(
     external fun nativeSetAudioEnabled(enabled: Boolean)
     external fun nativeOnImeVisibilityChanged(visible: Boolean, imeHeight: Int)
 
+    companion object {
+        private const val ASSET_NOTIFICATION_PERMISSION_REQUEST = 7172
+        private const val ASSET_NOTIFICATION_UPDATE_INTERVAL_MS = 750L
+    }
+
     private fun showPreviewInternal(animate: Boolean = true) {
         previewContainer.animate().cancel()
 
@@ -307,9 +366,9 @@ class AndroidManager(
         // Show/hide copy based on content
         copyButton.visibility = if (hasText) View.VISIBLE else View.GONE
 
-        // Show/hide paste based on clipboard content
-        val hasClip = getClipboardText().isNotEmpty()
-        pasteButton.visibility = if (hasClip) View.VISIBLE else View.GONE
+        // Avoid reading the clipboard just because an input field gained focus.
+        // Android surfaces clipboard reads to the user; read only after an explicit paste tap.
+        pasteButton.visibility = View.VISIBLE
 
         if (!previewContainer.isVisible) {
             previewContainer.alpha = if (animate) 0f else 1f

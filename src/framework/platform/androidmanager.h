@@ -53,6 +53,8 @@ public:
     std::string getAppBaseDir();
     std::string getPackageName();
     int getVersionCode();
+    void updateAssetDownloadNotification(const std::string& status, int progress, const std::string& detail);
+    void finishAssetDownloadNotification();
     std::int64_t getFileSize(const std::string& path);
     std::string sha256File(const std::string& path);
     int installApk(const std::string& path);
@@ -76,6 +78,8 @@ private:
     jmethodID m_midSetClipboardText;
     jmethodID m_midGetPackageName;
     jmethodID m_midGetVersionCode;
+    jmethodID m_midUpdateAssetDownloadNotification;
+    jmethodID m_midFinishAssetDownloadNotification;
     jmethodID m_midGetFileSize;
     jmethodID m_midSha256File;
     jmethodID m_midInstallApk;

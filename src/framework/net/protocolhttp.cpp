@@ -40,6 +40,8 @@
 Http g_http;
 
 namespace {
+    constexpr int AUTHENTICATED_GET_TRANSFER_TIMEOUT_SECONDS = 120;
+
     bool isValidHttpsEndpoint(const std::string& url)
     {
         return url.starts_with("https://") && url.find('@') == std::string::npos;
@@ -778,6 +780,8 @@ int Http::getInternal(const std::string& url, int timeout, const std::string& be
     if (!bearerToken.empty()) {
         request->followRedirects = false;
         request->extraHeaders["Authorization"] = "Bearer " + bearerToken;
+        // Protected feed manifest reads must not leave asset preparation waiting forever.
+        request->transferTimeout = std::max(timeout, AUTHENTICATED_GET_TRANSFER_TIMEOUT_SECONDS);
     }
     result->request = request;
 
