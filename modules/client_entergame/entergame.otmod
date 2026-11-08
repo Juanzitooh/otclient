@@ -6,6 +6,7 @@ Module
 
   dependencies:
     - client_assets
+    - client_launcher_update
     - client_launcher_android_update
     - game_features
     - game_things

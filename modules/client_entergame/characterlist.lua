@@ -1343,6 +1343,11 @@ end
 local function tryLogin(charInfo, tries)
     tries = tries or 1
 
+    if ClientLauncherUpdate and ClientLauncherUpdate.blockLoginIfRequired and
+       ClientLauncherUpdate.blockLoginIfRequired() then
+        return
+    end
+
     if tries > 50 then
         return
     end

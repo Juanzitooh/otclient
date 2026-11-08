@@ -1387,6 +1387,11 @@ function EnterGame.loginFailed(requestId, msg, result)
 end
 
 function EnterGame.doLogin()
+    if ClientLauncherUpdate and ClientLauncherUpdate.blockLoginIfRequired and
+       ClientLauncherUpdate.blockLoginIfRequired() then
+        return
+    end
+
     if loginPending then
         EnterGame.cancelLogin()
         return
@@ -1780,6 +1785,11 @@ function EnterGame.showAuthenticatorInput()
 end
 
 function EnterGame.doLoginWithToken()
+    if ClientLauncherUpdate and ClientLauncherUpdate.blockLoginIfRequired and
+       ClientLauncherUpdate.blockLoginIfRequired() then
+        return
+    end
+
     local servers = Servers_init or {}
     local serverData = servers[G.host]
     if not (serverData and serverData.useAuthenticator) then
